@@ -1,0 +1,70 @@
+{
+  "provenance": "Agent visually inspected photo and entered approximate boxes BEFORE SAM inference; not independent human ground truth. Scope limited to listed concepts.",
+  "objects": [
+    {
+      "id": "phone",
+      "label": "smartphone",
+      "box": {
+        "x": 0.436,
+        "y": 0.648,
+        "width": 0.072,
+        "height": 0.212
+      },
+      "locked": false,
+      "source": "manual",
+      "confidence": null
+    },
+    {
+      "id": "mouse",
+      "label": "mouse",
+      "box": {
+        "x": 0.553,
+        "y": 0.739,
+        "width": 0.086,
+        "height": 0.177
+      },
+      "locked": false,
+      "source": "manual",
+      "confidence": null
+    },
+    {
+      "id": "keyboard",
+      "label": "keyboard",
+      "box": {
+        "x": 0.534,
+        "y": 0.451,
+        "width": 0.409,
+        "height": 0.175
+      },
+      "locked": false,
+      "source": "manual",
+      "confidence": null
+    },
+    {
+      "id": "laptop-keyboard",
+      "label": "keyboard",
+      "box": {
+        "x": 0,
+        "y": 0.335,
+        "width": 0.32,
+        "height": 0.456
+      },
+      "locked": false,
+      "source": "manual",
+      "confidence": null
+    },
+    {
+      "id": "trackpad",
+      "label": "trackpad",
+      "box": {
+        "x": 0.378,
+        "y": 0.454,
+        "width": 0.158,
+        "height": 0.17
+      },
+      "locked": false,
+      "source": "manual",
+      "confidence": null
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "cases": [
+    {
+      "name": "zesan actual desk photo",
+      "image": "../../artifacts/real-desk/zesan-desk.jpg",
+      "reference": "zesan-reference.json",
+      "concepts": [
+        "laptop",
+        "smartphone",
+        "keyboard",
+        "earbud case",
+        "trackpad"
+      ],
+      "source": "https://unsplash.com/photos/a-desk-with-a-keyboard-mouse-and-a-laptop-tcfJJ4yzBrE",
+      "reference_provenance": "Agent-reviewed approximate boxes, entered before inference; no human-reviewed ground truth.",
+      "reference_complete": false
+    },
+    {
+      "name": "jakub actual desk photo",
+      "image": "../../artifacts/real-desk/jakub-desk.jpg",
+      "reference": "jakub-reference.json",
+      "concepts": [
+        "smartphone",
+        "mouse",
+        "keyboard",
+        "trackpad"
+      ],
+      "source": "https://unsplash.com/photos/a-desk-with-a-laptop-keyboard-mouse-and-a-cell-phone-ElFBCgOfoIM",
+      "reference_provenance": "Agent-reviewed approximate boxes, entered before inference; no human-reviewed ground truth.",
+      "reference_complete": false
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
+<defs>
+<linearGradient id="desk" x2=".8" y2="1"><stop stop-color="#b2a38d"/><stop offset="1" stop-color="#8b7b67"/></linearGradient>
+<linearGradient id="pad" x2=".2" y2="1"><stop stop-color="#5f665b"/><stop offset="1" stop-color="#41483e"/></linearGradient>
+<linearGradient id="book" x2="1" y2="1"><stop stop-color="#bdc2b6"/><stop offset="1" stop-color="#7d8b79"/></linearGradient>
+<radialGradient id="coffee"><stop stop-color="#5d3522"/><stop offset=".9" stop-color="#33231b"/><stop offset="1" stop-color="#896044"/></radialGradient>
+<filter id="shadow" x="-.5" y="-.5" width="2" height="2"><feDropShadow dx="6" dy="10" stdDeviation="9" flood-opacity=".3"/></filter>
+<pattern id="grain" width="180" height="100" patternUnits="userSpaceOnUse"><path d="M0 15Q60 9 180 15M0 18Q60 12 180 18M0 65Q100 60 180 68M0 90Q100 83 180 90" stroke="#4d3a26" stroke-opacity=".1" fill="none"/></pattern>
+</defs>
+<rect width="1200" height="800" fill="url(#desk)"/><rect width="1200" height="800" fill="url(#grain)"/>
+<path d="M0 140H1200M0 530H1200" stroke="#443424" stroke-opacity=".15"/>
+<rect x="300" y="220" width="645" height="462" rx="20" fill="url(#pad)" filter="url(#shadow)"/><rect x="307" y="227" width="631" height="448" rx="15" fill="none" stroke="#9a9c87" stroke-opacity=".25" stroke-dasharray="2 5"/>
+<g filter="url(#shadow)"><rect x="468" y="312" width="192" height="208" rx="8" fill="#48533e"/><rect x="471" y="310" width="185" height="201" rx="6" fill="url(#book)"/><path d="M489 314V507" stroke="#596a53" stroke-width="4"/><path d="M632 312V512" stroke="#384b37" stroke-width="8"/><text x="513" y="359" font-family="Georgia,serif" font-size="15" fill="#394635" letter-spacing="2">FIELD NOTES</text><text x="515" y="384" font-family="Arial" font-size="7" fill="#4d5b47" letter-spacing="3">IDEAS / OBSERVATIONS</text><path d="M520 448H596M520 461H565" stroke="#73816a"/></g>
+<g filter="url(#shadow)" fill="none" stroke="#282b28"><path d="M746 509C707 388 875 378 893 504" stroke-width="23"/><path d="M747 505C718 402 867 392 884 502" stroke="#505550" stroke-width="9"/><rect x="730" y="478" width="45" height="80" rx="20" fill="#252925" stroke-width="5"/><rect x="866" y="476" width="45" height="80" rx="20" fill="#252925" stroke-width="5"/><rect x="738" y="487" width="27" height="61" rx="12" fill="#4b514a" stroke="none"/><rect x="875" y="485" width="27" height="61" rx="12" fill="#4b514a" stroke="none"/></g>
+<g filter="url(#shadow)"><ellipse cx="994" cy="286" rx="55" ry="48" fill="#c9c2b3"/><ellipse cx="993" cy="277" rx="48" ry="45" fill="#ded6c6"/><path d="M1033 258C1072 239 1071 301 1033 293" fill="none" stroke="#ded6c6" stroke-width="12"/><circle cx="991" cy="275" r="36" fill="url(#coffee)"/><path d="M970 252Q985 244 1000 248" fill="none" stroke="#c39068" stroke-width="2" opacity=".5"/></g>
+<g filter="url(#shadow)"><rect x="144" y="504" width="102" height="168" rx="15" fill="#1d2422"/><rect x="150" y="511" width="90" height="154" rx="11" fill="#36443e"/><path d="M154 603L236 539V660H154Z" fill="#4e6251"/><path d="M156 640L231 583V659H156Z" fill="#798568"/><rect x="178" y="515" width="34" height="7" rx="4" fill="#141b18"/><text x="165" y="559" fill="#d3dbc9" font-size="25" font-family="Arial" font-weight="200">09:41</text></g>
+<g filter="url(#shadow)"><circle cx="186" cy="189" r="62" fill="#b1a48c"/><circle cx="186" cy="180" r="52" fill="#76644a"/><circle cx="186" cy="178" r="45" fill="#3f3928"/><path d="M185 191C100 182 95 119 111 104C171 103 191 153 185 191" fill="#3c5739"/><path d="M184 184C143 111 172 77 194 81C229 130 202 164 184 184" fill="#53724a"/><path d="M185 187C198 108 249 98 266 119C253 172 212 191 185 187" fill="#365437"/><path d="M186 185C258 177 280 219 257 241C201 247 180 211 186 185" fill="#527044"/><path d="M182 184C167 239 115 259 103 235C103 194 148 181 182 184" fill="#48643c"/><path d="M180 181C164 140 130 136 130 151C129 186 159 196 180 181" fill="#7a9060"/></g>
+<rect x="405" y="60" width="407" height="99" rx="10" fill="#bbbcb1" filter="url(#shadow)"/><g fill="#93998e">
+<path d="M421 73H796V83H421ZM421 90H796V101H421ZM421 108H796V119H421ZM421 125H796V136H421Z"/>
+</g><path d="M449 70V139M477 70V139M505 70V139M533 70V139M561 70V139M589 70V139M617 70V139M645 70V139M673 70V139M701 70V139M729 70V139M757 70V139M785 70V139" stroke="#bcbfb4" stroke-width="5"/>
+<rect x="511" y="140" width="192" height="10" rx="3" fill="#969d91"/>
+<text x="1180" y="777" text-anchor="end" fill="#ece6d9" opacity=".45" font-family="Arial" font-size="11" letter-spacing="2">WORLDOS / ILLUSTRATED SAMPLE</text>
+</svg>
