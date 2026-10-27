@@ -52,7 +52,7 @@ def generate_plan(req: PlanRequest) -> PlanResponse:
     validate_scene(req)
     locked = RuleBasedReasoning().locked_ids(req.goal, req.objects)
     initial = {obj.id: obj.box for obj in req.objects}
-    warnings = ["Manual annotations; no AI vision is connected.",
+    warnings = ["Manual annotations; no AI vision was used for these boxes.",
                 "Lift objects to move them. Only final 2D footprints are checked; height, reach, stability, and travel paths are not modeled.",
                 "The selected target defines the cleared space. Goal text only supports label-based keep / do not move / without moving constraints; review all locks."]
 
@@ -222,8 +222,11 @@ def restore_positions(objects, reference, workspace, clearance=.005):
         identity = available[0]
         obj = next(o for o in objects if o.id == identity)
         goal = destinations[identity]
+        dx, dy = goal.x-current[identity].x, goal.y-current[identity].y
+        directions = (["right" if dx > 0 else "left"] if abs(dx) > .005 else []) + (["down" if dy > 0 else "up"] if abs(dy) > .005 else [])
+        direction = " and ".join(directions)
         moves.append(Movement(number=len(moves)+1, object_id=identity, label=obj.label, source=current[identity], destination=goal,
-                              instruction=f"Lift {obj.label} and place its top-left corner at {goal.x:.1%} across, {goal.y:.1%} down the aligned image. Keep its orientation and complete the listed moves in order."))
+                              instruction=f"Lift {obj.label} and place it{' '+direction if direction else ''} at the outlined reference position. Keep its orientation. Top-left: {goal.x:.1%} across, {goal.y:.1%} down the aligned image. Follow the listed order."))
         current[identity] = goal
         pending.remove(identity)
     return result("ready", f"Restore the workspace in {len(moves)} ordered lift-and-place movement(s).", current, moves)

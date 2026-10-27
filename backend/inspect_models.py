@@ -1,7 +1,7 @@
 """Strict contracts for reusable visual inspection, independent of desk tasks."""
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 from .models import Box, SceneObject
 from .planner import contains, overlaps
@@ -30,6 +30,7 @@ class ReferenceAnalysis(StrictModel):
     concept_latency_ms: dict[str, int] = Field(default_factory=dict)
     inferred_at: str | None = None
     inference_cache: dict | None = None
+    live_request: StrictBool | None = None
 
 
 class TemplateInput(StrictModel):

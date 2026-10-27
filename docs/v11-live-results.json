@@ -1,0 +1,177 @@
+{
+  "checked_at": "2026-10-27T19:33:36.271199+00:00",
+  "deployed_commit": "1d41e3b",
+  "url": "https://worldos-inspect.onrender.com",
+  "scope": "Real public desk photo; no physical movement or fresh corrected photograph.",
+  "physical_trials": 0,
+  "provider_request_count": 3,
+  "provider_requests": {
+    "meta_sam_3_1": {
+      "concepts": [
+        "smartphone",
+        "mouse"
+      ],
+      "requests": 2,
+      "application_http_status": 502,
+      "application_wall_ms": 1038,
+      "error": "The requested model is unavailable to this credential. Check the model ID, team permissions, and model access.",
+      "usage": null,
+      "status": "blocked_model_access"
+    },
+    "baseten_muse_spark": {
+      "constraints": {
+        "protected_object_ids": [
+          "mouse"
+        ],
+        "summary": "Clear the target rectangle at x=0.435 y=0.645 width=0.08 height=0.22 by relocating the smartphone (phone) outside it with orientation-preserving lift-and-place moves while keeping the mouse stationary.",
+        "unsupported_requirements": [],
+        "needs_clarification": false
+      },
+      "provider": "baseten",
+      "model": "meta-models/muse-spark-open-1026",
+      "operation": "interpret_goal",
+      "inference_latency_ms": 8522,
+      "inferred_at": "2026-10-27T19:35:07.990319+00:00",
+      "usage": {
+        "prompt_tokens": 2882,
+        "completion_tokens": 666,
+        "total_tokens": 3548
+      },
+      "live_request": true,
+      "confidence": null,
+      "message": "Review interpreted constraints before applying them. Muse Spark does not supply a calibrated confidence score for this response.",
+      "inference_cache": {
+        "status": "miss",
+        "age_ms": 0
+      },
+      "application_http_status": 200,
+      "application_wall_ms": 8749
+    }
+  },
+  "photo_source": "https://unsplash.com/photos/a-desk-with-a-laptop-keyboard-mouse-and-a-cell-phone-ElFBCgOfoIM",
+  "image_sha256": "d8bde0e5c754d490389110474ac304974024425f551d4a6535d86522416b777f",
+  "manual_annotations_source": "docs/vision-fixtures/jakub-reference.json, first two objects; agent visually reviewed the public photograph. No automatic SAM detections were substituted.",
+  "deterministic_plan": {
+    "status": "ready",
+    "message": "A collision-free layout is ready in 1 movement.",
+    "movements": [
+      {
+        "number": 1,
+        "object_id": "phone",
+        "label": "smartphone",
+        "source": {
+          "x": 0.436,
+          "y": 0.648,
+          "width": 0.072,
+          "height": 0.212
+        },
+        "destination": {
+          "x": 0.647,
+          "y": 0.645,
+          "width": 0.072,
+          "height": 0.212
+        },
+        "instruction": "Lift smartphone and place its top-left corner at 64.7% across, 64.5% down the image. Keep its orientation. Follow the listed order."
+      }
+    ],
+    "final_objects": [
+      {
+        "id": "phone",
+        "label": "smartphone",
+        "box": {
+          "x": 0.647,
+          "y": 0.645,
+          "width": 0.072,
+          "height": 0.212
+        },
+        "locked": false,
+        "source": "manual",
+        "confidence": null
+      },
+      {
+        "id": "mouse",
+        "label": "mouse",
+        "box": {
+          "x": 0.553,
+          "y": 0.739,
+          "width": 0.086,
+          "height": 0.177
+        },
+        "locked": true,
+        "source": "manual",
+        "confidence": null
+      }
+    ],
+    "locked_ids": [
+      "mouse"
+    ],
+    "warnings": [
+      "Manual annotations; no AI vision is connected.",
+      "Lift objects to move them. Only final 2D footprints are checked; height, reach, stability, and travel paths are not modeled.",
+      "Reviewed protected-object constraints were applied. The deterministic planner calculates all movements and collisions."
+    ],
+    "explored_states": 1,
+    "reasoning_source": "user_reviewed_constraints"
+  },
+  "independent_geometry_check": {
+    "passed": true,
+    "scope": "Deterministic geometry only; proposed final boxes are NOT observed physical positions.",
+    "movement_count": 1,
+    "geometry": {
+      "passed": true,
+      "objects": [
+        {
+          "object_id": "phone",
+          "label": "smartphone",
+          "matched": true,
+          "edge_error": 0.0,
+          "tolerance": 0.025
+        },
+        {
+          "object_id": "mouse",
+          "label": "mouse",
+          "matched": true,
+          "edge_error": 0.0,
+          "tolerance": 0.01
+        }
+      ],
+      "issues": [],
+      "message": "Final annotations match the plan and the target is clear.",
+      "source": "manual_final_annotations",
+      "matched_count": 2
+    },
+    "unchanged_annotations_negative_control": {
+      "passed": false,
+      "objects": [
+        {
+          "object_id": "phone",
+          "label": "smartphone",
+          "matched": false,
+          "edge_error": 0.211,
+          "tolerance": 0.025
+        },
+        {
+          "object_id": "mouse",
+          "label": "mouse",
+          "matched": true,
+          "edge_error": 0.0,
+          "tolerance": 0.01
+        }
+      ],
+      "issues": [
+        "smartphone intrudes into the target or its clearance."
+      ],
+      "message": "Some placements need attention. Review the highlighted results.",
+      "source": "manual_final_annotations",
+      "matched_count": 1
+    },
+    "physical_verification": "not_performed"
+  },
+  "not_validated": [
+    "SAM detections on current deployment",
+    "current-photo discrepancy identification",
+    "missing/misplaced/unexpected accuracy",
+    "fresh physically corrected photograph",
+    "complete physical workflow"
+  ]
+}

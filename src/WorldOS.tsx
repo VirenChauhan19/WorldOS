@@ -34,7 +34,7 @@ export default function WorldOS() {
   },[route.page]);
   return <div className="worldos-app">
     <a className="skip-link" href="#main-content" onClick={event=>{event.preventDefault();document.getElementById(`screen-${route.page}`)?.focus();}}>Skip to content</a>
-    <header className="app-header"><button className="app-brand" onClick={()=>navigate('home')} aria-label="WorldOS home"><span className="brand-symbol"><ScanLine size={23}/></span>world<span>os</span><small>V1.0</small></button><span className="app-header-note">Inspect. Understand. Restore.</span></header>
+    <header className="app-header"><button className="app-brand" onClick={()=>navigate('home')} aria-label="WorldOS home"><span className="brand-symbol"><ScanLine size={23}/></span>world<span>os</span><small>V1.1</small></button><span className="app-header-note">Inspect. Understand. Restore.</span></header>
     <nav className="app-navigation" aria-label="Main navigation">{PAGES.map(page=>{const Icon=icons[page];return <button key={page} aria-current={route.page===page?'page':undefined} onClick={()=>navigate(page)}><Icon size={20} aria-hidden="true"/><span>{titles[page]}</span></button>;})}</nav>
     <div id="main-content" className="app-content">{PAGES.map(page=><section key={page} id={`screen-${page}`} className={`route-screen ${page==='studio'?'desk-view':''}`} hidden={route.page!==page} data-active={route.page===page} tabIndex={-1} aria-label={titles[page]}>
       {(visited.has(page)||route.page===page)&&<ScreenBoundary><Suspense fallback={<div className="screen-placeholder" role="status">Opening {titles[page]}…</div>}>

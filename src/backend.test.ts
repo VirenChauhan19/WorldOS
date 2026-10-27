@@ -32,6 +32,8 @@ it('expires unauthorized sessions without retrying requests',async()=>{
   const listener=vi.fn();window.addEventListener('worldos:session-expired',listener);
   const fetcher=vi.fn().mockResolvedValue(new Response('{}',{status:401}));vi.stubGlobal('fetch',fetcher);setAccessToken('synthetic');
   await apiFetch('inspect/templates');expect(listener).toHaveBeenCalledTimes(1);expect(fetcher).toHaveBeenCalledTimes(1);
+  await expect(apiFetch('health')).rejects.toThrow('Sign in to resume');expect(fetcher).toHaveBeenCalledTimes(1);
+  setCookieSession('renewed');await apiFetch('health');expect(fetcher).toHaveBeenCalledTimes(2);
   window.removeEventListener('worldos:session-expired',listener);
 });
 it('does not send or queue offline requests',async()=>{

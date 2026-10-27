@@ -216,7 +216,7 @@ export default function App({active=true}:{active?:boolean}) {
       <div className="rail-line"/>
       <button className="rail-button active" title="Spatial workspace" aria-label="Spatial workspace" onClick={() => nav('annotate')}><ScanLine size={21}/></button>
       <button className="rail-button" title="How WorldOS works" aria-label="How WorldOS works" onClick={() => setHelp(true)}><CircleHelp size={21}/></button>
-      <div className="rail-bottom"><span className="version-vertical">V0.6</span><div className="avatar">W</div></div>
+      <div className="rail-bottom"><span className="version-vertical">V1.1</span><div className="avatar">W</div></div>
     </aside>
     <div className="main-shell">
       <header className="topbar"><a href="#" className="wordmark" onClick={e => { e.preventDefault(); nav('annotate'); }}>world<span>os</span><span className="beta">LABS</span></a><div className="breadcrumbs"><span>Personal workspace</span><ChevronRight size={13}/><strong>Spatial studio</strong></div><div className={`api-status ${online === false ? 'offline' : ''}`}><i/>{online === null ? 'Connecting' : online ? 'Local engine online' : 'API offline'}</div><button className="top-help demo-toggle" aria-pressed={demo} disabled={!!busy} onClick={() => setDemo(!demo)}>{demo ? 'Exit Demo Mode' : 'Demo Mode'}</button><button className="top-help" onClick={() => setHelp(true)}>Quick guide <ArrowUpRight size={13}/></button></header>

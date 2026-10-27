@@ -61,7 +61,10 @@ with tempfile.TemporaryDirectory(prefix='inspect-http-',dir=ROOT/'artifacts') as
         reviewed=response.json();assert not reviewed['reviewed_result']['passed'] and reviewed['automatic_result']['passed']
         response=client.post(f"/api/inspect/scans/{trial['id']}/corrections",json={'revision':2});assert response.status_code==200,response.text
         assert response.json()['correction_plan']['status']=='ready'
-        response=client.post('/api/inspect/scans',json={**scan,'previous_inspection_id':trial['id']});assert response.status_code==201,response.text
+        assert client.post('/api/inspect/scans',json={**scan,'previous_inspection_id':trial['id']}).status_code==422
+        corrected=io.BytesIO();Image.new('RGB',(300,200),'#818181').save(corrected,'PNG')
+        correction_photo=client.post('/api/analyze',files={'image':('synthetic-corrected.png',corrected.getvalue(),'image/png')}).json()['image_url']
+        response=client.post('/api/inspect/scans',json={**scan,'image_url':correction_photo,'previous_inspection_id':trial['id']});assert response.status_code==201,response.text
         verified=response.json();assert verified['automatic_result']['passed']
         exported=client.get(f"/api/inspect/scans/{trial['id']}/report")
         assert exported.status_code==200 and 'data:image' not in exported.text and 'synthetic-key' not in exported.text

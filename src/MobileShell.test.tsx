@@ -65,14 +65,39 @@ it('restores judge access on reload and hides judge choice when disabled',async(
   render(<MobileShell><div>Private content</div></MobileShell>);
   await screen.findByLabelText('Workspace passphrase');expect(screen.queryByLabelText('Workspace access')).toBeNull();
 });
-it('gates private data until login and removes it on expiry',async()=>{
+it('gates private data until login and hides it from interaction on expiry',async()=>{
   const fetcher=vi.fn().mockResolvedValueOnce(new Response('{"required":true,"authenticated":false}')).mockResolvedValueOnce(new Response('{"access_token":"synthetic-session"}'));
   vi.stubGlobal('fetch',fetcher);render(<MobileShell><div>Private template list</div></MobileShell>);
   await screen.findByLabelText('Workspace passphrase');expect(screen.queryByText('Private template list')).toBeNull();
   fireEvent.change(screen.getByLabelText('Workspace passphrase'),{target:{value:'synthetic test passphrase'}});fireEvent.click(screen.getByRole('button',{name:'Sign in'}));
   await screen.findByText('Private template list');expect(localStorage.getItem('worldos.session')).toBeNull();
   act(()=>window.dispatchEvent(new Event('worldos:session-expired')));
-  expect(screen.queryByText('Private template list')).toBeNull();expect(screen.getByText('Your session expired. Sign in again.')).toBeTruthy();
+  const locked=screen.getByText('Private template list').closest('[hidden]');
+  expect(locked?.hasAttribute('inert')).toBe(true);expect(locked?.getAttribute('aria-hidden')).toBe('true');
+  expect(screen.getByText(/Sign in again to resume your draft/)).toBeTruthy();
+});
+it('restores an unsaved draft after same-role reauthentication and clears it on explicit sign-out',async()=>{
+  const fetcher=vi.fn().mockImplementation(async(url:string)=>new Response(url.endsWith('/auth/status')?'{"required":true,"authenticated":true}':url.endsWith('/auth/login')?'{"authenticated":true,"session_mode":"cookie","csrf_token":"synthetic"}':'{}'));
+  vi.stubGlobal('fetch',fetcher);render(<MobileShell><input aria-label="Inspection draft" defaultValue=""/></MobileShell>);
+  const draft=await screen.findByLabelText('Inspection draft');fireEvent.change(draft,{target:{value:'Phone moved'}});
+  act(()=>window.dispatchEvent(new Event('worldos:session-expired')));
+  expect(screen.queryByRole('textbox',{name:'Inspection draft'})).toBeNull();
+  fireEvent.change(screen.getByLabelText('Workspace passphrase'),{target:{value:'synthetic'}});fireEvent.click(screen.getByRole('button',{name:'Sign in'}));
+  await waitFor(()=>expect(screen.getByRole('textbox',{name:'Inspection draft'})).toBe(draft));
+  expect((draft as HTMLInputElement).value).toBe('Phone moved');
+  fireEvent.click(screen.getByRole('button',{name:'Sign out'}));await screen.findByRole('button',{name:'Sign in'});
+  expect(screen.queryByLabelText('Inspection draft')).toBeNull();
+});
+it('discards the retained owner tree before allowing a judge login',async()=>{
+  const fetcher=vi.fn().mockResolvedValueOnce(new Response('{"required":true,"authenticated":true,"judge_enabled":true,"access":"owner"}'))
+    .mockResolvedValueOnce(new Response('{"authenticated":true,"session_mode":"cookie","csrf_token":"synthetic","access":"judge"}'));
+  vi.stubGlobal('fetch',fetcher);render(<MobileShell><input aria-label="Role draft" defaultValue=""/></MobileShell>);
+  fireEvent.change(await screen.findByLabelText('Role draft'),{target:{value:'Private owner draft'}});
+  act(()=>window.dispatchEvent(new Event('worldos:session-expired')));
+  expect(screen.queryByLabelText('Workspace access')).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'Discard draft and switch access'}));expect(screen.queryByLabelText('Role draft')).toBeNull();
+  fireEvent.change(screen.getByLabelText('Workspace access'),{target:{value:'judge'}});fireEvent.change(screen.getByLabelText('Workspace passphrase'),{target:{value:'synthetic'}});fireEvent.click(screen.getByRole('button',{name:'Sign in'}));
+  expect((await screen.findByRole('textbox',{name:'Role draft'}) as HTMLInputElement).value).toBe('');
 });
 it('recovers from backend failure with an explicit retry',async()=>{
   const fetcher=vi.fn().mockRejectedValueOnce(new Error('Connection failed')).mockResolvedValueOnce(new Response('{"required":false,"authenticated":true}'));vi.stubGlobal('fetch',fetcher);

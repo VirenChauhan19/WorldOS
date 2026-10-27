@@ -38,7 +38,15 @@ export interface EvaluationCapture {
   captured_at:string;notes:string;truth:CaptureTruth;record:InspectionRecord|null;image_width:number;image_height:number;
   attempts:{id:string;status:string;started_at:string;pipeline_ms?:number;error?:{status:number;message:string}|string|null}[];
 }
-export interface EvaluationTrial extends EvaluationSummary {template_snapshot:WorkspaceTemplate;captures:EvaluationCapture[]}
+export interface FirstInspectionSummary {
+  recorded_ai_provenance:'live'|'test'|'unknown';
+  phone_detected_automatically:boolean|null;correct_phone_discrepancy_identified_automatically:boolean|null;
+  manual_annotation_used:boolean;human_identity_review_used:boolean;
+  movement_instruction_correct_operator_report:boolean|null;verification_succeeded:boolean|null;
+  verification_evidence_mode:string|null;recorded_processing_ms:number|null;processing_scope:string;
+  failed_scan_attempts:number;complete_capture_sequence:boolean;
+}
+export interface EvaluationTrial extends EvaluationSummary {template_snapshot:WorkspaceTemplate;captures:EvaluationCapture[];first_inspection?:FirstInspectionSummary}
 export interface Metric {numerator:number;denominator:number;value:number|null}
 export interface EvaluationReport {
   measurement_status:string;trial_count:number;attempted_trials:number;trials_with_corrected_attempt:number;pending_scenarios:string[];

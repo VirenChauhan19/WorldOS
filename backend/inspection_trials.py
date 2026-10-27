@@ -7,6 +7,8 @@ from uuid import uuid4
 from pydantic import Field, StrictBool, model_validator
 
 from .inspect_alignment import align_scene
+from .first_inspection import first_inspection_summary
+from .imaging import same_photograph
 from .inspect_evaluation import score_inspection, summarize_inspections
 from .inspect_models import Alignment, StrictModel
 from .inspect_store import StoreConflict, now
@@ -55,6 +57,7 @@ class CaptureInput(StrictModel):
     notes: str = Field(min_length=1, max_length=2000)
     physical_photograph_confirmed: StrictBool
     truth: CaptureTruth
+    movement_instruction_correct: StrictBool | None = None
 
 
 def digest(value):
@@ -105,7 +108,8 @@ def get_trial(store, identity):
         if not row:
             raise KeyError("Evaluation trial not found.")
         captures = db.execute("SELECT data FROM evaluation_captures WHERE trial_id=? ORDER BY stage DESC", (identity,)).fetchall()
-    return {**json.loads(row[0]), "captures": [json.loads(c[0]) for c in captures]}
+    trial = {**json.loads(row[0]), "captures": [json.loads(c[0]) for c in captures]}
+    return {**trial, "first_inspection": first_inspection_summary(trial)}
 
 
 def list_trials(store, template_id=None):
@@ -140,8 +144,8 @@ def save_capture(store, trial_id, body):
     image = image_from_data_url(body.image_url)
     canonical = body.image_url
     image_hash = digest(canonical)
-    if (image_hash == digest(template["reference_image_url"]) or image["image_url"] == template["reference_image_url"]
-            or any(c["image_hash"] == image_hash for c in trial["captures"])):
+    if any(same_photograph(canonical, earlier) for earlier in
+           [template["reference_image_url"], *(c["image_url"] for c in trial["captures"])]):
         raise ValueError("Use a separately captured photograph for each stage; do not reuse the reference or inspection image.")
     aligned = align_scene(template, canonical, body.alignment)
     result = {**body.model_dump(), "image_url": canonical, "id": uuid4().hex, "trial_id": trial_id, "revision": 1,

@@ -149,6 +149,13 @@ def test_aspect_ratio_rejected_before_inference():
     assert not service.calls
 
 
+def test_studio_reused_before_photo_never_starts_inference():
+    service = FakeService()
+    with pytest.raises(ValueError, match="fresh photograph"):
+        visual(service, before_image_url=photo())
+    assert not service.calls
+
+
 def test_visual_color_mismatch_requires_review():
     # Pixel evidence is only a conservative corroborating heuristic.
     before = Image.new("RGB", (100, 60), "red")

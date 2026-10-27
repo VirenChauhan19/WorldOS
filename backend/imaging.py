@@ -8,6 +8,21 @@ import warnings
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 
+def same_photograph(first: str, second: str) -> bool:
+    """Reject exact reuse, including the JPEG normalization used when saving.
+
+    Different bytes do not prove a fresh physical capture. This is a negative
+    evidence gate, never a freshness or physical-correction certificate.
+    """
+    if first == second:
+        return True
+    first_normalized = image_from_data_url(first)["image_url"]
+    if first_normalized == second:
+        return True
+    second_normalized = image_from_data_url(second)["image_url"]
+    return first == second_normalized or first_normalized == second_normalized
+
+
 def prepare_image(data: bytes):
     max_pixels = int(os.getenv('WORLDOS_MAX_IMAGE_PIXELS', '24000000'))
     try:

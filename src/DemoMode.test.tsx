@@ -31,7 +31,8 @@ it('presents all six stages without claiming physical progress', () => {
 it('shows actual cached model outputs and explicitly marks historical evidence', () => {
   const value = props(); value.evidence = {imageUrl:'/before.jpg',historical:true,analysis:{provider:'meta',model:'sam-3.1',summary:'Observed a cup.',objects:[{id:'d',label:'Cup',locked:false,confidence:.812,box:{x:.1,y:.2,width:.1,height:.1}}],concepts:['cup'],message:'Review',warnings:[],inference_cache:{status:'hit',age_ms:100}}};
   render(<DemoMode {...value}/>); begin();
-  expect(screen.getByText(/Cached genuine inference/)).toBeTruthy();
+  expect(screen.getByText(/Cached.*live provenance unavailable/)).toBeTruthy();
+  expect(screen.queryByText(/genuine inference/)).toBeNull();
   expect(screen.getByText(/Cup: 81.2%/)).toBeTruthy();
   expect(screen.getByText(/Historical inference/)).toBeTruthy();
 });

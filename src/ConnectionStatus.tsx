@@ -70,6 +70,7 @@ export default function ConnectionStatus({ busy, onBusy }: Props) {
         <p>Real request successfully tested: <strong>{checked.ever_live_request_succeeded||latest?.live_request ? 'Yes' : 'No'}</strong></p>
         {checked.last_attempt_at && <p className="connection-time">Last attempt: {new Date(checked.last_attempt_at).toLocaleString()}</p>}
         {lastSuccess && <p className="connection-time">Last successful inference: {new Date(lastSuccess).toLocaleString()}{latest?.operation?` · ${latest.operation.replaceAll('_',' ')}`:''}</p>}
+        {entry.last_failure&&<p className="connection-error">Last failed request: {entry.last_failure.message} {new Date(entry.last_failure.failed_at).toLocaleString()} · {entry.last_failure.inference_latency_ms.toLocaleString()} ms{entry.last_failure.provider_http_status?` · provider HTTP ${entry.last_failure.provider_http_status}`:''}</p>}
         <p className="connection-time">Inference latency: {latency==null?'Not measured':`${latency.toLocaleString()} ms`}{usage?.total_tokens!=null?` · ${usage.total_tokens.toLocaleString()} tokens`:''}</p>
         {entry.fallback_available&&<p className="ai-help">Meta reasoning fallback is configured. Results identify the provider that actually answered.</p>}
         <p className="ai-help">{checked.status === 'not_tested' ? entry.configuration.message : checked.message}</p>

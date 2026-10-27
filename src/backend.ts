@@ -4,6 +4,7 @@ let token = '';
 let csrf = '';
 let selected: string|null = null;
 let generation = 0;
+let sessionExpired = false;
 const storageKey = 'worldos.backendUrl';
 
 export function validateBackendURL(value: string, allowLocal = import.meta.env.DEV): string {
@@ -30,17 +31,19 @@ export function configureBackend(value: string) {
   token = '';
   csrf = '';
   generation++;
+  sessionExpired = false;
   selected = clean;
   try { localStorage.setItem(storageKey, clean); } catch { /* Still works for this session. */ }
 }
 
-export function setAccessToken(value: string) { token = value; csrf = ''; generation++; }
-export function setCookieSession(value: string) { csrf = value; token = ''; generation++; }
+export function setAccessToken(value: string) { token = value; csrf = ''; sessionExpired = false; generation++; }
+export function setCookieSession(value: string) { csrf = value; token = ''; sessionExpired = false; generation++; }
 export function usesCookies() { return !Capacitor.isNativePlatform() && (!backendURL() || backendURL()===window.location.origin); }
 export function requestScope() { return `${backendURL()}:${generation}`; }
 export function nativeNeedsBackend() { return Capacitor.isNativePlatform() && !backendURL(); }
 
 export async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
+  if (sessionExpired && !path.startsWith('auth/')) throw new Error('Your session expired. Sign in to resume your draft, then retry the action.');
   if (navigator.onLine === false) throw new Error('You are offline. Photos, saved inspections, and AI requests need the backend. No action was queued.');
   if (nativeNeedsBackend()) throw new Error('Connect the app to your HTTPS WorldOS backend first.');
   const current=generation;
@@ -52,6 +55,7 @@ export async function apiFetch(path: string, options: RequestInit = {}): Promise
   if(current!==generation)throw new Error('The connection changed. The earlier response was discarded; retry on the selected backend.');
   if (response.status === 401 && !path.startsWith('auth/')) {
     token = '';csrf='';generation++;
+    sessionExpired = true;
     window.dispatchEvent(new Event('worldos:session-expired'));
   }
   return response;

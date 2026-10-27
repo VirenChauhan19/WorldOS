@@ -74,7 +74,7 @@ def test_role_isolation_full_inspection_and_persisted_judge_session(settings,tmp
     assert reviewed.status_code==200 and not reviewed.json()['reviewed_result']['passed']
     correction=client.post(f"/api/inspect/scans/{record['id']}/corrections",json={'revision':2})
     assert correction.status_code==200 and correction.json()['correction_plan']['status']=='ready'
-    verified=client.post('/api/inspect/scans',json={**scan,'previous_inspection_id':record['id']})
+    verified=client.post('/api/inspect/scans',json={**scan,'image_url':photo('#818181'),'previous_inspection_id':record['id']})
     assert verified.status_code==201 and verified.json()['automatic_result']['passed']
     auth.store.close()
     restarted,new_auth=make_app(settings,tmp_path/'auth.sqlite3')

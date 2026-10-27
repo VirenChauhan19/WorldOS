@@ -6,7 +6,7 @@ from time import perf_counter
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from .imaging import image_from_data_url
+from .imaging import image_from_data_url, same_photograph
 from .inspect_alignment import align_scene, suggest_alignment
 from .inspect_models import AlignmentRequest, InspectionInput, InspectionReview, RecordAction, TemplateInput
 from .inspect_store import StoreConflict, get_inspection_store
@@ -128,6 +128,9 @@ def build_inspect_router(get_ai_service, run_ai):
                 if previous["template_id"] != body.template_id:
                     raise ValueError("Verification must use the same workspace template as the preceding inspection.")
                 template = previous["template_snapshot"]
+                if any(same_photograph(body.image_url, earlier) for earlier in
+                       (previous["current_image_url"], template["reference_image_url"])):
+                    raise ValueError("Verification needs a fresh photograph after correction. The reference or previous inspection photo was reused; no inference was started.")
             if template["revision"] != body.template_revision:
                 raise StoreConflict("The template changed. Reload it, or verify against the previous inspection's pinned template revision.")
             result = await run_ai(scan_workspace(template, body, service))
@@ -174,7 +177,7 @@ def build_inspect_router(get_ai_service, run_ai):
             del record["template_snapshot"]["reference_image_url"]
             del record["current_image_url"]
             del record["aligned_image"]["image_url"]
-            return JSONResponse({"app": "WorldOS Inspect", "version": "0.8.0", "image_hashes_sha256_of_data_urls": image_hashes, **record},
+            return JSONResponse({"app": "WorldOS Inspect", "version": "1.1.0", "image_hashes_sha256_of_data_urls": image_hashes, **record},
                                 headers={"Content-Disposition": f'attachment; filename="worldos-inspect-{identity}.json"'})
 
     @router.get("/evaluation/trials")

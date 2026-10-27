@@ -16,6 +16,21 @@ def run(coro):
     return asyncio.run(coro)
 
 
+def test_failed_normal_inference_is_retained_redacted_and_later_success_recovers():
+    tester=make_tester(lambda _:httpx.Response(403,json={'error':{'message':'synthetic-secret'}}))
+    with pytest.raises(ProviderError):
+        run(tester.http.post(provider='meta',model='sam-3.1',operation='segment',url='https://example.test',key='synthetic-secret',payload={}))
+    failure=tester.http.failed_inferences[('meta','sam-3.1')]
+    assert failure['provider_http_status']==403 and failure['code']=='unsupported_model_access'
+    assert 'synthetic-secret' not in json.dumps(failure)
+    # Simulate a live outcome for readiness precedence; no real request occurs.
+    failure['live_request']=True
+    entry=diagnostics(tester.http.settings,tester.registry,tester.http)['integrations']['sam']
+    assert entry['readiness']['status']=='needs_retest' and entry['last_failure']==failure
+    tester.http.record_validated({'provider':'meta','model':'sam-3.1','live_request':True,'inferred_at':'2999-01-01T00:00:00+00:00'})
+    assert diagnostics(tester.http.settings,tester.registry,tester.http)['integrations']['sam']['readiness']['status']=='verified'
+
+
 def chat(**kwargs):
     return {"model": "muse-spark-1.3", "object": "chat.completion", "choices": [{"finish_reason": "stop", "message": {"role": "assistant", "content": "OK"}}], **kwargs}
 

@@ -27,6 +27,7 @@ export default function MobileShell({children}:{children:ReactNode}) {
   const [installHelp,setInstallHelp]=useState(false);
   const [generation,setGeneration]=useState(0);
   const [restored,setRestored]=useState(false);
+  const [retainedAccess,setRetainedAccess]=useState<WorkspaceAccess|null>(null);
   const connectionAttempt=useRef(0),submitLock=useRef(false);
   useEffect(()=>{
     const connection=()=>setSettings(true),installation=()=>setInstallHelp(true);
@@ -37,7 +38,7 @@ export default function MobileShell({children}:{children:ReactNode}) {
   async function connect() {
     const attempt=++connectionAttempt.current;
     setPending(true);setError('');
-    const controller=new AbortController();const timeout=window.setTimeout(()=>controller.abort(),10000);
+    const controller=new AbortController();const timeout=window.setTimeout(()=>controller.abort(),75000);
     try {
       if(nativeNeedsBackend()){setSettings(true);setState('unavailable');return;}
       const response=await apiFetch('auth/status',{signal:controller.signal});
@@ -53,13 +54,14 @@ export default function MobileShell({children}:{children:ReactNode}) {
       setEphemeralStorage(data.storage_mode==='ephemeral');
       setAccess(data.access==='judge'?'judge':'owner');setJudgeExpiry(data.judge_expires_at??null);
       setAuthRequired(data.required);setState(data.authenticated?'ready':'login');
-    }catch(e){if(attempt===connectionAttempt.current){setState('unavailable');setError(e instanceof Error?e.message:'Cannot reach the backend.');}}
+      if(data.authenticated)setRetainedAccess(data.access==='judge'?'judge':'owner');
+    }catch(e){if(attempt===connectionAttempt.current){setState('unavailable');setError(e instanceof DOMException&&e.name==='AbortError'?'The server did not wake in time. Retry connection; no upload or AI request was started.':e instanceof Error?e.message:'Cannot reach the backend.');}}
     finally{window.clearTimeout(timeout);if(attempt===connectionAttempt.current)setPending(false);}
   }
   useEffect(()=>{
     void connect();
     const offline=()=>setOnline(false),online=()=>setOnline(true);
-    const expired=()=>{setState('login');setAuthRequired(true);setError('Your session expired. Sign in again.');setGeneration(n=>n+1);};
+    const expired=()=>{setState('login');setAuthRequired(true);setError('Your session expired. Sign in again to resume your draft. No action will retry automatically.');};
     const prompt=(event:Event)=>{event.preventDefault();setInstall(event as InstallPrompt);};
     const installed=()=>{setInstall(null);setInstallHelp(false);};
     window.addEventListener('offline',offline);window.addEventListener('online',online);window.addEventListener('worldos:session-expired',expired);
@@ -80,7 +82,10 @@ export default function MobileShell({children}:{children:ReactNode}) {
       if(data.session_mode==='cookie'&&data.authenticated===true&&typeof data.csrf_token==='string')setCookieSession(data.csrf_token);
       else if(typeof data.access_token==='string')setAccessToken(data.access_token);
       else throw new Error('The backend returned an invalid session.');
-      setAccess(data.access==='judge'?'judge':'owner');setJudgeExpiry(data.judge_expires_at??null);
+      const nextAccess=data.access==='judge'?'judge':'owner';
+      if(retainedAccess!==null&&retainedAccess!==nextAccess)setGeneration(n=>n+1);
+      setAccess(nextAccess);setJudgeExpiry(data.judge_expires_at??null);
+      setRetainedAccess(nextAccess);
       setPassword('');setState('ready');
     }catch(e){setPassword('');setError(e instanceof Error?e.message:'Sign-in failed.');}finally{submitLock.current=false;setPending(false);}
   }
@@ -90,7 +95,7 @@ export default function MobileShell({children}:{children:ReactNode}) {
     try{const response=await apiFetch('auth/logout',{method:'POST',signal:AbortSignal.timeout(5000)});if(!response.ok&&response.status!==401)throw new Error('Sign-out failed.');}
     catch{if(usesCookies()){setError('Could not sign out of the backend. Reconnect and retry; this browser session is still active.');return;}}
     finally{submitLock.current=false;setPending(false);}
-    setAccessToken('');setState('login');setGeneration(n=>n+1);
+    setAccessToken('');setState('login');setRetainedAccess(null);setGeneration(n=>n+1);
   }
   async function changeBackend(event:React.FormEvent){
     event.preventDefault();if(submitLock.current)return;submitLock.current=true;setError('');setPending(true);
@@ -100,7 +105,7 @@ export default function MobileShell({children}:{children:ReactNode}) {
         const response=await apiFetch('auth/logout',{method:'POST',signal:AbortSignal.timeout(5000)});
         if(!response.ok&&response.status!==401)throw new Error('Sign out before changing servers.');
       }
-      configureBackend(url);setSettings(false);setState('loading');setGeneration(n=>n+1);await connect();
+      configureBackend(url);setSettings(false);setState('loading');setRetainedAccess(null);setGeneration(n=>n+1);await connect();
     }catch(e){setError(e instanceof Error?e.message:'Cannot change the backend.');}finally{submitLock.current=false;setPending(false);}
   }
   return <>
@@ -119,10 +124,13 @@ export default function MobileShell({children}:{children:ReactNode}) {
     </form>{error&&<p role="alert">{error}</p>}</Dialog>
     {error&&<div className="mobile-banner" role="alert">{error}</div>}
     {state==='ready'&&access==='judge'&&<div className="mobile-banner" role="status">Judge demo workspace. Other judges share these demo photos and inspections; owner data and backups are private. Sessions last up to two hours.{judgeExpiry&&` Access ends ${new Date(judgeExpiry).toLocaleString()}.`}</div>}
-    {state==='ready'?<AccessContext.Provider value={access}><div key={generation}>{children}</div></AccessContext.Provider>:<main className="access-screen">
+    {retainedAccess!==null&&<AccessContext.Provider value={retainedAccess}><div key={generation} hidden={state!=='ready'} inert={state!=='ready'} aria-hidden={state!=='ready'}>{children}</div></AccessContext.Provider>}
+    {state!=='ready'&&<main className="access-screen">
       <div className="access-card"><span className="section-kicker">WORLDOS</span><h1>{state==='login'?'Your workspace. Securely.':state==='loading'?'Connecting to WorldOS':'Connect your workspace'}</h1>
       <p>Inspect physical spaces, review what changed, and follow validated corrections. Your backend stores photos and sends them to configured AI providers only when you request inference. API keys never enter this app.</p>
-      {state==='login'&&judgeEnabled&&<label>Access<select aria-label="Workspace access" value={access} disabled={pending} onChange={e=>{setAccess(e.target.value as WorkspaceAccess);setPassword('');setError('');}}><option value="owner">Owner workspace</option><option value="judge">Judge demo workspace</option></select></label>}
+      {state==='login'&&judgeEnabled&&retainedAccess===null&&<label>Access<select aria-label="Workspace access" value={access} disabled={pending} onChange={e=>{setAccess(e.target.value as WorkspaceAccess);setPassword('');setError('');}}><option value="owner">Owner workspace</option><option value="judge">Judge demo workspace</option></select></label>}
+      {state==='login'&&retainedAccess!==null&&<p>Your {retainedAccess} draft is kept only in this tab while locked. Reloading discards unsaved work. <button className="secondary" disabled={pending} onClick={()=>{setRetainedAccess(null);setGeneration(n=>n+1);setPassword('');}}>Discard draft and switch access</button></p>}
+      {state==='loading'&&<p role="status">Waiting for the server. Free hosting can take about a minute to wake up. No AI request has started.</p>}
       {state==='login'&&access==='judge'&&<p>Use the separate demo passphrase from the owner. Demo sessions last up to two hours and end when the access window closes.</p>}
       {state==='login'?<form onSubmit={event=>void login(event)}><label>Workspace passphrase<input aria-label="Workspace passphrase" type="password" autoComplete="current-password" value={password} maxLength={1024} onChange={e=>setPassword(e.target.value)}/></label><button className="primary" disabled={pending||!online||!password}>{pending?'Signing in…':'Sign in'}</button><p>{usesCookies()?'This browser stays signed in for up to eight hours, including reloads. Sign out when finished on a shared device.':'Sessions last up to eight hours. Native and separate-backend sessions require sign-in again after reloading.'}</p></form>:<button className="primary" disabled={pending||!online} onClick={()=>void connect()}>{pending?'Connecting…':'Retry connection'}</button>}
       </div></main>}

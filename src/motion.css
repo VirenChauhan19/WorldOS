@@ -23,6 +23,15 @@ button:disabled { cursor:not-allowed; }
 .app-navigation button[aria-current=page] { background:#2c3b24;color:#e1f2c5; }
 .route-screen[data-active=true] { animation:screen-enter var(--motion-enter) var(--motion-ease) both; }
 .route-screen { min-width:0; }
+.first-inspection-guide { margin-block:16px; }
+.first-inspection-guide h2 { font-size:clamp(22px,2.5vw,32px);line-height:1.25;margin:12px 0;max-width:28ch; }
+.first-inspection-guide p,.first-inspection-guide li { max-width:85ch;line-height:1.8;color:#becbb2;font-size:14px; }
+.first-inspection-guide ol { padding-left:24px; }
+.first-inspection-guide li { margin-block:12px; }
+.first-inspection-results { display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:10px 20px;font-size:14px; }
+.first-inspection-results dd { margin:0;overflow-wrap:anywhere; }
+.instruction-review { display:grid;gap:10px;margin-block:20px;line-height:1.6; }
+.instruction-review select { max-width:100%;min-width:0; }
 .desk-view .rail { display:none; }
 .desk-view .main-shell { margin-left:0; }
 .screen-placeholder { padding:48px 32px;color:#acbba2;min-height:320px; }

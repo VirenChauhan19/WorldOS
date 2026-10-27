@@ -1,10 +1,12 @@
-# WorldOS V0.8
+# WorldOS V1.1
+
+**V1.1 reliability work is ready for deployment review; production was not redeployed.** See [real-world readiness, fixes, live AI evidence, and the guided phone test](docs/V11_REAL_WORLD_READINESS.md). Current live verification: Baseten Muse goal interpretation passed; Meta SAM 3.1 returned a model-access error. The complete physical workflow and real iPhone experience remain unverified. Historical results below do not supersede that current limitation.
 
 **V0.8 defaults to Render Free: one $0-compute web service, no disk or paid database.** Follow the [Free Blueprint retry and iPhone installation guide](docs/V08_DEPLOYMENT.md). **SQLite data, uploaded photos, inspections, backups, and login/session state may be lost on restarts, redeployments, or idle spin-down.** Export important work to your device. Authentication, CSRF, Meta SAM 3.1, Baseten Muse Spark, Inspect, and Spatial Studio remain available. External AI calls retain their provider costs. The original Standard + disk option is separate in [deploy/render.paid.yaml](deploy/render.paid.yaml) for future paid use. No paid service was authorized by this change.
 
 V0.8 validation: **310 backend tests passed (2 optional live tests skipped), 124 frontend tests passed, production build and four HTTP smoke scripts passed.** Separate real provider connectivity checks passed for Meta SAM 3.1 and Baseten Muse Spark through local production-mode authentication; this does not verify a hosted URL or physical accuracy. See [the sanitized live connectivity record](docs/v08-provider-connectivity.json).
 
-**Owner and judge access:** optional, expiring judge logins use a separate persistent demo workspace, with no access to owner data, backups, or connection probes. Judges can complete the existing scan, review, correction, and verification workflow. See the [judge setup and revocation instructions](docs/V08_DEPLOYMENT.md#optional-controlled-judgedemo-access). Judge access is disabled by default.
+**Owner and judge access:** optional, expiring judge logins use a separate demo workspace (ephemeral on Free), with no access to owner data, backups, or connection probes. Judges can complete the existing scan, review, correction, and verification workflow. See the [judge setup and revocation instructions](docs/V08_DEPLOYMENT.md#optional-controlled-judgedemo-access). Judge access is disabled by default.
 
 **Mobile app infrastructure is implemented:** responsive Inspect and Spatial Studio, camera/library controls, touch selection and zoom, an installable PWA with an honest offline screen, generated Capacitor Android/iOS projects, and authenticated HTTPS backend deployment configuration. API credentials remain backend-only. Start with the [V0.7 installation, deployment, native builds, test results, and device checklist](docs/V07_MOBILE.md).
 

@@ -1,3 +1,5 @@
+> Current release: use [V1.1 readiness and actual live results](V11_REAL_WORLD_READINESS.md). The older checklist below is historical; authentication and owner/judge isolation are now implemented. Production SAM access and physical iPhone/inspection testing are still pending.
+
 # WorldOS Inspect V0.5 — demonstration and submission readiness
 
 This is the operational checklist for the existing product, not a claim that the real-world benchmark has passed. **0 genuine physical Inspect trials have been captured here**. Earlier V0.3 records describe successful SAM calls on public desk photos and an unchanged-photo negative control, not a physically corrected workspace. V0.6 Meta SAM connectivity is now restored: real public-photo detection, Baseten multimodal goal interpretation, deterministic planning, live Inspect scanning, and explanations passed. See [actual restoration results and failure recovery](SAM_RESTORATION_RESULTS.md). These public-photo integration checks are separate from the user-operated physical evaluation below. Test photos and mocked responses used by automated tests and isolated browser QA remain software fixtures only.

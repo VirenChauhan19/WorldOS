@@ -63,6 +63,7 @@ class AIService:
         if duplicates:
             warnings.append(f"Removed {duplicates} near-identical detections across concepts; review the retained labels.")
         return {"objects": detections, "concepts": concepts, "summary": summary, "annotation_source": "sam_3_1", "provider": "meta", "model": "sam-3.1", "warnings": warnings,
+                "live_request": self.http.transport is None,
                 "message": f"SAM returned {len(detections)} object(s). Review annotations before planning." if detections else "No matches returned. Try different noun phrases or annotate manually.",
                 "image_width": image["width"], "image_height": image["height"], "concept_latency_ms": timings}
 

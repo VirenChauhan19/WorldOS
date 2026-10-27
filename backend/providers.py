@@ -77,6 +77,17 @@ class ProviderHTTP:
         self.settings = settings
         self.transport = transport
         self.validated_inferences = {}
+        self.failed_inferences = {}
+
+    def record_failure(self, provider, model, operation, error, started):
+        # Only bounded, app-authored error messages are retained; never upstream
+        # response bodies, request payloads, headers, or credentials.
+        self.failed_inferences[(provider, model)] = {
+            "provider": provider, "model": model, "operation": operation,
+            "code": error.code, "message": str(error), "provider_http_status": error.http_status,
+            "failed_at": datetime.now(timezone.utc).isoformat(),
+            "inference_latency_ms": round((time.monotonic()-started)*1000),
+            "live_request": self.transport is None}
 
     def record_validated(self, metadata):
         if metadata:
@@ -122,11 +133,20 @@ class ProviderHTTP:
                         return {**data, "_worldos_metadata": metadata} if include_metadata else data
         except (TimeoutError, httpx.TimeoutException):
             event["outcome"] = "timeout"
-            raise ProviderError("AI request timed out. Manual mode remains available.", 504, "timeout") from None
+            error = ProviderError("AI request timed out. Manual mode remains available.", 504, "timeout")
+            self.record_failure(provider, model, operation, error, start)
+            raise error from None
         except httpx.RequestError:
-            raise ProviderError("Cannot reach the AI provider. Check server network access.", code="network_error") from None
+            error = ProviderError("Cannot reach the AI provider. Check server network access.", code="network_error")
+            self.record_failure(provider, model, operation, error, start)
+            raise error from None
         except (ValueError, UnicodeDecodeError):
-            raise ProviderError("Provider returned invalid JSON.", code="malformed_response") from None
+            error = ProviderError("Provider returned invalid JSON.", code="malformed_response")
+            self.record_failure(provider, model, operation, error, start)
+            raise error from None
+        except ProviderError as error:
+            self.record_failure(provider, model, operation, error, start)
+            raise
         finally:
             event["duration_ms"] = round((time.monotonic() - start) * 1000)
             logger.info(json.dumps(event))

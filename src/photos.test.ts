@@ -17,7 +17,22 @@ it('treats cancellation as no photo and permission denial as recoverable',async(
   vi.mocked(Camera.getPhoto).mockRejectedValueOnce(new Error('User cancelled photos'));expect(await nativePhoto('library')).toBeNull();
   vi.mocked(Camera.getPhoto).mockRejectedValueOnce(new Error('permission denied'));await expect(nativePhoto('camera')).rejects.toThrow('device settings');
 });
-it('rejects unsupported formats before decoding',async()=>{await expect(normalizePhoto(new File(['heic'],'photo.heic',{type:'image/heic'}))).rejects.toThrow('export as JPEG');});
+it('rejects RAW before decoding',async()=>{await expect(normalizePhoto(new File(['raw'],'photo.dng',{type:'image/dng'}))).rejects.toThrow('Export RAW');});
+it('gives an actionable fallback when HEIC decoding is unavailable',async()=>{
+  vi.stubGlobal('Image',class{onerror=()=>{};set src(_value:string){queueMicrotask(()=>this.onerror());}});
+  await expect(normalizePhoto(new File(['heic'],'photo.heic',{type:'image/heic'}))).rejects.toThrow('export as JPEG');
+  expect(URL.revokeObjectURL).toHaveBeenCalled();
+});
+it('converts browser-decodable HEIC to a bounded JPEG and releases canvas memory',async()=>{
+  vi.stubGlobal('Image',class{naturalWidth=3024;naturalHeight=4032;onload=()=>{};set src(_value:string){queueMicrotask(()=>this.onload());}});
+  const draw=vi.fn();let canvas:HTMLCanvasElement|undefined;
+  vi.spyOn(HTMLCanvasElement.prototype,'getContext').mockImplementation(function(this:HTMLCanvasElement){canvas=this;return {drawImage:draw} as unknown as CanvasRenderingContext2D;});
+  vi.spyOn(HTMLCanvasElement.prototype,'toBlob').mockImplementation(function(callback){callback(new Blob(['jpeg'],{type:'image/jpeg'}));});
+  const result=await normalizePhoto(new File(['heic'],'phone.HEIC',{type:'image/heic'}));
+  expect(result.type).toBe('image/jpeg');expect(result.name).toBe('phone.jpg');
+  expect(draw).toHaveBeenCalledWith(expect.anything(),0,0,1350,1800);
+  expect(canvas?.width).toBe(1);expect(canvas?.height).toBe(1);
+});
 it('keeps a small supported image and releases its local preview URL',async()=>{
   vi.stubGlobal('Image',class{naturalWidth=640;naturalHeight=480;onload=()=>{};set src(_value:string){queueMicrotask(()=>this.onload());}});
   const file=new File(['png'],'photo.png',{type:'image/png'});expect(await normalizePhoto(file)).toBe(file);expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:photo');

@@ -38,7 +38,7 @@ export default function AIPanel({ image, isSample, objects, target, goal, busy, 
     finally { onBusy(null); }
   }
   return <section className="panel ai-panel" aria-label="AI assistance">
-    <div className="panel-title"><h2><Sparkles size={15}/> AI assistance</h2><span className="subtle-badge">V0.6 · REVIEW REQUIRED</span></div>
+    <div className="panel-title"><h2><Sparkles size={15}/> AI assistance</h2><span className="subtle-badge">V1.1 · REVIEW REQUIRED</span></div>
     <div className="ai-body"><ConnectionStatus busy={busy} onBusy={onBusy}/>
       <label htmlFor="sam-concepts">Object concepts <span>optional</span></label><input id="sam-concepts" aria-label="SAM object concepts" placeholder="coffee cup, notebook, headphones" value={concepts} maxLength={900} disabled={!!busy} onChange={e => setConcepts(e.target.value)}/>
       <p className="ai-help">One short noun phrase per comma-separated entry. Leave blank for Muse Spark to discover concepts. SAM sends one request per concept.</p>
@@ -51,7 +51,7 @@ export default function AIPanel({ image, isSample, objects, target, goal, busy, 
       {constraints && <div className="ai-applied"><Check size={14}/><span>Reviewed constraints applied</span><button disabled={!!busy} onClick={() => onConstraints(null)}>Use manual rules</button></div>}
       {busy?.includes('Muse') || busy?.includes('SAM') ? <p className="ai-help" role="status"><LoaderCircle className="spin" size={12}/> {busy}</p> : null}
       {notice && <p className="ai-notice" role="status">{notice}</p>}
-      <p className="ai-disclosure">AI actions send the scene/goal to the configured provider and may use credits. Upload alone stays local. Manual annotation is always available.</p>
+      <p className="ai-disclosure">AI actions send the scene/goal to the configured provider and may use credits. Uploads are prepared by your WorldOS backend; only explicit AI actions contact a model provider. Manual annotation is always available.</p>
     </div>
   </section>;
 }

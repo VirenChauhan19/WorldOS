@@ -26,6 +26,13 @@ it('requires physical reference declaration before starting a trial',async()=>{
   expect(api.createEvaluationTrial).toHaveBeenCalledWith(expect.objectContaining({physical_reference_confirmed:true,operator:'Operator'}));
 });
 
+it('presets the phone-moved scenario without declaring a physical test completed',async()=>{
+  const p=props();render(<EvaluationPanel {...p} firstInspection/>);
+  expect((screen.getByLabelText('Evaluation trial name') as HTMLInputElement).value).toBe('First inspection: only the phone moved');
+  expect((screen.getByRole('button',{name:'Start physical trial'}) as HTMLButtonElement).disabled).toBe(true);
+  expect(api.createEvaluationTrial).not.toHaveBeenCalled();
+});
+
 it('never seeds independent truth from reference positions or model detections',async()=>{
   const changed=vi.fn();render(<TruthEditor template={template} image={image} onChange={changed} disabled={false}/>);
   expect(changed).toHaveBeenLastCalledWith(null);

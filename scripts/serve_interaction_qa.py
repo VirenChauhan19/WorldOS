@@ -49,6 +49,10 @@ requestAnimationFrame(sample);};})();</script>'''
 
 @app.middleware('http')
 async def qa(request,call_next):
+    if request.url.path=='/qa/phone':
+        # A real nested layout viewport, useful when extension viewport overrides
+        # are unavailable. This is Chrome responsive QA, never iPhone/Safari proof.
+        return HTMLResponse('''<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>WorldOS responsive QA</title></head><body style="margin:0;background:#10160d;color:#dce9cf;font:14px system-ui"><p style="margin:12px">Local responsive QA · 390 × 844 CSS pixels · synthetic fixtures · not an iPhone</p><iframe title="WorldOS phone viewport" src="/" style="display:block;width:390px;height:844px;max-width:100%;border:0;margin:0 auto"></iframe></body></html>''')
     if request.url.path=='/':
         html=(ROOT/'dist/index.html').read_text(encoding='utf-8')
         return HTMLResponse(html.replace('</body>',PROFILER+'</body>'))

@@ -85,7 +85,7 @@ def configuration(settings: AISettings, integration: Integration):
     return {"status": "configured_not_verified", "credentials_configured": True, "message": "A credential is configured. This does not establish validity, credits, model access, or a working connection."}
 
 
-def readiness(config, state, latest, provider):
+def readiness(config, state, latest, provider, last_failure=None):
     """Current-process evidence, never an uptime or physical-accuracy guarantee."""
     required = "MODEL_API_KEY" if provider == "meta" else "BASETEN_API_KEY"
     if config["status"] != "configured_not_verified":
@@ -104,6 +104,11 @@ def readiness(config, state, latest, provider):
             status, message = "verified", "A validated live inference succeeded in this process. This verifies connectivity, not photograph accuracy or physical task completion."
         else:
             status, message = "unverified", "Credentials are configured; run an explicit connection check to verify access. No live success is assumed."
+    successes = [value for value in (state.get("last_success_at"), (latest or {}).get("inferred_at") if (latest or {}).get("live_request") else None) if value]
+    if (last_failure and last_failure.get("live_request") and not state["test_in_progress"]
+            and config["status"] == "configured_not_verified"
+            and (not successes or last_failure["failed_at"] >= max(successes))):
+        status, message = "needs_retest", "The latest provider request failed. " + last_failure["message"] + " No success is assumed; retry explicitly after resolving the problem."
     return {"status": status, "message": message, "required_variable": required}
 
 
@@ -116,11 +121,13 @@ def diagnostics(settings: AISettings, registry: ConnectionRegistry, http=None):
         provider = settings.reasoning_provider if integration == "muse" else settings.sam_provider
         model = settings.reasoning_config()[1] if integration == "muse" else "sam-3.1" if settings.sam_provider == "meta" else None
         latest = http.validated_inferences.get((provider, model)) if http else None
+        failure = http.failed_inferences.get((provider, model)) if http else None
         config = configuration(settings, integration)
         result["integrations"][integration] = {"provider": provider,
             "model": model,
             "last_inference": latest,
-            "readiness": readiness(config, state, latest, provider),
+            "last_failure": failure,
+            "readiness": readiness(config, state, latest, provider, failure),
             "fallback_available": bool(integration == "muse" and provider == "baseten" and settings.meta_key),
             "configuration": config, "last_test": state,
             "test_scope": "text_inference" if integration == "muse" else "synthetic_image_segmentation" if settings.sam_provider == "meta" else "blocked_deployment_contract"}

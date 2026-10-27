@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .models import AIAnalysisRequest, PlanRequest, SceneObject
 from .planner import contains, overlaps
-from .imaging import image_from_data_url
+from .imaging import image_from_data_url, same_photograph
 
 
 class VisualVerifyRequest(BaseModel):
@@ -248,6 +248,8 @@ async def automatic_verify(request, service, planner):
     plan, baseline = planner(request.plan_request), planner(original)
     if plan.status not in {"ready", "already_clear"} or baseline.status not in {"ready", "already_clear"}:
         raise ValueError("Generate a feasible plan before automatic verification.")
+    if request.before_image_url and same_photograph(request.image_url, request.before_image_url):
+        raise ValueError("Capture a fresh photograph after moving the objects. Reusing the before photo cannot verify a correction; no inference was started.")
     # Decode and validate both images before billable inference.
     before, after = appearance_image(request.before_image_url), appearance_image(request.image_url)
     if before is not None and abs((before.width/before.height)/(after.width/after.height)-1) > .02:
@@ -279,6 +281,7 @@ async def automatic_verify(request, service, planner):
                   excluded_outside_workspace_ids=[d.id for d in all_detections if d not in detections],
                   latency_ms=round((perf_counter()-started)*1000), warnings=analysis["warnings"],
                   provider=analysis.get("provider"), model=analysis.get("model"),
+                  live_request=analysis.get("live_request"),
                   inferred_at=analysis.get("inferred_at"), inference_cache=analysis.get("inference_cache"))
     return result
 

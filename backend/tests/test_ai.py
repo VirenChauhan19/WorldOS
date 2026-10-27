@@ -68,6 +68,7 @@ def test_meta_sam_request_format_confidence_and_normalization():
         return httpx.Response(200, json=sam_response())
     ai = service(handler)
     result = run(ai.analyze(AIAnalysisRequest(image_url=photo(), concepts=["book"])))
+    assert result["live_request"] is False  # Mock transport must never claim live AI.
     obj = result["objects"][0]
     assert obj.box.model_dump() == {"x": .4, "y": .4, "width": .15, "height": .2}
     assert obj.confidence == .9609375

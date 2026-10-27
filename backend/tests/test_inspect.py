@@ -204,6 +204,7 @@ def test_restoration_moves_to_reference_and_preserves_protection():
     assert plan["status"] == "ready" and len(plan["movements"]) == 1
     assert plan["movements"][0]["object_id"] == "book"
     assert plan["movements"][0]["destination"] == template()["objects"][0]["box"]
+    assert "left and up" in plan["movements"][0]["instruction"] and "outlined reference position" in plan["movements"][0]["instruction"]
     assert plan["final_objects"][1]["box"] == template()["objects"][1]["box"]
 
 
@@ -306,7 +307,7 @@ def test_full_scan_review_plan_explain_verify_and_report_pipeline(client):
     exported=client.get(f'/api/inspect/scans/{identity}/report')
     assert exported.status_code == 200 and 'data:image' not in exported.text and 'synthetic-key' not in exported.text
     app.dependency_overrides[get_ai_service]=lambda:documented_service(saved,calls)
-    verified=client.post('/api/inspect/scans',json=scan_payload(saved,previous_inspection_id=identity)).json()
+    verified=client.post('/api/inspect/scans',json=scan_payload(saved,previous_inspection_id=identity,image_url=photo("#818181"))).json()
     assert verified["automatic_result"]["passed"] and verified["previous_inspection_id"] == identity
     assert InspectionStore(store.path).inspection(verified["id"])["automatic_result"]["passed"]
     assert len(client.get(f"/api/inspect/templates/{saved['id']}/history").json()["inspections"]) == 2
@@ -317,6 +318,25 @@ def test_unaligned_scan_blocks_before_any_provider_call(client):
     calls=[];app.dependency_overrides[get_ai_service]=lambda:documented_service(saved,calls)
     response=client.post('/api/inspect/scans',json=scan_payload(saved,alignment={"confirmed":False}))
     assert response.status_code == 422 and calls == []
+
+
+def test_reused_verification_photo_is_blocked_before_billed_requests(client):
+    client,store=client;saved=client.post('/api/inspect/templates',json=template_input().model_dump()).json()
+    calls=[];app.dependency_overrides[get_ai_service]=lambda:documented_service(saved,calls)
+    initial=client.post('/api/inspect/scans',json=scan_payload(saved,image_url=photo('#818181'))).json()
+    calls.clear()
+    for image in (initial['current_image_url'],saved['reference_image_url']):
+        response=client.post('/api/inspect/scans',json=scan_payload(saved,image_url=image,previous_inspection_id=initial['id']))
+        assert response.status_code==422 and 'fresh photograph' in response.json()['detail']
+    assert calls==[] and len(store.history(saved['id']))==1
+
+
+def test_reuse_detection_covers_normalization_without_claiming_freshness():
+    from backend.imaging import same_photograph, image_from_data_url
+    textured=encode(Image.fromarray(np.random.default_rng(19).integers(0,255,(200,300,3),dtype=np.uint8)))['image_url']
+    normalized=image_from_data_url(textured)['image_url']
+    assert textured!=normalized and same_photograph(textured,normalized)
+    assert not same_photograph(photo(),photo('#818181'))
 
 
 def test_explanation_cannot_invent_identity_or_change_inspection_result(client):
@@ -336,5 +356,5 @@ def test_verification_pins_old_template_after_edit(client):
     payload={**template_input().model_dump(),"revision":1,"name":"Changed"}
     assert client.put(f"/api/inspect/templates/{saved['id']}",json=payload).status_code == 200
     assert client.post('/api/inspect/scans',json=scan_payload(saved)).status_code == 409
-    verified=client.post('/api/inspect/scans',json=scan_payload(saved,previous_inspection_id=trial["id"])).json()
+    verified=client.post('/api/inspect/scans',json=scan_payload(saved,previous_inspection_id=trial["id"],image_url=photo("#818181"))).json()
     assert verified["template_snapshot"]["name"] == "Workshop" and verified["template_revision"] == 1
