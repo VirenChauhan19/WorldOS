@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-export const PAGES = ['home','inspect','history','studio','settings'] as const;
+export const PAGES = ['home','inspect','history','studio','settings','advanced','advanced-inspect','history-detail'] as const;
 export type Page = typeof PAGES[number];
 const event = 'worldos:navigation';
 function subscribe(listener:()=>void) {
@@ -21,4 +21,7 @@ export function navigate(page:Page,params:Record<string,string>={}) {
   const url=routeURL(page,params);
   if(window.location.hash===url)return;
   window.history.pushState(null,'',url);window.dispatchEvent(new Event(event));
+}
+export function replaceRoute(page:Page,params:Record<string,string>={}) {
+  window.history.replaceState(null,'',routeURL(page,params));window.dispatchEvent(new Event(event));
 }

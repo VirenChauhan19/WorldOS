@@ -1,17 +1,24 @@
-import { ArrowRight, ScanLine, History, MoveUpRight, ShieldCheck } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ArrowRight, Camera, Check, MoveUpRight } from 'lucide-react';
 import { navigate } from '../navigation';
+import { listTemplates } from '../inspect/api';
+import type { TemplateSummary } from '../inspect/types';
+import Dialog from '../ui/Dialog';
 
-export default function Home() {
-  return <div className="overview-page">
-    <div className="home-hero"><div><span className="section-kicker">YOUR WORKSPACE, IN FOCUS</span>
-      <h1 id="page-title-home" tabIndex={-1}>A place for everything.<br/><em>A clearer way forward.</em></h1>
-      <p>Capture how your space should look. Understand what changed. Restore it, one considered move at a time.</p>
-      <div className="hero-actions"><button className="primary" onClick={()=>navigate('inspect',{template:'new'})}>Create a reference <ArrowRight size={18}/></button><button className="secondary" onClick={()=>navigate('inspect')}>Open Inspect</button></div>
-    </div><div className="home-process" aria-label="Inspection workflow"><span className="process-label">A SIMPLE RHYTHM</span>{[['01','Capture','A reference you have reviewed.'],['02','Understand','Inspect a new photo and review the evidence.'],['03','Restore','Follow validated corrections, then verify.']].map(([number,title,text])=><div key={number}><span>{number}</span><section><h2>{title}</h2><p>{text}</p></section></div>)}</div></div>
-    <div className="home-cards">
-      <button className="destination-card" onClick={()=>navigate('inspect')}><ScanLine size={23}/><span><strong>Inspect your workspace</strong><small>References, inspections, and corrections.</small></span><ArrowRight size={18}/></button>
-      <button className="destination-card" onClick={()=>navigate('history')}><History size={23}/><span><strong>Pick up where you left off</strong><small>Revisit saved inspections and their evidence.</small></span><ArrowRight size={18}/></button>
-      <button className="destination-card" onClick={()=>navigate('studio')}><MoveUpRight size={23}/><span><strong>Explore Spatial Studio</strong><small>Plan a new arrangement from a photograph.</small></span><ArrowRight size={18}/></button>
-    </div><p className="home-footnote"><ShieldCheck size={16}/> You stay in control. Uploading a photo never starts AI inference. Review results before acting.</p>
+export default function Home({active=true}:{active?:boolean}){
+  const [help,setHelp]=useState(false),[spaces,setSpaces]=useState<TemplateSummary[]>([]);
+  useEffect(()=>{if(!active)return;let live=true;void listTemplates().then(v=>{if(live)setSpaces(v.templates.slice(0,3));}).catch(()=>{});return()=>{live=false;};},[active]);
+  return <div className="consumer home-simple"><section className="simple-hero"><div>
+    <span className="eyebrow">YOUR SPACE. JUST RIGHT.</span>
+    <h1>Is everything in the right place?</h1>
+    <p>Take a photo of your setup. WorldOS helps you spot anything that’s moved or missing.</p>
+    <button className="primary" onClick={()=>navigate('inspect')}><Camera size={21}/>Check my space <ArrowRight size={19}/></button>
+    <button className="text-button" onClick={()=>setHelp(true)}>See how it works</button>
+    <p className="quiet">One saved setup. A fresh photo when things change.</p>
+  </div><div className="home-illustration" role="img" aria-label="Illustration of an organized desk, not an inspection result">
+    <div className="illustration-top"><span/><span/><span/></div><div className="illustrated-desk"><div className="illustrated-notebook"><i/><i/><i/></div><div className="illustrated-phone"><span/></div><div className="illustrated-mug"/><div className="illustrated-pen"/></div><span className="illustration-caption">Make room for a little order.</span>
+  </div></section>
+    {!!spaces.length&&<section className="recent-spaces"><h2>Your recent spaces</h2>{spaces.map(space=><button className="space-row" key={space.id} onClick={()=>navigate('inspect',{template:space.id,open:crypto.randomUUID()})}><span>{space.name}</span><ArrowRight size={20}/></button>)}</section>}
+    <Dialog open={help} onClose={()=>setHelp(false)} title="A photo, a check, a little help"><div className="consumer how-it-works"><ol><li><Camera/><div><strong>Save the correct setup</strong><p>Arrange your things and take a photo. Check the items WorldOS should remember.</p></div></li><li><MoveUpRight/><div><strong>See what changed</strong><p>Take another photo from the same spot. We’ll help you find moved or missing things.</p></div></li><li><Check/><div><strong>Put things back, then check again</strong><p>Follow the suggested move when it’s safe. A fresh photo checks the result. Uncertain items always need your review.</p></div></li></ol><button className="primary" onClick={()=>{setHelp(false);navigate('inspect');}}>Check my space <ArrowRight size={18}/></button></div></Dialog>
   </div>;
 }

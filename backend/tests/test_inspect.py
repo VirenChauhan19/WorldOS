@@ -75,7 +75,7 @@ def test_template_and_photo_survive_reopening_database(tmp_path):
     assert decode(second.template(saved["id"])["reference_image_url"]).size == (300,200)
     assert second.templates()[0]["name"] == "Workshop"
     with sqlite3.connect(path) as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 4
 
 
 def test_migrates_v1_database_without_losing_reference(tmp_path):

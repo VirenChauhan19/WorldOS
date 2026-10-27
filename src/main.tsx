@@ -7,6 +7,7 @@ import './styles.css';
 import './inspect/styles.css';
 import './mobile.css';
 import './motion.css';
+import './consumer.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><MobileShell><WorldOS/></MobileShell></React.StrictMode>);
 registerServiceWorker();

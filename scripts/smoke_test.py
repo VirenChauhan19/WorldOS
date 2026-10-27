@@ -40,7 +40,7 @@ try:
         assert page.status_code == 200 and "WorldOS" in page.text
         assert client.get("/sample-desk.svg").status_code == 200
         schema = client.get("/openapi.json")
-        assert schema.status_code == 200 and schema.json()["info"]["version"] == "1.1.0"
+        assert schema.status_code == 200 and schema.json()["info"]["version"] == "1.2.0"
         status = client.get("/api/health").json()
         assert status["ai"]["sam"]["status"] == "blocked_deployment_contract"
         diagnostics = client.get("/api/ai/diagnostics")
@@ -92,6 +92,6 @@ try:
         assert impossible.json()["status"] == "impossible"
         invalid = client.post("/api/analyze", files={"image": ("bad.png", b"not image bytes", "image/png")})
         assert invalid.status_code == 415
-        print("PASS: V1.1 production frontend/assets, OpenAPI version, real PNG upload, manual and reviewed verification, adaptive replanning, protected-anchor blocking, locked conflict, invalid image, honest AI configuration, connection diagnostics, missing-key test, and Baseten blocker. No external model calls.")
+        print("PASS: V1.2 production frontend/assets, OpenAPI version, real PNG upload, manual and reviewed verification, adaptive replanning, protected-anchor blocking, locked conflict, invalid image, honest AI configuration, connection diagnostics, missing-key test, and Baseten blocker. No external model calls.")
 finally:
     stop_server(process)

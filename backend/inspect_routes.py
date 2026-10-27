@@ -177,7 +177,7 @@ def build_inspect_router(get_ai_service, run_ai):
             del record["template_snapshot"]["reference_image_url"]
             del record["current_image_url"]
             del record["aligned_image"]["image_url"]
-            return JSONResponse({"app": "WorldOS Inspect", "version": "1.1.0", "image_hashes_sha256_of_data_urls": image_hashes, **record},
+            return JSONResponse({"app": "WorldOS Inspect", "version": "1.2.0", "image_hashes_sha256_of_data_urls": image_hashes, **record},
                                 headers={"Content-Disposition": f'attachment; filename="worldos-inspect-{identity}.json"'})
 
     @router.get("/evaluation/trials")

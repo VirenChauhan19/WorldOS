@@ -1,5 +1,5 @@
 /* Offline fallback only. Never store app HTML, API responses, photos, or sessions. */
-const CACHE = 'worldos-offline-v0.8.0-2';
+const CACHE = 'worldos-offline-v1.2.0';
 const PUBLIC_ASSETS = ['/offline.html', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/maskable-512.png', '/icons/apple-touch-icon.png'];
 self.addEventListener('install', event => {
   // This worker owns only the offline fallback and icons. App code and private

@@ -4,7 +4,7 @@ import { Capacitor } from '@capacitor/core';
 import { App as NativeApp } from '@capacitor/app';
 import { Download, LockKeyhole, Settings2, WifiOff } from 'lucide-react';
 import { apiFetch, backendURL, configureBackend, nativeNeedsBackend, setAccessToken, setCookieSession, usesCookies, validateBackendURL } from './backend';
-import { AccessContext } from './access';
+import { AccessContext, AuthenticationContext } from './access';
 import Dialog from './ui/Dialog';
 import type { WorkspaceAccess } from './access';
 
@@ -108,28 +108,29 @@ export default function MobileShell({children}:{children:ReactNode}) {
       configureBackend(url);setSettings(false);setState('loading');setRetainedAccess(null);setGeneration(n=>n+1);await connect();
     }catch(e){setError(e instanceof Error?e.message:'Cannot change the backend.');}finally{submitLock.current=false;setPending(false);}
   }
+  useEffect(()=>{const logout=()=>{if(state==='ready')void signOut();};window.addEventListener('worldos:sign-out',logout);return()=>window.removeEventListener('worldos:sign-out',logout);},[state,pending]);
   return <>
-    <div className="mobile-utility"><span><LockKeyhole size={14}/>{authRequired?(access==='judge'?'Judge demo':'Private workspace'):'Local workspace'}</span><div>
+    <div className="mobile-utility" hidden={state==='ready'}><span><LockKeyhole size={14}/>{authRequired?(access==='judge'?'Judge demo':'Private workspace'):'Local workspace'}</span><div>
       {!Capacitor.isNativePlatform()&&<button onClick={()=>{if(install){void install.prompt().then(()=>install.userChoice).then(()=>setInstall(null));}else setInstallHelp(!installHelp);}}><Download size={15}/>Install</button>}
       <button aria-expanded={settings} onClick={()=>setSettings(!settings)}><Settings2 size={15}/>Connection</button>
       {authRequired&&state==='ready'&&<button disabled={pending} onClick={()=>void signOut()}>Sign out</button>}
     </div></div>
-    {ephemeralStorage&&<div className="mobile-banner" role="status">Temporary storage: saved work, uploaded photos, and login sessions may be lost when this server restarts, redeploys, or sleeps. Export important work and download backups to your device.</div>}
+    {ephemeralStorage&&<details className="storage-notice"><summary>Free demo — saved work may be lost</summary><p>Temporary storage: saved work, uploaded photos, and login sessions may be lost when this server restarts, redeploys, or sleeps. Keep important photos on your device. Detailed export and backup tools are in Advanced.</p></details>}
     {!online&&<div className="mobile-banner" role="status"><WifiOff size={18}/><span>Offline. AI, uploads, and saved inspections require a connection. Nothing will be queued or reported as completed.</span></div>}
     {restored&&<div className="mobile-banner" role="status">The system restarted WorldOS while the camera was open. Sign in, reopen the saved workspace, and retake the photograph. No scan was automatically started.<button onClick={()=>setRestored(false)}>Dismiss</button></div>}
-    <Dialog open={installHelp} onClose={()=>setInstallHelp(false)} title="Install WorldOS"><p>On iPhone: open the HTTPS app in Safari, tap Share, then Add to Home Screen and Open as Web App. On Android: use your browser’s Install app or Add to Home screen menu. Installation needs a secure connection; AI still needs the backend.</p></Dialog>
+    <Dialog open={installHelp} onClose={()=>setInstallHelp(false)} title="Install WorldOS"><p>On iPhone: open the HTTPS app in Safari, tap Share, then Add to Home Screen and Open as Web App. On Android: use your browser’s Install app or Add to Home screen menu. Photo checks still need an internet connection.</p></Dialog>
     <Dialog open={settings} onClose={()=>setSettings(false)} title="Connection settings"><form className="connection-settings" onSubmit={event=>void changeBackend(event)}>
       <label>WorldOS backend address<input aria-label="WorldOS backend address" type="url" value={url} placeholder="https://worldos.your-domain.com" onChange={e=>setUrl(e.target.value)} autoCapitalize="none" autoCorrect="off" spellCheck={false}/></label>
       <p>Use your trusted WorldOS server. Leave blank for this website’s backend. Changing servers signs you out and clears unsaved work.</p><button className="primary" disabled={pending}>Connect</button>
     </form>{error&&<p role="alert">{error}</p>}</Dialog>
     {error&&<div className="mobile-banner" role="alert">{error}</div>}
     {state==='ready'&&access==='judge'&&<div className="mobile-banner" role="status">Judge demo workspace. Other judges share these demo photos and inspections; owner data and backups are private. Sessions last up to two hours.{judgeExpiry&&` Access ends ${new Date(judgeExpiry).toLocaleString()}.`}</div>}
-    {retainedAccess!==null&&<AccessContext.Provider value={retainedAccess}><div key={generation} hidden={state!=='ready'} inert={state!=='ready'} aria-hidden={state!=='ready'}>{children}</div></AccessContext.Provider>}
+    {retainedAccess!==null&&<AccessContext.Provider value={retainedAccess}><AuthenticationContext.Provider value={authRequired}><div key={generation} hidden={state!=='ready'} inert={state!=='ready'} aria-hidden={state!=='ready'}>{children}</div></AuthenticationContext.Provider></AccessContext.Provider>}
     {state!=='ready'&&<main className="access-screen">
-      <div className="access-card"><span className="section-kicker">WORLDOS</span><h1>{state==='login'?'Your workspace. Securely.':state==='loading'?'Connecting to WorldOS':'Connect your workspace'}</h1>
-      <p>Inspect physical spaces, review what changed, and follow validated corrections. Your backend stores photos and sends them to configured AI providers only when you request inference. API keys never enter this app.</p>
+      <div className="access-card"><span className="section-kicker">WORLDOS</span><h1>{state==='login'?'Welcome to your space.':state==='loading'?'Opening WorldOS':'Let’s reconnect'}</h1>
+      <p>Save how your space should look, find what changed, and put things back. Sign in to keep your saved spaces private. Photos are analyzed only when you ask.</p>
       {state==='login'&&judgeEnabled&&retainedAccess===null&&<label>Access<select aria-label="Workspace access" value={access} disabled={pending} onChange={e=>{setAccess(e.target.value as WorkspaceAccess);setPassword('');setError('');}}><option value="owner">Owner workspace</option><option value="judge">Judge demo workspace</option></select></label>}
-      {state==='login'&&retainedAccess!==null&&<p>Your {retainedAccess} draft is kept only in this tab while locked. Reloading discards unsaved work. <button className="secondary" disabled={pending} onClick={()=>{setRetainedAccess(null);setGeneration(n=>n+1);setPassword('');}}>Discard draft and switch access</button></p>}
+      {state==='login'&&retainedAccess!==null&&<p>Your {retainedAccess} draft stays locked in this tab. Saved checks can be reopened from My Spaces; changes that haven’t saved are lost on reload. <button className="secondary" disabled={pending} onClick={()=>{setRetainedAccess(null);setGeneration(n=>n+1);setPassword('');}}>Discard draft and switch access</button></p>}
       {state==='loading'&&<p role="status">Waiting for the server. Free hosting can take about a minute to wake up. No AI request has started.</p>}
       {state==='login'&&access==='judge'&&<p>Use the separate demo passphrase from the owner. Demo sessions last up to two hours and end when the access window closes.</p>}
       {state==='login'?<form onSubmit={event=>void login(event)}><label>Workspace passphrase<input aria-label="Workspace passphrase" type="password" autoComplete="current-password" value={password} maxLength={1024} onChange={e=>setPassword(e.target.value)}/></label><button className="primary" disabled={pending||!online||!password}>{pending?'Signing in…':'Sign in'}</button><p>{usesCookies()?'This browser stays signed in for up to eight hours, including reloads. Sign out when finished on a shared device.':'Sessions last up to eight hours. Native and separate-backend sessions require sign-in again after reloading.'}</p></form>:<button className="primary" disabled={pending||!online} onClick={()=>void connect()}>{pending?'Connecting…':'Retry connection'}</button>}

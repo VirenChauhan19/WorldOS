@@ -54,7 +54,7 @@ def _scheduled_backup(directory, retain):
     with path.open('rb') as snapshot:
         digest = hashlib.file_digest(snapshot,'sha256').hexdigest()
     metadata = {'created_at':now.isoformat(), 'file':path.name, 'sha256':digest,
-                'scope':'Workspace templates, embedded photographs, inspections and evaluation trials; excludes login sessions and credentials.'}
+                'scope':'Workspace templates, embedded photographs, inspections, unfinished checks and evaluation trials; excludes login sessions and credentials.'}
     status = folder/'.status.tmp'
     status.write_text(json.dumps(metadata),encoding='utf-8')
     os.replace(status,folder/'latest.json')

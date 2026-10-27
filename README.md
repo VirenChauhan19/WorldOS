@@ -1,4 +1,8 @@
-# WorldOS V1.1
+# WorldOS V1.2
+
+**Save your setup. Check what changed. Put things back.** The new default experience is a focused photo wizard with Home, My Spaces, and Settings. Spatial Studio, detailed annotation, diagnostics, and physical evaluation tools remain under **Settings → Advanced**. See the [V1.2 usability redesign, test evidence, and deployment notes](docs/V12_USABILITY.md).
+
+**V1.2 is ready for deployment review, not deployed.** Validation: 326 backend tests passed (2 optional live tests skipped), 156 frontend tests passed, production web/mobile asset builds and all four HTTP smoke scripts passed. The complete manual workflow was exercised with labeled synthetic fixtures in a phone-width browser. This does not validate physical accuracy, live automatic inspection, or a real iPhone. The previously observed SAM model-access blocker remains unresolved; no new live AI calls were made for V1.2.
 
 **V1.1 reliability work is ready for deployment review; production was not redeployed.** See [real-world readiness, fixes, live AI evidence, and the guided phone test](docs/V11_REAL_WORLD_READINESS.md). Current live verification: Baseten Muse goal interpretation passed; Meta SAM 3.1 returned a model-access error. The complete physical workflow and real iPhone experience remain unverified. Historical results below do not supersede that current limitation.
 

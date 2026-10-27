@@ -85,7 +85,7 @@ it('restores an unsaved draft after same-role reauthentication and clears it on 
   fireEvent.change(screen.getByLabelText('Workspace passphrase'),{target:{value:'synthetic'}});fireEvent.click(screen.getByRole('button',{name:'Sign in'}));
   await waitFor(()=>expect(screen.getByRole('textbox',{name:'Inspection draft'})).toBe(draft));
   expect((draft as HTMLInputElement).value).toBe('Phone moved');
-  fireEvent.click(screen.getByRole('button',{name:'Sign out'}));await screen.findByRole('button',{name:'Sign in'});
+  act(()=>window.dispatchEvent(new Event('worldos:sign-out')));await screen.findByRole('button',{name:'Sign in'});
   expect(screen.queryByLabelText('Inspection draft')).toBeNull();
 });
 it('discards the retained owner tree before allowing a judge login',async()=>{
@@ -107,7 +107,7 @@ it('recovers from backend failure with an explicit retry',async()=>{
 it('makes offline limitations and iPhone install instructions visible',async()=>{
   vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response('{"required":false,"authenticated":true}')));render(<MobileShell><div>Workspace ready</div></MobileShell>);await screen.findByText('Workspace ready');
   act(()=>window.dispatchEvent(new Event('offline')));expect(screen.getByText(/Nothing will be queued/)).toBeTruthy();
-  fireEvent.click(screen.getByRole('button',{name:'Install'}));expect(screen.getByText(/On iPhone: open the HTTPS app in Safari/)).toBeTruthy();
+  act(()=>window.dispatchEvent(new Event('worldos:install')));expect(screen.getByText(/On iPhone: open the HTTPS app in Safari/)).toBeTruthy();
 });
 it('provides separate capture and library inputs and permits the same photo twice',async()=>{
   const received=vi.fn().mockResolvedValue(undefined);render(<PhotoActions label="Choose photo" disabled={false} onPhoto={received}/>);
@@ -138,6 +138,6 @@ it('requests cookie login and keeps the private workspace visible if offline sig
   fireEvent.change(await screen.findByLabelText('Workspace passphrase'),{target:{value:'synthetic passphrase'}});
   fireEvent.click(screen.getByRole('button',{name:'Sign in'}));await screen.findByText('Private workspace for signout test');
   expect(JSON.parse(fetcher.mock.calls[1][1].body).mode).toBe('cookie');
-  fireEvent.click(screen.getByRole('button',{name:'Sign out'}));await screen.findByText(/this browser session is still active/);
+  act(()=>window.dispatchEvent(new Event('worldos:sign-out')));await screen.findByText(/this browser session is still active/);
   expect(screen.getByText('Private workspace for signout test')).toBeTruthy();
 });

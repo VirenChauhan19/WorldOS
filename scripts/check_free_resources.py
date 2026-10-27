@@ -11,6 +11,7 @@ import platform
 import sys
 import tempfile
 from time import perf_counter
+from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -85,12 +86,23 @@ def main():
                     saved = client.post('/api/inspect/templates', json=body)
                     assert saved.status_code == 201
                     identity = saved.json()['id']
+                    draft_id = str(uuid4())
+                    uploaded = upload.json()
+                    draft_photo = {key:uploaded[key] for key in ('image_url','width','height')}
+                    draft_photo['name'] = 'SYNTHETIC memory probe'
+                    draft = client.put('/api/inspect/drafts/'+draft_id,json={'revision':0,'state':{
+                        'name':'SYNTHETIC draft','template_id':identity,'step':'check',
+                        'reference':draft_photo,'current':draft_photo}})
+                    assert draft.status_code == 200, draft.text
+                    assert client.get('/api/inspect/drafts').json()['drafts'][0]['id'] == draft_id
+                    assert client.get('/api/inspect/drafts/'+draft_id).status_code == 200
                     for automatic in (True, False):
                         alignment = client.post('/api/inspect/alignment',json={'template_id':identity,
                             'image_url':body['reference_image_url'], 'automatic':automatic, 'alignment':{'confirmed':True}})
                         assert alignment.status_code == 200
                     assert client.post('/api/admin/backups').status_code == 200
                     assert client.get('/api/admin/backups/latest').content.startswith(b'SQLite format 3\x00')
+                    assert client.delete('/api/inspect/drafts/'+draft_id).status_code == 200
                     assert client.delete('/api/inspect/templates/'+identity).status_code == 200
                     timings[f'iteration_{iteration+1}_seconds'] = round(perf_counter()-started,2)
                 peak = peak_rss_mib()
@@ -101,7 +113,7 @@ def main():
     report = {'platform':platform.platform(), 'python':platform.python_version(),
               'startup_peak_rss_mib':round(startup_peak,1), 'peak_rss_mib':round(peak,1),
               'render_memory_mib':512, 'below_512_mib':peak < 512, 'timings':timings,
-              'scope':'Synthetic sequential 6 MP PNG upload, auth/CSRF, SQLite template, automatic/manual alignment, backup/download/delete; no live inference.',
+              'scope':'Synthetic sequential 6 MP PNG upload, auth/CSRF, SQLite template and two-photo draft save/list/resume, automatic/manual alignment, backup/download/delete; no live inference.',
               'limitations':'Local measurement, not a Linux container/cgroup or 0.1 CPU benchmark. Concurrent reads, large libraries and provider payloads may increase memory.'}
     (ROOT/'artifacts/free-resource-check.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')
     print(json.dumps(report,indent=2))

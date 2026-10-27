@@ -23,6 +23,7 @@ from .request_limits import RequestLimitsMiddleware
 from .backups import backup_loop, scheduled_backup
 from .imaging import prepare_image
 from .inspect_routes import build_inspect_router
+from .consumer_routes import build_consumer_router
 from .models import AIAnalysisRequest, PlanRequest, PlanResponse, ReasonRequest, VerifyRequest
 from .planner import generate_plan, verify_positions
 from .providers import AISettings, ProviderError, ProviderHTTP, capabilities, logger
@@ -48,7 +49,7 @@ async def lifespan(_app):
         with suppress(asyncio.CancelledError): await worker
 
 
-app = FastAPI(title="WorldOS", version="1.1.0", lifespan=lifespan, description="Visual workspace inspection, persistent reference templates, and adaptive spatial planning.")
+app = FastAPI(title="WorldOS", version="1.2.0", lifespan=lifespan, description="Visual workspace inspection, persistent reference templates, and adaptive spatial planning.")
 app.add_middleware(RequestLimitsMiddleware, production=security_settings.deployment=='public',
                    max_bytes=int(os.getenv('WORLDOS_MAX_REQUEST_MB','32'))*1024*1024,
                    max_concurrent_writes=int(os.getenv('WORLDOS_MAX_CONCURRENT_WRITES','2')))
@@ -257,6 +258,7 @@ def verify(request: VerifyRequest):
 
 
 app.include_router(build_inspect_router(get_ai_service, run_ai))
+app.include_router(build_consumer_router())
 
 
 @app.middleware("http")

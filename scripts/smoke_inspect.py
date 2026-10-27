@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from uuid import uuid4
 from pathlib import Path
 
 import httpx
@@ -70,6 +71,18 @@ with tempfile.TemporaryDirectory(prefix='inspect-http-',dir=ROOT/'artifacts') as
         assert exported.status_code==200 and 'data:image' not in exported.text and 'synthetic-key' not in exported.text
         # Guided evaluation uses only isolated, explicitly synthetic fixtures here.
         evaluation_template=client.post('/api/inspect/templates',json={**body,'name':'SYNTHETIC EVALUATION SMOKE'}).json()
+        manual_template=client.post('/api/inspect/templates',json={**body,'name':'SYNTHETIC GUIDED CHECK'}).json()
+        manual_objects=[{k:v for k,v in o.items() if k not in {'required','tolerance'}} for o in objects]
+        manual_review={'revision':1,'assignments':{o['id']:o['id'] for o in manual_objects},'manual_objects':manual_objects,'inventory_confirmed':True}
+        response=client.post('/api/inspect/manual-scans',json={**scan,'template_id':manual_template['id'],'review':manual_review})
+        assert response.status_code==201,response.text
+        manual_record=response.json()
+        assert manual_record['reviewed_result']['passed'] and not manual_record['automatic_result']['passed']
+        assert manual_record['analysis']['provider']=='human' and not manual_record['analysis']['live_request']
+        draft_id=str(uuid4())
+        draft={'revision':0,'state':{'name':'SYNTHETIC RESUMABLE CHECK','step':'result','template_id':manual_template['id'],'record_id':manual_record['id']}}
+        response=client.put(f'/api/inspect/drafts/{draft_id}',json=draft);assert response.status_code==200,response.text
+        assert client.put(f'/api/inspect/drafts/{draft_id}',json=draft).status_code==409
         response=client.post('/api/inspect/evaluation/trials',json={'template_id':evaluation_template['id'],'name':'SYNTHETIC HTTP TEST','operator':'Software QA fixture','scenario':'correct_workspace','reference_captured_at':'2026-10-26T12:00:00Z','physical_reference_confirmed':True})
         assert response.status_code==201,response.text
         evaluation=response.json();evaluation_id=evaluation['id']
@@ -95,6 +108,11 @@ with tempfile.TemporaryDirectory(prefix='inspect-http-',dir=ROOT/'artifacts') as
     process,client=launch(directory)
     try:
         persisted=client.get(f'/api/inspect/templates/{identity}').json()
+        restored=client.get(f'/api/inspect/drafts/{draft_id}').json()
+        assert restored['revision']==1 and restored['state']['record_id']==manual_record['id']
+        assert client.get('/api/inspect/drafts').json()['drafts'][0]['id']==draft_id
+        assert client.delete(f'/api/inspect/drafts/{draft_id}').status_code==200
+        assert client.get(f"/api/inspect/scans/{manual_record['id']}").status_code==200
         assert persisted['reference_image_url']==template['reference_image_url']
         assert client.get(f"/api/inspect/scans/{trial['id']}").json()['reviewed_result']['evidence_mode']=='human_assisted'
         assert len(client.get(f'/api/inspect/templates/{identity}/history').json()['inspections'])==2
