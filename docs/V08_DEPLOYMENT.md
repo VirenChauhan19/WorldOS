@@ -82,6 +82,8 @@ The verifier privately prompts for the passphrase, checks HTTPS, private routes,
 
 For iPhone: open the HTTPS URL in Safari, sign in, then **Share → Add to Home Screen → Open as Web App**. Test photo capture/library, cancellation, offline recovery, and Inspect. Installation does not preserve backend storage. Native/device instructions remain in [V07_MOBILE.md](V07_MOBILE.md).
 
+The offline-page helper updates automatically without a reload banner or forced page refresh. New app code loads on your next normal visit/refresh; open drafts stay in place during helper activation. This does not change Free storage loss on server restarts or redeployments.
+
 Judge access stays disabled unless `WORLDOS_JUDGE_PASSWORD_HASH` and `WORLDOS_JUDGE_ACCESS_EXPIRES_AT` are set. Generate a different passphrase with `scripts/create_login.py --access judge --expires-at <your ISO timestamp with timezone>` and enter ignored `.env.judge` values in Render. Judges share an isolated demo workspace, cannot access owner data/backups/provider probes, and have sessions capped at two hours and the deadline. Free resets erase judge evidence too.
 
 ## Validation

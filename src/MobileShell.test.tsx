@@ -11,6 +11,17 @@ import { useWorkspaceAccess } from './access';
 vi.mock('./photos',()=>({normalizePhoto:vi.fn(async(file:File)=>file),nativePhoto:vi.fn()}));
 beforeEach(()=>{vi.spyOn(Capacitor,'isNativePlatform').mockReturnValue(false);configureBackend('');Object.defineProperty(navigator,'onLine',{value:true,configurable:true});});
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals();vi.clearAllMocks();localStorage.clear();});
+it('keeps draft input mounted without a reload banner when an older helper reports an update',async()=>{
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response('{"required":false,"authenticated":true}')));
+  render(<MobileShell><input aria-label="Unsaved template name" defaultValue=""/></MobileShell>);
+  const draft=await screen.findByLabelText('Unsaved template name');
+  fireEvent.change(draft,{target:{value:'My unsaved workspace'}});
+  act(()=>window.dispatchEvent(new CustomEvent('worldos:update',{detail:{postMessage:vi.fn()}})));
+  expect(screen.queryByRole('button',{name:'Reload app'})).toBeNull();
+  expect(screen.queryByText(/An app update is ready/)).toBeNull();
+  expect(screen.getByLabelText('Unsaved template name')).toBe(draft);
+  expect((draft as HTMLInputElement).value).toBe('My unsaved workspace');
+});
 it('warns about ephemeral storage before sign-in and in the workspace',async()=>{
   for(const authenticated of [false,true]){
     vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response(JSON.stringify({required:true,authenticated,storage_mode:'ephemeral'}))));

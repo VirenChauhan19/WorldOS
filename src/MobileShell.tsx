@@ -25,7 +25,6 @@ export default function MobileShell({children}:{children:ReactNode}) {
   const [install,setInstall]=useState<InstallPrompt|null>(null);
   const [installHelp,setInstallHelp]=useState(false);
   const [generation,setGeneration]=useState(0);
-  const [update,setUpdate]=useState<ServiceWorker|null>(null);
   const [restored,setRestored]=useState(false);
   const connectionAttempt=useRef(0);
 
@@ -56,11 +55,10 @@ export default function MobileShell({children}:{children:ReactNode}) {
     const offline=()=>setOnline(false),online=()=>setOnline(true);
     const expired=()=>{setState('login');setAuthRequired(true);setError('Your session expired. Sign in again.');setGeneration(n=>n+1);};
     const prompt=(event:Event)=>{event.preventDefault();setInstall(event as InstallPrompt);};
-    const swUpdate=(event:Event)=>setUpdate((event as CustomEvent<ServiceWorker>).detail);
     const installed=()=>{setInstall(null);setInstallHelp(false);};
     window.addEventListener('offline',offline);window.addEventListener('online',online);window.addEventListener('worldos:session-expired',expired);
-    window.addEventListener('beforeinstallprompt',prompt);window.addEventListener('appinstalled',installed);window.addEventListener('worldos:update',swUpdate);
-    return()=>{connectionAttempt.current++;window.removeEventListener('offline',offline);window.removeEventListener('online',online);window.removeEventListener('worldos:session-expired',expired);window.removeEventListener('beforeinstallprompt',prompt);window.removeEventListener('appinstalled',installed);window.removeEventListener('worldos:update',swUpdate);};
+    window.addEventListener('beforeinstallprompt',prompt);window.addEventListener('appinstalled',installed);
+    return()=>{connectionAttempt.current++;window.removeEventListener('offline',offline);window.removeEventListener('online',online);window.removeEventListener('worldos:session-expired',expired);window.removeEventListener('beforeinstallprompt',prompt);window.removeEventListener('appinstalled',installed);};
   },[]);
   useEffect(()=>{
     if(!Capacitor.isNativePlatform())return;
@@ -106,7 +104,6 @@ export default function MobileShell({children}:{children:ReactNode}) {
     </div></div>
     {ephemeralStorage&&<div className="mobile-banner" role="status">Temporary storage: saved work, uploaded photos, and login sessions may be lost when this server restarts, redeploys, or sleeps. Export important work and download backups to your device.</div>}
     {!online&&<div className="mobile-banner" role="status"><WifiOff size={18}/><span>Offline. AI, uploads, and saved inspections require a connection. Nothing will be queued or reported as completed.</span></div>}
-    {update&&<div className="mobile-banner"><span>An app update is ready. Export any unsaved work before reloading.</span><button onClick={()=>{navigator.serviceWorker.addEventListener('controllerchange',()=>window.location.reload(),{once:true});update.postMessage({type:'ACTIVATE_UPDATE'});}}>Reload app</button></div>}
     {restored&&<div className="mobile-banner" role="status">The system restarted WorldOS while the camera was open. Sign in, reopen the saved workspace, and retake the photograph. No scan was automatically started.<button onClick={()=>setRestored(false)}>Dismiss</button></div>}
     {installHelp&&<aside className="mobile-banner"><p>On iPhone: open the HTTPS app in Safari, tap Share, then Add to Home Screen and Open as Web App. On Android: use your browser’s Install app or Add to Home screen menu. Installation needs a secure connection; AI still needs the backend.</p></aside>}
     {settings&&<form className="connection-settings" onSubmit={event=>void changeBackend(event)}>

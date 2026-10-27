@@ -21,6 +21,18 @@ it('ships a standalone manifest and safe maskable/home screen icons',()=>{
 it('pre-caches only the generic offline page and public icons',async()=>{
   const w=worker();let finished!:Promise<unknown>;w.listeners.install({waitUntil:(promise:Promise<unknown>)=>{finished=promise;}});await finished;
   expect(w.cache.addAll.mock.calls[0][0].every((path:string)=>path==='/offline.html'||path.startsWith('/icons/'))).toBe(true);
+  expect(w.self.skipWaiting).toHaveBeenCalledTimes(1);
+});
+it('keeps the current worker when offline assets fail to install',async()=>{
+  const w=worker();w.cache.addAll.mockRejectedValue(new Error('offline'));let finished!:Promise<unknown>;
+  w.listeners.install({waitUntil:(promise:Promise<unknown>)=>{finished=promise;}});
+  await expect(finished).rejects.toThrow('offline');expect(w.self.skipWaiting).not.toHaveBeenCalled();
+});
+it('activates quietly and removes only obsolete WorldOS offline caches',async()=>{
+  const w=worker();w.caches.keys.mockResolvedValue(['worldos-offline-v0.8.0-1','worldos-offline-v0.8.0-2','another-app']);
+  let finished!:Promise<unknown>;w.listeners.activate({waitUntil:(promise:Promise<unknown>)=>{finished=promise;}});await finished;
+  expect(w.caches.delete).toHaveBeenCalledExactlyOnceWith('worldos-offline-v0.8.0-1');
+  expect(w.self.clients.claim).toHaveBeenCalledTimes(1);
 });
 it.each([
   ['https://worldos.example/api/inspect/templates','GET','navigate'],['https://api.example/api/ai/analyze','POST','cors'],['https://worldos.example/api/analyze','POST','cors'],['https://worldos.example/assets/app.js','GET','cors'],
