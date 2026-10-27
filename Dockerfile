@@ -20,8 +20,9 @@ USER worldos
 EXPOSE 8000
 CMD ["python", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "172.30.0.2", "--no-access-log", "--limit-concurrency", "32"]
 
-# Render mounts its disk at runtime. Initialize only the app subdirectory, then
-# launch_render drops to uid/gid 10001 before opening any network socket.
+# Render defaults to Free with ephemeral /tmp storage. The separate paid
+# Blueprint selects a mounted disk. launch_render initializes only the selected
+# app subdirectory, then drops to uid/gid 10001 before opening a network socket.
 FROM app AS render
 USER root
 CMD ["python", "-m", "backend.launch_render"]

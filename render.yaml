@@ -1,9 +1,10 @@
-# Paid service + disk: review the Render price before creating resources.
+# $0 web compute: one Free service, no disk or managed database.
+# All SQLite data, photos and sessions are ephemeral. See docs/V08_DEPLOYMENT.md.
 services:
   - type: web
     name: worldos-inspect
     runtime: docker
-    plan: standard
+    plan: free
     region: virginia
     dockerfilePath: ./Dockerfile
     dockerContext: .
@@ -11,15 +12,13 @@ services:
     numInstances: 1
     autoDeployTrigger: "off"
     healthCheckPath: /healthz
-    disk:
-      name: worldos-data
-      mountPath: /var/data
-      sizeGB: 5
     envVars:
       - key: WORLDOS_DEPLOYMENT
         value: public
       - key: WORLDOS_DATA_DIR
-        value: /var/data/worldos
+        value: /tmp/worldos
+      - key: WORLDOS_STORAGE_MODE
+        value: ephemeral
       - key: WORLDOS_AUTH_PASSWORD_HASH
         sync: false
       - key: MODEL_API_KEY
@@ -39,8 +38,18 @@ services:
       - key: WORLDOS_AI_TIMEOUT_SECONDS
         value: "45"
       - key: WORLDOS_MAX_UPLOAD_MB
+        value: "6"
+      - key: WORLDOS_MAX_IMAGE_PIXELS
+        value: "6000000"
+      - key: WORLDOS_MAX_REQUEST_MB
         value: "12"
+      - key: WORLDOS_MAX_CONCURRENT_WRITES
+        value: "1"
       - key: WORLDOS_BACKUPS_ENABLED
+        value: "0"
+      - key: OPENBLAS_NUM_THREADS
+        value: "1"
+      - key: OMP_NUM_THREADS
         value: "1"
       - key: PYTHONUNBUFFERED
         value: "1"

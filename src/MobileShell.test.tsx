@@ -11,6 +11,15 @@ import { useWorkspaceAccess } from './access';
 vi.mock('./photos',()=>({normalizePhoto:vi.fn(async(file:File)=>file),nativePhoto:vi.fn()}));
 beforeEach(()=>{vi.spyOn(Capacitor,'isNativePlatform').mockReturnValue(false);configureBackend('');Object.defineProperty(navigator,'onLine',{value:true,configurable:true});});
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals();vi.clearAllMocks();localStorage.clear();});
+it('warns about ephemeral storage before sign-in and in the workspace',async()=>{
+  for(const authenticated of [false,true]){
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response(JSON.stringify({required:true,authenticated,storage_mode:'ephemeral'}))));
+    render(<MobileShell><div>Temporary workspace</div></MobileShell>);
+    expect(await screen.findByText(/Temporary storage: saved work, uploaded photos, and login sessions/)).toBeTruthy();
+    expect(screen.getByText(/restarts, redeploys, or sleeps/)).toBeTruthy();
+    cleanup();
+  }
+});
 it('offers enabled judge access, labels the shared demo and carries its role to children',async()=>{
   const fetcher=vi.fn().mockResolvedValueOnce(new Response('{"required":true,"authenticated":false,"judge_enabled":true}'))
     .mockResolvedValueOnce(new Response('{"authenticated":true,"session_mode":"cookie","csrf_token":"synthetic-csrf","access":"judge","judge_expires_at":"2026-11-05T04:00:00Z"}'));

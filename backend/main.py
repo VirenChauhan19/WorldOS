@@ -12,7 +12,6 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from PIL import Image
 
 from .adapters import ManualSegmentation
 from .ai_service import AIService
@@ -50,7 +49,9 @@ async def lifespan(_app):
 
 
 app = FastAPI(title="WorldOS", version="0.8.0", lifespan=lifespan, description="Visual workspace inspection, persistent reference templates, and adaptive spatial planning.")
-app.add_middleware(RequestLimitsMiddleware, production=security_settings.deployment=='public')
+app.add_middleware(RequestLimitsMiddleware, production=security_settings.deployment=='public',
+                   max_bytes=int(os.getenv('WORLDOS_MAX_REQUEST_MB','32'))*1024*1024,
+                   max_concurrent_writes=int(os.getenv('WORLDOS_MAX_CONCURRENT_WRITES','2')))
 app.middleware("http")(session_auth.middleware)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(security_settings.hosts))
 app.add_middleware(CORSMiddleware, allow_origins=list(security_settings.origins), allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"])
@@ -63,7 +64,6 @@ async def safe_auth_validation(request, error):
         return JSONResponse({"detail": "Invalid sign-in request."}, 422, headers={"Cache-Control": "no-store"})
     return await request_validation_exception_handler(request, error)
 MAX_BYTES = int(os.getenv("WORLDOS_MAX_UPLOAD_MB", "12")) * 1024 * 1024
-Image.MAX_IMAGE_PIXELS = 24_000_000
 connection_registry = ConnectionRegistry()
 
 

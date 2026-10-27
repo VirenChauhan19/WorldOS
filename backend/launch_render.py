@@ -1,5 +1,6 @@
 """Render-only entry point. Never use its proxy trust policy on an exposed VM."""
 import os
+import logging
 from pathlib import Path
 from pathlib import PurePosixPath
 import re
@@ -19,10 +20,14 @@ def configure_render(environment):
         if url.scheme != 'https' or not url.hostname or url.username or url.password or url.path not in {'','/'} or url.query or url.fragment or url.port not in {None,443} or '*' in custom:
             raise ValueError('WORLDOS_PUBLIC_URL must be your verified HTTPS origin.')
         origins.append(f'https://{url.hostname}'); hosts.append(url.hostname)
-    data = PurePosixPath(environment.get('WORLDOS_DATA_DIR','/var/data/worldos'))
-    if data.parent != PurePosixPath('/var/data') or not re.fullmatch(r'worldos(?:-[a-zA-Z0-9_-]+)?', data.name):
-        raise ValueError('Render data must use a worldos directory directly inside /var/data.')
-    environment.update(WORLDOS_DEPLOYMENT='public', WORLDOS_DATA_DIR=str(data),
+    mode = environment.get('WORLDOS_STORAGE_MODE', 'persistent')
+    if mode not in {'ephemeral', 'persistent'}:
+        raise ValueError('WORLDOS_STORAGE_MODE must be ephemeral or persistent.')
+    parent = PurePosixPath('/tmp' if mode == 'ephemeral' else '/var/data')
+    data = PurePosixPath(environment.get('WORLDOS_DATA_DIR', str(parent/'worldos')))
+    if data.parent != parent or not re.fullmatch(r'worldos(?:-[a-zA-Z0-9_-]+)?', data.name):
+        raise ValueError(f'Render data must use a worldos directory directly inside {parent}.')
+    environment.update(WORLDOS_DEPLOYMENT='public', WORLDOS_DATA_DIR=str(data), WORLDOS_STORAGE_MODE=mode,
                        WORLDOS_ALLOWED_HOSTS=','.join(dict.fromkeys(hosts)),
                        WORLDOS_CORS_ORIGINS=','.join(dict.fromkeys([*origins,'capacitor://localhost','https://localhost'])))
     from .security import SecuritySettings
@@ -31,11 +36,14 @@ def configure_render(environment):
                      environment.get('WORLDOS_JUDGE_PASSWORD_HASH',''),environment.get('WORLDOS_JUDGE_ACCESS_EXPIRES_AT','')).validate()
 
 
-def main():
-    configure_render(os.environ)
-    directory = Path(os.environ['WORLDOS_DATA_DIR'])
-    if not Path('/var/data').is_mount():
+def prepare_storage(environment):
+    directory = Path(environment['WORLDOS_DATA_DIR'])
+    if environment['WORLDOS_STORAGE_MODE'] == 'persistent' and not Path('/var/data').is_mount():
         raise RuntimeError('Attach the persistent disk at /var/data before deploying.')
+    if environment['WORLDOS_STORAGE_MODE'] == 'ephemeral':
+        logging.getLogger('worldos').warning(
+            'EPHEMERAL STORAGE: SQLite data, uploaded photos, backups and login/session state '
+            'may be lost on restarts, redeployments or idle spin-down. Download important work now.')
     if directory.is_symlink():
         raise RuntimeError('The workspace directory must not be a symlink.')
     os.umask(0o077)
@@ -48,13 +56,22 @@ def main():
             if database.is_symlink():raise RuntimeError('Database files must not be symlinks.')
             if database.is_file():os.chown(database,10001,10001);database.chmod(0o600)
         os.setgroups([]); os.setgid(10001); os.setuid(10001)
+
+
+def main():
+    configure_render(os.environ)
+    prepare_storage(os.environ)
+    ephemeral = os.environ['WORLDOS_STORAGE_MODE'] == 'ephemeral'
+    if ephemeral:
+        import cv2
+        cv2.setNumThreads(1)
     from .production import storage_ready
     storage_ready()
     import uvicorn
     # Render terminates HTTPS and exclusively proxies public traffic to this port.
     # Do not reuse '*' on a directly reachable server; Compose trusts one fixed IP.
     uvicorn.run('backend.main:app',host='0.0.0.0',port=int(os.environ.get('PORT','10000')),
-                workers=1,proxy_headers=True,forwarded_allow_ips='*',access_log=False,limit_concurrency=32,
+                workers=1,proxy_headers=True,forwarded_allow_ips='*',access_log=False,limit_concurrency=8 if ephemeral else 32,
                 timeout_keep_alive=5,timeout_graceful_shutdown=30)
 
 

@@ -6,9 +6,12 @@ from starlette.responses import JSONResponse
 
 
 class RequestLimitsMiddleware:
-    def __init__(self, app, max_bytes=32*1024*1024, production=False, clock=time.monotonic, ai_per_minute=20):
+    def __init__(self, app, max_bytes=32*1024*1024, production=False, clock=time.monotonic, ai_per_minute=20, max_concurrent_writes=2):
+        if max_bytes < 1 or max_concurrent_writes < 1:
+            raise ValueError('Request size and concurrency limits must be positive.')
         self.app, self.max_bytes, self.production, self.clock = app, max_bytes, production, clock
         self.ai_per_minute = ai_per_minute
+        self.max_concurrent_writes = max_concurrent_writes
         self.events = defaultdict(deque)
         self.active_ai = 0
         self.active_writes = 0
@@ -45,7 +48,7 @@ class RequestLimitsMiddleware:
                 return await reject(429,'Too many requests. Wait a minute before retrying; no action was queued.')
             events.append(now)
         counted = self.production and method in {'POST','PUT','PATCH','DELETE'}
-        if counted and self.active_writes >= 2:
+        if counted and self.active_writes >= self.max_concurrent_writes:
             return await reject(429,'Another upload or action is running. Wait a minute and retry; no action was queued.')
         if counted: self.active_writes += 1
         try:

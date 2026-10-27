@@ -18,6 +18,7 @@ export default function MobileShell({children}:{children:ReactNode}) {
   const [error,setError]=useState('');
   const [pending,setPending]=useState(false);
   const [authRequired,setAuthRequired]=useState(false);
+  const [ephemeralStorage,setEphemeralStorage]=useState(false);
   const [access,setAccess]=useState<WorkspaceAccess>('owner');
   const [judgeEnabled,setJudgeEnabled]=useState(false);
   const [judgeExpiry,setJudgeExpiry]=useState<string|null>(null);
@@ -44,6 +45,7 @@ export default function MobileShell({children}:{children:ReactNode}) {
         setCookieSession(data.csrf_token);
       }
       setJudgeEnabled(data.judge_enabled===true);
+      setEphemeralStorage(data.storage_mode==='ephemeral');
       setAccess(data.access==='judge'?'judge':'owner');setJudgeExpiry(data.judge_expires_at??null);
       setAuthRequired(data.required);setState(data.authenticated?'ready':'login');
     }catch(e){if(attempt===connectionAttempt.current){setState('unavailable');setError(e instanceof Error?e.message:'Cannot reach the backend.');}}
@@ -102,6 +104,7 @@ export default function MobileShell({children}:{children:ReactNode}) {
       <button aria-expanded={settings} onClick={()=>setSettings(!settings)}><Settings2 size={15}/>Connection</button>
       {authRequired&&state==='ready'&&<button disabled={pending} onClick={()=>void signOut()}>Sign out</button>}
     </div></div>
+    {ephemeralStorage&&<div className="mobile-banner" role="status">Temporary storage: saved work, uploaded photos, and login sessions may be lost when this server restarts, redeploys, or sleeps. Export important work and download backups to your device.</div>}
     {!online&&<div className="mobile-banner" role="status"><WifiOff size={18}/><span>Offline. AI, uploads, and saved inspections require a connection. Nothing will be queued or reported as completed.</span></div>}
     {update&&<div className="mobile-banner"><span>An app update is ready. Export any unsaved work before reloading.</span><button onClick={()=>{navigator.serviceWorker.addEventListener('controllerchange',()=>window.location.reload(),{once:true});update.postMessage({type:'ACTIVATE_UPDATE'});}}>Reload app</button></div>}
     {restored&&<div className="mobile-banner" role="status">The system restarted WorldOS while the camera was open. Sign in, reopen the saved workspace, and retake the photograph. No scan was automatically started.<button onClick={()=>setRestored(false)}>Dismiss</button></div>}

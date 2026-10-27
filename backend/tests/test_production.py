@@ -182,3 +182,90 @@ def test_production_health_is_minimal_and_has_no_model_calls(monkeypatch):
         monkeypatch.setattr(main,'storage_ready',failed)
         response=client.get('/healthz')
         assert response.status_code==503 and 'sensitive-internal-path' not in response.text
+
+
+def test_render_free_configuration_and_security(encoded):
+    env={'RENDER':'true','RENDER_EXTERNAL_HOSTNAME':'free-worldos.onrender.com',
+         'WORLDOS_AUTH_PASSWORD_HASH':encoded,'WORLDOS_STORAGE_MODE':'ephemeral',
+         'MODEL_API_KEY':'synthetic-meta','BASETEN_API_KEY':'synthetic-baseten'}
+    configure_render(env)
+    assert env['WORLDOS_DATA_DIR']=='/tmp/worldos'
+    assert env['WORLDOS_DEPLOYMENT']=='public'
+    assert env['WORLDOS_ALLOWED_HOSTS']=='free-worldos.onrender.com'
+    assert env['MODEL_API_KEY']=='synthetic-meta' and env['BASETEN_API_KEY']=='synthetic-baseten'
+    for changes in ({'WORLDOS_STORAGE_MODE':'typo'},{'WORLDOS_DATA_DIR':'/var/data/worldos'},
+                    {'WORLDOS_DATA_DIR':'/tmp/../worldos'},{'WORLDOS_DATA_DIR':'/tmp/unrelated'},
+                    {'WORLDOS_AUTH_PASSWORD_HASH':''},{'RENDER':'false'}):
+        with pytest.raises(ValueError):configure_render({**env,**changes})
+
+
+def test_free_storage_starts_without_mount_and_paid_storage_still_requires_it(tmp_path,monkeypatch,caplog):
+    from pathlib import Path
+    from backend import launch_render
+    monkeypatch.setattr(launch_render.os,'getuid',lambda:10001,raising=False)
+    monkeypatch.setattr(launch_render.os,'umask',lambda _:None)
+    monkeypatch.setattr(Path,'is_mount',lambda _:False)
+    directory=tmp_path/'worldos'
+    launch_render.prepare_storage({'WORLDOS_STORAGE_MODE':'ephemeral','WORLDOS_DATA_DIR':str(directory)})
+    assert directory.is_dir()
+    assert all(word in caplog.text for word in ('EPHEMERAL','SQLite','photos','login/session','spin-down'))
+    with pytest.raises(RuntimeError,match='persistent disk'):
+        launch_render.prepare_storage({'WORLDOS_STORAGE_MODE':'persistent','WORLDOS_DATA_DIR':str(tmp_path/'paid')})
+    assert not (tmp_path/'paid').exists()
+
+
+def test_render_storage_drops_privileges_before_serving(tmp_path,monkeypatch):
+    from backend import launch_render
+    actions=[]
+    monkeypatch.setattr(launch_render.os,'getuid',lambda:0,raising=False)
+    monkeypatch.setattr(launch_render.os,'umask',lambda _:None)
+    for operation in ('chown','setgroups','setgid','setuid'):
+        monkeypatch.setattr(launch_render.os,operation,lambda *args,op=operation:actions.append((op,args)),raising=False)
+    launch_render.prepare_storage({'WORLDOS_STORAGE_MODE':'ephemeral','WORLDOS_DATA_DIR':str(tmp_path/'worldos')})
+    assert actions[-3:]==[('setgroups',([],)),('setgid',(10001,)),('setuid',(10001,))]
+
+
+def test_ephemeral_session_loss_requires_login_and_csrf_again(encoded,tmp_path,monkeypatch):
+    monkeypatch.setenv('WORLDOS_STORAGE_MODE','ephemeral')
+    client,auth=private_app(encoded,tmp_path/'before'/'auth.sqlite3')
+    response=client.post('/api/auth/login',json={'password':PASSWORD,'mode':'cookie'},headers={'Origin':'https://testserver'})
+    assert response.status_code==200
+    assert client.get('/api/auth/status').json()['storage_mode']=='ephemeral'
+    # A fresh directory models Render replacing the ephemeral filesystem.
+    restarted,new_auth=private_app(encoded,tmp_path/'after'/'auth.sqlite3')
+    restarted.cookies.update(client.cookies)
+    assert restarted.get('/api/private').status_code==401
+    assert restarted.get('/api/auth/status').json()['authenticated'] is False
+    login=restarted.post('/api/auth/login',json={'password':PASSWORD,'mode':'cookie'},headers={'Origin':'https://testserver'})
+    assert login.status_code==200
+    assert restarted.post('/api/private',headers={'Origin':'https://testserver','X-CSRF-Token':response.json()['csrf_token']}).status_code==403
+    assert restarted.post('/api/private',headers={'Origin':'https://testserver','X-CSRF-Token':login.json()['csrf_token']}).status_code==200
+    auth.store.close();new_auth.store.close()
+
+
+def test_free_resource_limits_reject_before_decoding_or_buffering(monkeypatch):
+    import io
+    from PIL import Image
+    from backend.imaging import prepare_image, image_from_data_url
+    import base64
+    monkeypatch.setenv('WORLDOS_MAX_IMAGE_PIXELS','6000000')
+    image=io.BytesIO();Image.new('RGB',(3000,2001)).save(image,'PNG')
+    with pytest.raises(ValueError,match='6 megapixels'):prepare_image(image.getvalue())
+    monkeypatch.setenv('WORLDOS_MAX_UPLOAD_MB','1')
+    with pytest.raises(ValueError,match='under 1 MB'):
+        image_from_data_url('data:image/png;base64,'+base64.b64encode(b'x'*(1024*1024+1)).decode())
+    async def run():
+        release=asyncio.Event();started=asyncio.Event();responses=[]
+        async def inner(*_):started.set();await release.wait()
+        async def receive():return {'type':'http.request','body':b'x','more_body':False}
+        async def never_read():pytest.fail('Rejected request body must not be read')
+        async def send(value):responses.append(value)
+        limiter=RequestLimitsMiddleware(inner,production=True,max_concurrent_writes=1)
+        scope={'type':'http','path':'/api/inspect/templates','method':'POST','headers':[]}
+        first=asyncio.create_task(limiter(scope,receive,send))
+        await started.wait()
+        await limiter(scope,never_read,send)
+        assert responses[0]['status']==429
+        release.set();await first
+        assert limiter.active_writes==0
+    asyncio.run(run())

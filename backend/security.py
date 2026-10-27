@@ -218,6 +218,7 @@ class SessionAuth:
             authorized = bool(role) if self.required else False
             cookie = authorized and self.cookie_session(request)
             return {"required": self.required, "authenticated": not self.required or authorized, "deployment": self.settings.deployment,
+                    'storage_mode': 'ephemeral' if os.getenv('WORLDOS_STORAGE_MODE') == 'ephemeral' else 'persistent',
                     'access':role, 'judge_enabled':self.judge_enabled,
                     'judge_expires_at':self.settings.judge_expires_at if role == 'judge' else None,
                     'session_mode': 'cookie' if cookie else 'bearer', 'csrf_token': self.csrf_token(self.token(request)) if cookie else None}
