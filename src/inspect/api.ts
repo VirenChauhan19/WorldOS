@@ -32,6 +32,7 @@ export const templateHistory=(id:string)=>request<{inspections:{id:string;revisi
 export const getInspection=(id:string)=>request<InspectionRecord>(`scans/${encodeURIComponent(id)}`);
 export const alignPhoto=(template_id:string,image_url:string,alignment:Alignment,automatic=false,previous_inspection_id:string|null=null,evaluation_trial_id:string|null=null)=>request<Omit<Partial<AlignedImage>,'alignment'> & {status?:string;message?:string;fit?:{matches:number;inliers:number;rms_error_pixels_at_900:number};alignment:Alignment|null}>('alignment','POST',{template_id,image_url,alignment,automatic,previous_inspection_id,evaluation_trial_id});
 export const scanWorkspace=(body:unknown)=>request<InspectionRecord>('scans','POST',body);
+export const recognizePhoto=(body:unknown)=>request<{analysis:import('../types').AIAnalysis;aligned_image:AlignedImage}>('recognize','POST',body);
 export const manualScan=(body:unknown)=>request<InspectionRecord>('manual-scans','POST',body);
 export const reviewInspection=(id:string,body:InspectionReview)=>request<InspectionRecord>(`scans/${encodeURIComponent(id)}/review`,'POST',body);
 export const planCorrections=(id:string,revision:number)=>request<InspectionRecord>(`scans/${encodeURIComponent(id)}/corrections`,'POST',{revision});

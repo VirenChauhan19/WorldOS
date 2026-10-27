@@ -85,8 +85,10 @@ def test_full_trial_keeps_automatic_assisted_and_verification_separate(client):
 
 def test_api_failure_is_recorded_can_retry_and_does_not_count_success(client):
     c,store=client;t,trial=start(c);trial=freeze(c,t,trial);capture=trial["captures"][0]
+    from backend.inference_cache import InferenceCache
     class Failing:
-        async def analyze(self,*args):raise ProviderError("Provider timed out.",504,code="timeout")
+        def __init__(self): self.cache = InferenceCache()
+        async def segment_concept(self,*args):raise ProviderError("Provider timed out.",504,code="timeout")
     app.dependency_overrides[get_ai_service]=lambda:Failing()
     response=scan(c,t,capture);assert response.status_code==504,response.text
     saved=get_capture(store,capture["id"])

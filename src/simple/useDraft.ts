@@ -7,10 +7,10 @@ export function useDraft(id:string,revision:number,loaded:string,state:WizardSta
   const [status,setStatus]=useState(''),[error,setError]=useState('');
   const context=useMemo(()=>({id,revision,last:loaded,latest:state,pending:null as Promise<void>|null,alive:true}),[id]);
   context.latest=state;
-  async function flush():Promise<void>{
-    if(!enabled||!id)return;
-    if(context.pending){await context.pending;return flush();}
-    const snapshot=context.latest,serial=JSON.stringify(snapshot);
+  async function flush(photoSnapshot?:WizardState):Promise<void>{
+    if((!enabled&&!photoSnapshot)||!id)return;
+    if(context.pending){await context.pending;return flush(photoSnapshot);}
+    const snapshot=photoSnapshot??context.latest,serial=JSON.stringify(snapshot);
     if(serial===context.last)return;
     setStatus('Saving your place…');setError('');
     context.pending=(async()=>{
@@ -19,7 +19,7 @@ export function useDraft(id:string,revision:number,loaded:string,state:WizardSta
       finally{context.pending=null;}
     })();
     await context.pending;
-    if(context.latest!==snapshot)await flush();
+    if(!photoSnapshot&&context.latest!==snapshot)await flush();
   }
   useEffect(()=>{context.alive=true;setError('');setStatus(context.last?'Your saved check is ready to continue.':'');return()=>{context.alive=false;};},[context]);
   useEffect(()=>{
@@ -30,7 +30,7 @@ export function useDraft(id:string,revision:number,loaded:string,state:WizardSta
     return()=>window.clearTimeout(timer);
   },[state,context,enabled]);
   useEffect(()=>{
-    const warn=(event:BeforeUnloadEvent)=>{if(enabled&&(state.reference||state.template_id)&&JSON.stringify(context.latest)!==context.last){event.preventDefault();event.returnValue='';}};
+    const warn=(event:BeforeUnloadEvent)=>{if((state.reference||state.template_id)&&JSON.stringify(context.latest)!==context.last){event.preventDefault();event.returnValue='';}};
     window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);
   },[context,enabled,!!state.reference,state.template_id]);
   return {flush,status,error,dirty:enabled&&JSON.stringify(state)!==context.last};

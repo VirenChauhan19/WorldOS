@@ -33,7 +33,7 @@ class RequestLimitsMiddleware:
             return await reject(400,'Invalid request length.')
         if length > limit:
             return await reject(413,'Request is too large. Choose a smaller photo and retry.')
-        ai = method == 'POST' and (path.startswith('/api/ai/') or path == '/api/inspect/scans' or path.endswith('/explain'))
+        ai = method == 'POST' and (path.startswith('/api/ai/') or path in {'/api/inspect/scans', '/api/inspect/recognize'} or path.endswith('/explain'))
         if self.production and not path.startswith('/api/auth/'):
             now = self.clock()
             state = scope.get('state',{})

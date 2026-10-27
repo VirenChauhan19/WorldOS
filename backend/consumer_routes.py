@@ -33,6 +33,7 @@ class DraftState(StrictModel):
     current: DraftPhoto | None = None
     objects: list[TemplateObject] = Field(default_factory=list, max_length=12)
     analysis: ReferenceAnalysis | None = None
+    current_analysis: ReferenceAnalysis | None = None
     reference_ms: int | None = Field(default=None, ge=0)
     template_id: str | None = Field(default=None, max_length=80)
     record_id: str | None = Field(default=None, max_length=80)

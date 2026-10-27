@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, X } from 'lucide-react';
-import { analyze, analyzeAI, connectionDiagnostics } from '../api';
+import { analyze, analyzeAI } from '../api';
 import * as api from '../inspect/api';
 import { navigate, replaceRoute, useRoute } from '../navigation';
 import type { InspectionRecord, TemplateSummary, WorkspaceTemplate } from '../inspect/types';
@@ -38,7 +38,7 @@ export default function Wizard({active=true}:{active?:boolean}){
   const busyFlag=!!busy;
 
   function openState(value:WizardState,identity:string,revision=0,existing=false){
-    setState(value);setId(identity);setSeed(revision);setLoaded(existing?JSON.stringify(value):'');setReady(true);setChoosing(false);setEditItems(value.manual&&value.step==='setup');setAligned(null);setMove(0);
+    setState(value);setId(identity);setSeed(revision);setLoaded(existing?JSON.stringify(value):'');setReady(true);setChoosing(false);setEditItems(value.manual&&value.step==='setup');setUnavailable(false);setAligned(null);setMove(0);
     opened.current=`draft:${identity}`;replaceRoute('inspect',{draft:identity,step:value.step});
   }
   async function openTemplate(identity:string,epoch:number){
@@ -54,7 +54,7 @@ export default function Wizard({active=true}:{active?:boolean}){
         const r=value.record_id?await api.getInspection(value.record_id):null;
         const previous=!r&&value.previous_id?await api.getInspection(value.previous_id):null;
         const t=r?.template_snapshot??previous?.template_snapshot??(value.template_id?await api.getTemplate(value.template_id):null);
-        const preview=value.manual&&value.current&&t?await api.alignPhoto(t.id,value.current.image_url,value.alignment,false,value.previous_id):null;
+        const preview=(value.manual||value.current_analysis)&&value.current&&t?await api.alignPhoto(t.id,value.current.image_url,value.alignment,false,value.previous_id):null;
         if(epoch!==generation.current)return;setRecord(r);setTemplate(t);openState(value,saved.id,saved.revision,true);
         if(preview?.image_url&&t)setAligned({image_url:preview.image_url,width:t.image_width,height:t.image_height,name:'Saved review photo'});
       }else if(intent.startsWith('record:')){
@@ -72,7 +72,6 @@ export default function Wizard({active=true}:{active?:boolean}){
       }
     })().catch(e=>{if(epoch===generation.current){setError('This saved check could not be opened. It may have been cleared while the service was asleep. Your other spaces are still available in My Spaces.');setDetails(e instanceof Error?e.message:'');}}).finally(()=>{if(epoch===generation.current)setBusy(null);});
   },[active,intent,route.page]);
-  useEffect(()=>{if(!active)return;let live=true;void connectionDiagnostics().then(value=>{const sam=value.integrations.sam;if(live)setUnavailable(!!sam&&(!sam.configuration.credentials_configured||['blocked','needs_retest'].includes(sam.readiness?.status??'')));}).catch(()=>{});return()=>{live=false;};},[active]);
   useEffect(()=>{
     const target=route.params.get('step');
     if(active&&ready&&steps.includes(target as Step)&&target!==state.step)setState(old=>({...old,step:target as Step}));
@@ -83,24 +82,47 @@ export default function Wizard({active=true}:{active?:boolean}){
     const epoch=generation.current;
     const guard=async<T,>(operation:Promise<T>)=>{const value=await operation;if(epoch!==generation.current)throw new Error('Earlier check closed.');return value;};
     let started=false;
-    try{if(ready&&(state.reference||state.template_id))await guard(draft.flush());started=true;await work(guard);}catch(e){if(epoch===generation.current){setError(friendlyError(e));setDetails(e instanceof Error?e.message:'');if(ai&&started)setUnavailable(true);}}finally{if(epoch===generation.current){lock.current=false;setBusy(null);}}
+    try{if(ready&&(state.reference||state.template_id))await guard(draft.flush());started=true;await work(guard);}catch(e){if(epoch===generation.current){setError(friendlyError(e));setDetails(e instanceof Error?e.message:'');if(ai&&started){setUnavailable(true);setError("We couldn't identify your items automatically.");setDetails(friendlyError(e));}}}finally{if(epoch===generation.current){lock.current=false;setBusy(null);}}
   }
   function go(next:Step,patch:Partial<WizardState>={}){setState(old=>({...old,...patch,step:next}));const current=new URLSearchParams(window.location.hash.split('?')[1]);if(window.location.hash.startsWith('#/inspect?')&&current.get('draft')===id)navigate('inspect',{draft:id,step:next});}
   async function leave(){await action('Saving your place…',async guard=>{if(state.reference||state.template_id)await guard(draft.flush());navigate('history');});}
+  type Guard=<T>(operation:Promise<T>)=>Promise<T>;
+  async function findItems(image:SceneImage,isReference:boolean,guard:Guard,alignment=state.alignment){
+    setBusy('Finding your items...');
+    const start=performance.now();
+    if(isReference){
+      const analysis=await guard(analyzeAI(image.image_url,[]));
+      setState(old=>({...old,analysis,reference_ms:Math.round(performance.now()-start),objects:analysis.objects.map(o=>({...o,required:true,tolerance:.025})),manual:false}));
+      if(!analysis.objects.length)throw new Error('No items were identified. Try a clearer photograph.');
+    }else if(template){
+      const value=await guard(api.recognizePhoto({...scanInput(image),alignment}));
+      setAligned({image_url:value.aligned_image.image_url,width:template.image_width,height:template.image_height,name:'Recognized photo'});
+      setState(old=>({...old,current_analysis:value.analysis}));
+      if(!value.analysis.objects.length)throw new Error('No items were identified. Try a clearer photograph.');
+    }
+    setUnavailable(false);
+  }
+  function scanInput(image:SceneImage){return {template_id:template!.id,template_revision:template!.revision,image_url:image.image_url,alignment:state.alignment,inventory_confirmed:false,discover_unexpected:true,extra_concepts:[],previous_inspection_id:state.previous_id};}
   async function upload(file:File,isReference:boolean){
-    // Keep errors in this focused experience; PhotoActions owns preparation errors.
-    await action('Opening your photo…',async guard=>{const value=await guard(analyze(file));const image={image_url:value.image_url,width:value.width,height:value.height,name:file.name};
-      if(isReference){setState(old=>({...old,reference:image,objects:[],analysis:null,reference_ms:null,manual:false}));setEditItems(false);}
-      else{setState(old=>({...old,current:image,record_id:null,alignment:{tx:0,ty:0,scale:1,rotation:0,confirmed:false},manual:false,review:null}));setRecord(null);setAligned(null);}
+    await action('Opening your photo…',async guard=>{
+      const value=await guard(analyze(file));const image={image_url:value.image_url,width:value.width,height:value.height,name:file.name};
+      const next:WizardState=isReference?{...state,reference:image,objects:[],analysis:null,reference_ms:null,manual:false}:{...state,current:image,current_analysis:null,record_id:null,alignment:{tx:0,ty:0,scale:1,rotation:0,confirmed:false},manual:false,review:null};
+      setState(next);setUnavailable(false);setEditItems(false);
+      if(!isReference){setRecord(null);setAligned(null);}
+      // Persist the photograph before a long AI call. A failed request keeps it recoverable.
+      await guard(draft.flush(next));
+      try{
+        await findItems(image,isReference,guard,next.alignment);
+      }catch(e){await guard(Promise.resolve());setUnavailable(true);setError("We couldn't identify your items automatically.");setDetails(friendlyError(e));}
     });
   }
-  async function detect(){if(!state.reference)return;await action('Finding the items in your photo…',async guard=>{const start=performance.now();const analysis=await guard(analyzeAI(state.reference!.image_url,[]));setState(old=>({...old,analysis,reference_ms:Math.round(performance.now()-start),objects:analysis.objects.map(o=>({...o,required:true,tolerance:.025})),manual:false}));setUnavailable(false);if(!analysis.objects.length){setError('We couldn’t find any items. You can mark the things you want to keep track of.');setEditItems(true);}},true);}
-  async function saveSetup(){if(!state.reference)return;await action('Saving your setup…',async guard=>{const t=await guard(api.saveTemplate({name:state.name.trim()||'My space',reference_image_url:state.reference!.image_url,objects:state.objects,workspace:{x:0,y:0,width:1,height:1},clearance:.005,annotations_reviewed:true,reference_analysis:state.analysis,reference_inference_wall_ms:state.reference_ms}));setTemplate(t);setEditItems(false);go('check',{name:t.name,template_id:t.id,reference:null,objects:[],analysis:null,manual:false,current:null,record_id:null});});}
+  async function detect(){const image=step==='setup'?state.reference:state.current;if(!image)return;await action('Finding your items...',guard=>findItems(image,step==='setup',guard),true);}
+  async function saveSetup(){if(!state.reference)return;await action('Saving your setup…',async guard=>{const t=await guard(api.saveTemplate({name:state.name.trim()||'My space',reference_image_url:state.reference!.image_url,objects:state.objects,workspace:{x:0,y:0,width:1,height:1},clearance:.005,annotations_reviewed:true,reference_analysis:state.analysis,reference_inference_wall_ms:state.reference_ms}));setTemplate(t);setEditItems(false);go('check',{name:t.name,template_id:t.id,reference:null,objects:[],analysis:null,manual:false,current:null,current_analysis:null,record_id:null});});}
   async function alignCurrent(){
     if(!template||!state.current)return;
     await action('Lining up the photos…',async guard=>{const suggestion=await guard(api.alignPhoto(template.id,state.current!.image_url,state.alignment,true,state.previous_id));const alignment=suggestion.alignment?{...suggestion.alignment,confirmed:false}:state.alignment;
       const preview=await guard(api.alignPhoto(template.id,state.current!.image_url,alignment,false,state.previous_id));
-      setState(old=>({...old,alignment}));if(preview.image_url)setAligned({image_url:preview.image_url,width:template.image_width,height:template.image_height,name:'Lined up photo'});
+      setState(old=>({...old,alignment,current_analysis:null}));if(preview.image_url)setAligned({image_url:preview.image_url,width:template.image_width,height:template.image_height,name:'Lined up photo'});
       if(!suggestion.alignment)setError('We couldn’t line these up automatically. Compare the photos, or retake yours from the same spot.');
     });
   }
@@ -117,7 +139,7 @@ export default function Wizard({active=true}:{active?:boolean}){
     await action('Checking your review…',async guard=>{if(record)acceptRecord(await guard(api.reviewInspection(record.id,{...review,revision:record.revision})));else if(state.current)acceptRecord(await guard(api.manualScan({template_id:template.id,template_revision:template.revision,image_url:state.current.image_url,alignment:state.alignment,inventory_confirmed:review.inventory_confirmed,discover_unexpected:false,extra_concepts:[],previous_inspection_id:state.previous_id,review})));});
   }
   async function corrections(){if(!record)return;await action('Checking how to put things back…',async guard=>{const value=await guard(api.planCorrections(record.id,record.revision));setRecord(value);setMove(0);go('fix');});}
-  function verify(){if(!record)return;setTemplate(record.template_snapshot);setRecord(null);setAligned(null);go('verify',{previous_id:record.id,record_id:null,current:null,manual:false,review:null,alignment:{tx:0,ty:0,scale:1,rotation:0,confirmed:false}});}
+  function verify(){if(!record)return;setTemplate(record.template_snapshot);setRecord(null);setAligned(null);go('verify',{previous_id:record.id,record_id:null,current:null,current_analysis:null,manual:false,review:null,alignment:{tx:0,ty:0,scale:1,rotation:0,confirmed:false}});}
   const plan=record?.correction_plan,validMove=plan?.status==='ready'?plan.movements[move]:undefined;
   const uncertain=!!facts&&([...facts.objects,...facts.additional_objects].some(o=>['uncertain','suspected_missing','uncertain_unexpected'].includes(o.status))||!!facts.issues.length);
   const reviewImage=aligned??(record&&template?{image_url:record.aligned_image.image_url,width:template.image_width,height:template.image_height,name:'Photo to review'}:null);
@@ -135,23 +157,25 @@ export default function Wizard({active=true}:{active?:boolean}){
     {ready&&!choosing&&<>
       <h1 ref={heading} tabIndex={-1}>{step==='result'&&facts?resultTitle(facts,reviewedEvidence,!!record?.previous_inspection_id):step==='fix'&&validMove?`Put your ${validMove.label} back.`:labels[step]}</h1>
       {step==='setup'&&<><p>Arrange your things the way you want them. Take a photo so WorldOS knows what looks right.</p>
-        {!state.reference?<div className="capture-start"><PhotoActions cameraLabel="Take a setup photo" label="Choose from photos" disabled={busyFlag} onPhoto={file=>upload(file,true)}/><p className="quiet">Use a clear, overhead view. Include the whole setup.</p></div>:<>
+        {!state.reference?<div className="capture-start"><PhotoActions cameraLabel="Take a setup photo" label="Choose from photos" disabled={busyFlag} onPhoto={file=>upload(file,true)}/><p className="quiet">Use a clear, overhead view. We’ll automatically look for your items when you choose a photo.</p></div>:<>
           {editItems?<SetupItems image={state.reference} objects={state.objects} disabled={busyFlag} onChange={objects=>setState(old=>({...old,objects,manual:true}))}/>:<PhotoStage image={state.reference} objects={state.objects}/>}
           <details className="photo-options"><summary>Use a different photo</summary><PhotoActions label="Choose another setup photo" cameraLabel="Retake setup photo" disabled={busyFlag} onPhoto={file=>upload(file,true)}/></details>
           {!!state.objects.length&&<><h2>Does this look right?</h2><p>We’ll keep track of {state.objects.map(o=>o.label).join(', ')}. Check the names and outlines before saving.</p><label className="simple-label">Name your space<input value={state.name} maxLength={120} disabled={busyFlag} onChange={e=>setState(old=>({...old,name:e.target.value}))}/></label><button className="primary" disabled={busyFlag||!state.name.trim()} onClick={()=>void saveSetup()}>Save this setup <Check size={18}/></button></>}
-          {!state.objects.length&&!editItems&&(unavailable?<><p className="simple-notice">Automatic checking isn’t available right now. Mark the things you want to keep track of instead.</p><button className="primary" disabled={busyFlag} onClick={()=>{setEditItems(true);setState(old=>({...old,manual:true}));}}>Mark my items</button></>:<><p className="quiet">Choose Find my items to let AI analyze this photo. Uploading alone doesn’t start a check.</p><button className="primary" disabled={busyFlag} onClick={()=>void detect()}>Find my items <ArrowRight size={18}/></button></>)}
-          {!editItems&&(!unavailable||!!state.objects.length)&&<button className="text-button" disabled={busyFlag} onClick={()=>{setEditItems(true);setState(old=>({...old,manual:true}));}}>{state.objects.length?'Change or add items':'Mark items myself'}</button>}
-          {unavailable&&<details><summary>Automatic checking</summary><p>Access needs to be restored in Advanced Settings. You can retry after it is fixed.</p><button className="secondary" disabled={busyFlag} onClick={()=>void detect()}>Try finding items again</button></details>}
+          {!state.objects.length&&!editItems&&!busyFlag&&<><p className="quiet">{unavailable?'Your photo is saved. Try again, or optionally mark an item yourself.':'This photo is ready to analyze. We won’t repeat a check just because you reopened it.'}</p><button className="primary" disabled={busyFlag} onClick={()=>void detect()}>{unavailable?'Retry':'Find my items'} <ArrowRight size={18}/></button></>}
+          {!editItems&&!busyFlag&&<button className="text-button" onClick={()=>{setEditItems(true);setState(old=>({...old,manual:true}));}}>{state.objects.length?'Correct an item':'Mark items myself (optional)'}</button>}
+
         </>}
       </>}
       {(step==='check'||step==='verify')&&template&&!showManual&&<><p>{step==='verify'?'Moved everything back? Take a fresh photo. We need new evidence to check the result.':'Something moved? Take another photo from the same spot.'}</p>
-        <div className="reference-reminder"><Photo src={template.reference_image_url} alt="Your saved setup" width={template.image_width} height={template.image_height}/><span><strong>Your saved setup</strong><small>Match this angle and include the whole space.</small></span></div>
+        <div className="reference-reminder"><Photo src={template.reference_image_url} alt="Your saved setup" width={template.image_width} height={template.image_height}/><span><strong>Your saved setup</strong><small>Match this angle. Your next photo will be analyzed automatically.</small></span></div>
         {!state.current?<><div className="capture-start"><PhotoActions label="Choose from photos" cameraLabel={step==='verify'?'Take a fresh photo':'Take a new photo'} disabled={busyFlag} onPhoto={file=>upload(file,false)}/></div><p className="quiet">Your setup is saved. You can close this check and come back when you need it.</p></>:<>
-          <PhotoStage image={aligned??state.current}/><PhotoComparison before={template.reference_image_url} after={(aligned??state.current).image_url} width={template.image_width} height={template.image_height}/>
+          <PhotoStage image={aligned??state.current} objects={state.current_analysis?.objects}/><PhotoComparison before={template.reference_image_url} after={(aligned??state.current).image_url} width={template.image_width} height={template.image_height}/>
           <button className="secondary" disabled={busyFlag} onClick={()=>void alignCurrent()}>Help line up the photos</button>
           <label className="simple-check"><input type="checkbox" checked={state.alignment.confirmed} disabled={busyFlag} onChange={e=>setState(old=>({...old,alignment:{...old.alignment,confirmed:e.target.checked}}))}/>The fixed background lines up, and I can see the whole setup.</label>
-          {unavailable?<><p className="simple-notice">Automatic checking is unavailable. Your photo is safe here. You can compare the items yourself.</p><button className="primary" disabled={busyFlag||!state.alignment.confirmed} onClick={()=>void startReview()}>Check items myself</button></>:<><p className="quiet">This sends your photo for an AI check. You’ll review anything uncertain.</p><button className="primary" disabled={busyFlag||!state.alignment.confirmed} onClick={()=>void scan()}>{step==='verify'?'Check again':'Check for changes'} <ArrowRight size={18}/></button><button className="text-button" disabled={busyFlag||!state.alignment.confirmed} onClick={()=>void startReview()}>Check items myself</button></>}
-          <details className="photo-options"><summary>Retake or adjust photo</summary><PhotoActions cameraLabel="Retake photo" label="Choose another photo" disabled={busyFlag} onPhoto={file=>upload(file,false)}/><details><summary>Advanced photo alignment</summary><AlignmentView template={template} current={state.current} value={state.alignment} busy={busyFlag} onChange={alignment=>{setAligned(null);setState(old=>({...old,alignment}));}}/></details></details>
+          {unavailable?<><p className="simple-notice">Your photo is saved. Retry automatic recognition, or optionally review it yourself.</p><button className="primary" disabled={busyFlag} onClick={()=>void detect()}>Retry</button></>:<><p className="quiet">{state.current_analysis?.objects.length?`Found ${state.current_analysis.objects.map(o=>o.label).join(', ')}. Confirm the camera view to compare their positions.`:'Confirm the camera view to check what changed.'}</p><button className="primary" disabled={busyFlag||!state.alignment.confirmed} onClick={()=>void scan()}>{step==='verify'?'Check again':'Check for changes'} <ArrowRight size={18}/></button></>}
+          {!busyFlag&&<details><summary>Correct items manually (optional)</summary><p>Use this if an item was missed or identified incorrectly. Confirm the camera view first.</p><button className="secondary" disabled={!state.alignment.confirmed} onClick={()=>void startReview()}>Check items myself</button></details>}
+
+          <details className="photo-options"><summary>Retake or adjust photo</summary><PhotoActions cameraLabel="Retake photo" label="Choose another photo" disabled={busyFlag} onPhoto={file=>upload(file,false)}/><details><summary>Advanced photo alignment</summary><AlignmentView template={template} current={state.current} value={state.alignment} busy={busyFlag} onChange={alignment=>{setAligned(null);setState(old=>({...old,alignment,current_analysis:null}));}}/></details></details>
         </>}
       </>}
       {showManual&&<><ItemReview image={reviewImage!} references={template!.objects} record={record} value={state.review!} disabled={busyFlag} onChange={review=>setState(old=>({...old,review}))}/><button className="primary" disabled={busyFlag||!state.review?.inventory_confirmed} onClick={()=>void applyReview()}>Save my review <ArrowRight size={18}/></button><button className="text-button" disabled={busyFlag} onClick={()=>setState(old=>({...old,manual:false}))}>Back to photo</button></>}

@@ -4,7 +4,7 @@ from time import perf_counter
 from .ai_adapters import MuseSparkReasoning, SAM31Segmentation, validate_concepts
 from .imaging import image_from_data_url
 from .inference_cache import InferenceCache
-from .models import AIAnalysisRequest, ReasonRequest
+from .models import AIAnalysisRequest, ReasonRequest, SceneObject
 from .providers import ProviderError, ProviderHTTP
 
 
@@ -20,10 +20,20 @@ class AIService:
         self.muse = MuseSparkReasoning(http)
         self.cache = InferenceCache()
 
+    async def segment_concept(self, image, concept):
+        # Share validated geometry, never failures, between a preview and its scan.
+        async def run():
+            objects = await self.sam.segment(image, concept)
+            return {"objects": [obj.model_dump() for obj in objects]}
+        result = await self.cache.get({"operation": "segment", "image": image["image_url"], "concept": concept}, run)
+        return [SceneObject.model_validate(obj) for obj in result["objects"]]
+
     async def analyze(self, request: AIAnalysisRequest):
         # Validate before any billable request. Block an unsupported Baseten path before discovery.
         if self.http.settings.sam_provider == "baseten":
             raise ProviderError("Baseten SAM is blocked: provide the deployment ID and verified SAM request/response contract. No external request was made. Optional verified alternative: WORLDOS_SAM_PROVIDER=meta.", 503)
+        if not self.http.settings.meta_key:
+            raise ProviderError("MODEL_API_KEY is not configured on the backend. No discovery or segmentation request was made.", 503, "missing_credentials")
         image = image_from_data_url(request.image_url)
         concepts = validate_concepts(request.concepts)
         return await self.cache.get({"operation": "analyze", "image": image["image_url"], "concepts": concepts},
@@ -40,12 +50,28 @@ class AIService:
         async def segment(index, concept):
             async with semaphore:
                 started = perf_counter()
-                detections = await self.sam.segment(image, concept)
+                detections = await self.segment_concept(image, concept)
                 timings[concept] = round((perf_counter() - started) * 1000)
                 return [obj.model_copy(update={"id": f"sam-{index}-{obj.id.removeprefix('sam-')}"}) for obj in detections]
 
-        # Collect every task, including failures; don't leak background billable calls.
-        batches = await asyncio.gather(*(segment(i, concept) for i, concept in enumerate(concepts)), return_exceptions=True)
+        # Establish access with the first real concept before starting a batch.
+        # A 404/401 must not fan out into twelve rejected, potentially billed calls.
+        batches = [await segment(0, concepts[0])] if concepts else []
+        stop = asyncio.Event()
+        async def remaining(index, concept):
+            async with semaphore:
+                if stop.is_set():
+                    return []
+                try:
+                    started = perf_counter()
+                    detections = await self.segment_concept(image, concept)
+                    timings[concept] = round((perf_counter() - started) * 1000)
+                    return [obj.model_copy(update={"id": f"sam-{index}-{obj.id.removeprefix('sam-')}"}) for obj in detections]
+                except BaseException:
+                    stop.set()
+                    raise
+        # Drain in-flight calls and skip queued work after an error; no retries.
+        batches += await asyncio.gather(*(remaining(i, concept) for i, concept in enumerate(concepts[1:], 1)), return_exceptions=True)
         for batch in batches:
             if isinstance(batch, BaseException):
                 raise batch

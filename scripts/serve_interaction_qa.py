@@ -12,7 +12,7 @@ from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
-DATA=ROOT/'artifacts'/('v12/qa' if '--empty' in sys.argv else 'interaction-qa')
+DATA=ROOT/'artifacts'/('v13/qa' if '--automatic' in sys.argv else 'v12/qa' if '--empty' in sys.argv else 'interaction-qa')
 DATA.mkdir(parents=True,exist_ok=True)
 os.environ.update(WORLDOS_DEPLOYMENT='local',WORLDOS_DATA_DIR=str(DATA),
     WORLDOS_AUTH_PASSWORD_HASH='',WORLDOS_JUDGE_PASSWORD_HASH='',WORLDOS_JUDGE_ACCESS_EXPIRES_AT='',
@@ -47,6 +47,25 @@ if '--empty' in sys.argv:
         scene.save(DATA/f'qa-{stage}.png')
 calls=[]
 app.dependency_overrides[get_ai_service]=lambda:documented_service(fixture,calls)
+
+if '--automatic' in sys.argv:
+    # UI-only fixture transport. These drawn stand-ins are NOT live AI evidence.
+    import httpx
+    from backend.ai_service import AIService
+    from backend.providers import AISettings, ProviderHTTP
+    from backend.inspect_alignment import decode
+    def automatic_fixture(request):
+        data=json.loads(request.content)
+        if data['model']!='sam-3.1':
+            return httpx.Response(200,json={'choices':[{'finish_reason':'stop','message':{'content':json.dumps({'concepts':['phone','mouse','notebook','mug'],'summary':'SYNTHETIC UI fixture, not live inference.'})}}]})
+        content=data['input'][0]['content'];label=content[0]['text'];photo=decode(content[1]['image_url']);w,h=photo.size
+        pixel=photo.getpixel((round(.44*w),round(.28*h)));moved=pixel[2]-pixel[0]>30
+        boxes={'phone':(.39 if moved else .10,.17,.10,.27),'mouse':(.72,.61,.10,.20),'notebook':(.58,.14,.25,.33),'mug':(.28,.61,.13,.19)}
+        x,y,bw,bh=boxes[label];x,y,bw,bh=round(x*w),round(y*h),round(bw*w),round(bh*h)
+        text=f'<0f>0<|box;x1={x};y1={y};x2={x+bw-1};y2={y+bh-1};w={w};h={h};c=0.95|><|mask;x=0;y=0;c=0.95;data=1,1,!SYNTHETIC|>'
+        return httpx.Response(200,json={'status':'completed','output':[{'type':'message','content':[{'type':'output_text','text':text}]}]})
+    synthetic_ai=AIService(ProviderHTTP(AISettings(meta_key='synthetic-key',sam_provider='meta'),httpx.MockTransport(automatic_fixture)))
+    app.dependency_overrides[get_ai_service]=lambda:synthetic_ai
 
 PROFILER='''<details id="qa-profiler" style="margin:20px;padding:12px;border:1px solid #62744c;font:12px monospace">
 <summary>Local QA only · synthetic AI · interaction measurements</summary>
@@ -84,6 +103,8 @@ async def qa(request,call_next):
         await asyncio.sleep(config.get('delay_seconds',0))
         if config.get('error'):
             return JSONResponse({'detail':'Synthetic QA timeout. Retry when the backend is available.'},status_code=504)
+        if config.get('ai_error') and (request.url.path.startswith('/api/ai/') or request.url.path=='/api/inspect/recognize'):
+            return JSONResponse({'detail':'Synthetic QA model access error; not a live provider response.'},status_code=502)
     return await call_next(request)
 
 if __name__=='__main__':

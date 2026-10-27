@@ -10,7 +10,7 @@ from .imaging import image_from_data_url, same_photograph
 from .inspect_alignment import align_scene, suggest_alignment
 from .inspect_models import AlignmentRequest, InspectionInput, InspectionReview, RecordAction, TemplateInput
 from .inspect_store import StoreConflict, get_inspection_store
-from .inspection import corrective_plan, explain_inspection, review_inspection, scan_workspace
+from .inspection import corrective_plan, explain_inspection, review_inspection, scan_workspace, recognize_workspace
 from .inspection_trials import (CaptureInput, TrialInput, SCENARIOS, begin_attempt, create_trial, evaluation_report,
     export_trial, finish_attempt, get_trial, list_trials, save_capture)
 
@@ -99,6 +99,23 @@ def build_inspect_router(get_ai_service, run_ai):
                 return suggest_alignment(template, body.image_url)
             return align_scene(template, body.image_url, body.alignment)
 
+    @router.post("/recognize")
+    async def recognize(body: InspectionInput, store=Depends(get_store), service=Depends(get_ai_service)):
+        with errors():
+            if body.evaluation_capture_id:
+                raise ValueError("Use the separate evaluation capture workflow.")
+            template = store.template(body.template_id)
+            if body.previous_inspection_id:
+                previous = store.inspection(body.previous_inspection_id)
+                if previous["template_id"] != body.template_id:
+                    raise ValueError("Verification must use the same saved space.")
+                template = previous["template_snapshot"]
+                if any(same_photograph(body.image_url, earlier) for earlier in
+                       (previous["current_image_url"], template["reference_image_url"])):
+                    raise ValueError("Verification needs a fresh photograph; no inference was started.")
+            check_revision(template, body.template_revision)
+            return await run_ai(recognize_workspace(template, body, service))
+
     @router.post("/scans", status_code=201)
     async def scan(body: InspectionInput, store=Depends(get_store), service=Depends(get_ai_service)):
         with errors():
@@ -177,7 +194,7 @@ def build_inspect_router(get_ai_service, run_ai):
             del record["template_snapshot"]["reference_image_url"]
             del record["current_image_url"]
             del record["aligned_image"]["image_url"]
-            return JSONResponse({"app": "WorldOS Inspect", "version": "1.2.0", "image_hashes_sha256_of_data_urls": image_hashes, **record},
+            return JSONResponse({"app": "WorldOS Inspect", "version": "1.3.0", "image_hashes_sha256_of_data_urls": image_hashes, **record},
                                 headers={"Content-Disposition": f'attachment; filename="worldos-inspect-{identity}.json"'})
 
     @router.get("/evaluation/trials")

@@ -1,0 +1,313 @@
+{
+  "checked_at": "2026-10-27",
+  "scope": "Four controlled live inference requests, one read-only Meta catalog request; no physical trials",
+  "sam_single_photo": {
+    "scope": "one real public photograph, local configured Meta credential",
+    "photo_sha256": "d8bde0e5c754d490389110474ac304974024425f551d4a6535d86522416b777f",
+    "concept": "smartphone",
+    "requests": 1,
+    "status": "success",
+    "objects": [
+      {
+        "id": "sam-0",
+        "label": "smartphone",
+        "box": {
+          "x": 0.4375,
+          "y": 0.6494845360824743,
+          "width": 0.06875,
+          "height": 0.2099343955014058
+        },
+        "locked": false,
+        "source": "sam_3_1",
+        "confidence": 0.9532163739204407
+      }
+    ],
+    "metadata": {
+      "provider": "meta",
+      "model": "sam-3.1",
+      "operation": "segment_concept",
+      "inference_latency_ms": 1891,
+      "inferred_at": "2026-10-27T23:29:53.725921+00:00",
+      "usage": {
+        "total_tokens": 0,
+        "input_tokens": 0,
+        "output_tokens": 0
+      },
+      "live_request": true
+    },
+    "wall_ms": 1923
+  },
+  "automatic_crop": {
+    "scope": "Real public photograph cropped to phone and mouse, no supplied concepts or manual boxes",
+    "source": "https://unsplash.com/photos/a-desk-with-a-laptop-keyboard-mouse-and-a-cell-phone-ElFBCgOfoIM",
+    "crop_pixels": [
+      650,
+      680,
+      1100,
+      1030
+    ],
+    "image_sha256": "53621fec23f4377c63619dc75cac1570d1fc248ff07f3cc5c63d21f34f884972",
+    "physical_trials": 0,
+    "requests": [
+      {
+        "provider": "baseten",
+        "model": "meta-models/muse-spark-open-1026",
+        "operation": "discover_concepts",
+        "status": "success",
+        "metadata": {
+          "provider": "baseten",
+          "model": "meta-models/muse-spark-open-1026",
+          "operation": "discover_concepts",
+          "inference_latency_ms": 4703,
+          "inferred_at": "2026-10-27T23:33:32.642660+00:00",
+          "usage": {
+            "prompt_tokens": 609,
+            "completion_tokens": 529,
+            "total_tokens": 1138
+          },
+          "live_request": true
+        },
+        "wall_ms": 4697
+      },
+      {
+        "provider": "meta",
+        "model": "sam-3.1",
+        "operation": "segment_concept",
+        "status": "failed",
+        "code": "unsupported_model_access",
+        "http_status": 404,
+        "wall_ms": 447
+      }
+    ],
+    "status": "failed",
+    "code": "unsupported_model_access",
+    "message": "The requested model is unavailable to this credential. Check the model ID, team permissions, and model access.",
+    "wall_ms": 5148
+  },
+  "production": {
+    "checked_at": "2026-10-27T23:30:04.271096+00:00",
+    "url": "https://worldos-inspect.onrender.com",
+    "scope": "Real public desk photo; no physical movement or fresh corrected photograph.",
+    "physical_trials": 0,
+    "requests": [
+      {
+        "path": "/api/analyze",
+        "http_status": 200,
+        "wall_ms": 363
+      },
+      {
+        "path": "/api/ai/analyze",
+        "http_status": 502,
+        "wall_ms": 526,
+        "error": "The requested model is unavailable to this credential. Check the model ID, team permissions, and model access."
+      }
+    ],
+    "image_sha256": "d8bde0e5c754d490389110474ac304974024425f551d4a6535d86522416b777f",
+    "photo_source": "https://unsplash.com/photos/a-desk-with-a-laptop-keyboard-mouse-and-a-cell-phone-ElFBCgOfoIM",
+    "reference_analysis": null,
+    "provider_evidence": {
+      "muse": {
+        "provider": "baseten",
+        "model": "meta-models/muse-spark-open-1026",
+        "readiness": {
+          "status": "verified",
+          "message": "A validated live inference succeeded in this process. This verifies connectivity, not photograph accuracy or physical task completion.",
+          "required_variable": "BASETEN_API_KEY"
+        },
+        "last_inference": {
+          "provider": "baseten",
+          "model": "meta-models/muse-spark-open-1026",
+          "operation": "test_connection",
+          "inference_latency_ms": 6613,
+          "inferred_at": "2026-10-27T23:16:51.902237+00:00",
+          "usage": {
+            "prompt_tokens": 150,
+            "completion_tokens": 24,
+            "total_tokens": 174
+          },
+          "live_request": true
+        }
+      },
+      "sam": {
+        "provider": "meta",
+        "model": "sam-3.1",
+        "readiness": {
+          "status": "needs_retest",
+          "message": "The latest provider request failed. The requested model is unavailable to this credential. Check the model ID, team permissions, and model access. No success is assumed; retry explicitly after resolving the problem.",
+          "required_variable": "MODEL_API_KEY"
+        },
+        "last_inference": null
+      }
+    }
+  },
+  "local_fallback_evaluation": [
+    {
+      "model": "nano",
+      "photo": "artifacts/real-desk/jakub-desk.jpg",
+      "ms": 51,
+      "objects": [
+        {
+          "class_id": 64,
+          "confidence": 0.8426703214645386,
+          "box_pixels": [
+            887.0789184570312,
+            780.330322265625,
+            133.23521423339844,
+            196.26092529296875
+          ]
+        },
+        {
+          "class_id": 64,
+          "confidence": 0.7725716233253479,
+          "box_pixels": [
+            694.50634765625,
+            689.0331420898438,
+            142.15109252929688,
+            229.82455444335938
+          ]
+        },
+        {
+          "class_id": 63,
+          "confidence": 0.7654340267181396,
+          "box_pixels": [
+            0.916994571685791,
+            60.84169387817383,
+            690.6238403320312,
+            916.818115234375
+          ]
+        },
+        {
+          "class_id": 66,
+          "confidence": 0.7192392349243164,
+          "box_pixels": [
+            833.2301025390625,
+            459.40185546875,
+            685.550048828125,
+            213.63368225097656
+          ]
+        },
+        {
+          "class_id": 66,
+          "confidence": 0.3880276381969452,
+          "box_pixels": [
+            3.855426549911499,
+            323.8483581542969,
+            536.7847900390625,
+            513.533203125
+          ]
+        }
+      ]
+    },
+    {
+      "model": "nano",
+      "photo": "artifacts/v13/real-desk-crop.jpg",
+      "ms": 43,
+      "objects": [
+        {
+          "class_id": 67,
+          "confidence": 0.8558325171470642,
+          "box_pixels": [
+            235.13169860839844,
+            105.98941040039062,
+            139.29742431640625,
+            189.47091674804688
+          ]
+        },
+        {
+          "class_id": 67,
+          "confidence": 0.5921529531478882,
+          "box_pixels": [
+            48.17781448364258,
+            6.2162299156188965,
+            136.00607299804688,
+            239.06105041503906
+          ]
+        }
+      ]
+    },
+    {
+      "model": "tiny",
+      "photo": "artifacts/real-desk/jakub-desk.jpg",
+      "ms": 139,
+      "objects": [
+        {
+          "class_id": 63,
+          "confidence": 0.9333235621452332,
+          "box_pixels": [
+            -0.8186047077178955,
+            53.368614196777344,
+            700.4979248046875,
+            946.8123779296875
+          ]
+        },
+        {
+          "class_id": 64,
+          "confidence": 0.8714568614959717,
+          "box_pixels": [
+            887.1246337890625,
+            784.572021484375,
+            131.6610107421875,
+            191.778076171875
+          ]
+        },
+        {
+          "class_id": 66,
+          "confidence": 0.8651493787765503,
+          "box_pixels": [
+            844.8978271484375,
+            469.3598937988281,
+            675.8396606445312,
+            195.09747314453125
+          ]
+        },
+        {
+          "class_id": 66,
+          "confidence": 0.6694645285606384,
+          "box_pixels": [
+            17.078136444091797,
+            353.00604248046875,
+            498.3056335449219,
+            474.6533203125
+          ]
+        },
+        {
+          "class_id": 63,
+          "confidence": 0.3298231363296509,
+          "box_pixels": [
+            0.05430075153708458,
+            79.64445495605469,
+            380.3166809082031,
+            560.1348266601562
+          ]
+        }
+      ]
+    },
+    {
+      "model": "tiny",
+      "photo": "artifacts/v13/real-desk-crop.jpg",
+      "ms": 102,
+      "objects": [
+        {
+          "class_id": 67,
+          "confidence": 0.7779566645622253,
+          "box_pixels": [
+            238.9636688232422,
+            104.63711547851562,
+            133.39891052246094,
+            201.11415100097656
+          ]
+        },
+        {
+          "class_id": 67,
+          "confidence": 0.6444343328475952,
+          "box_pixels": [
+            41.77347183227539,
+            6.348912715911865,
+            132.04348754882812,
+            231.9296112060547
+          ]
+        }
+      ]
+    }
+  ]
+}

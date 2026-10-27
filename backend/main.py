@@ -49,7 +49,7 @@ async def lifespan(_app):
         with suppress(asyncio.CancelledError): await worker
 
 
-app = FastAPI(title="WorldOS", version="1.2.0", lifespan=lifespan, description="Visual workspace inspection, persistent reference templates, and adaptive spatial planning.")
+app = FastAPI(title="WorldOS", version="1.3.0", lifespan=lifespan, description="Visual workspace inspection, persistent reference templates, and adaptive spatial planning.")
 app.add_middleware(RequestLimitsMiddleware, production=security_settings.deployment=='public',
                    max_bytes=int(os.getenv('WORLDOS_MAX_REQUEST_MB','32'))*1024*1024,
                    max_concurrent_writes=int(os.getenv('WORLDOS_MAX_CONCURRENT_WRITES','2')))

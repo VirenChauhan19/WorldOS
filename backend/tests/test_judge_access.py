@@ -57,6 +57,8 @@ def test_role_isolation_full_inspection_and_persisted_judge_session(settings,tmp
     assert client.get('/api/inspect/templates').json()=={'templates':[]}
     for method in ('get','delete'):
         assert getattr(client,method)('/api/inspect/templates/'+owned['id']).status_code==404
+    assert client.post('/api/inspect/recognize',json={'template_id':owned['id'],'template_revision':1,
+        'image_url':photo(),'alignment':{'confirmed':False}}).status_code==404
     assert client.get('/api/admin/backups/latest').status_code==403
     assert client.post('/api/ai/connection-test').status_code==403
     assert client.get('/openapi.json').status_code==403

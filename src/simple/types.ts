@@ -3,7 +3,7 @@ import type { Alignment, InspectionReview, ReferenceObject } from '../inspect/ty
 export type Step='setup'|'check'|'result'|'fix'|'verify';
 export interface WizardState {
   step:Step;name:string;reference:SceneImage|null;current:SceneImage|null;
-  objects:ReferenceObject[];analysis:AIAnalysis|null;reference_ms:number|null;
+  objects:ReferenceObject[];analysis:AIAnalysis|null;current_analysis?:AIAnalysis|null;reference_ms:number|null;
   template_id:string|null;record_id:string|null;previous_id:string|null;
   alignment:Alignment;manual:boolean;review:InspectionReview|null;
 }

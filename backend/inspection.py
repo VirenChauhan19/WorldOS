@@ -7,6 +7,7 @@ from .ai_adapters import validate_concepts
 from .inspect_alignment import align_scene, decode
 from .inspect_models import InspectionExplanation, TemplateObject
 from .models import AIAnalysisRequest, Box, SceneObject
+from .imaging import image_from_data_url
 from .planner import contains, overlaps, restore_positions
 from .providers import ProviderError
 from .visual_verification import edge_error, label_key, match_identities
@@ -110,16 +111,28 @@ def inspect_facts(template, detections, aligned_image_url, *, inventory=False, r
         "message": "The inspected workspace matches the reviewed template." if passed else "Resolve uncertain identities and confirm the full inventory." if review_required else "Workspace differences need attention."})
 
 
-async def scan_workspace(template, request, service):
-    started = perf_counter()
+async def recognize_workspace(template, request, service):
+    """Recognize immediately; unconfirmed camera alignment cannot produce facts.
+
+    The following scan reuses server-validated inference for this exact image and
+    transform. Browser-provided boxes are never used as automatic evidence.
+    """
     aligned = align_scene(template, request.image_url, request.alignment)
-    if not aligned["comparison_allowed"]:
-        raise ValueError("Position comparison is blocked. Confirm alignment and ensure the photo covers the complete reference workspace.")
     labels = list(dict.fromkeys(label_key(o["label"]) for o in template["objects"]))
     extras = validate_concepts(request.extra_concepts)
+    async def run():
+        return await _recognize(aligned, labels, extras, request.discover_unexpected, service)
+    result = await service.cache.get({"operation": "inspect_recognition", "image": aligned["image_url"],
+        "labels": labels, "extras": extras, "discover": request.discover_unexpected}, run)
+    return {**result, "aligned_image": aligned}
+
+
+async def _recognize(aligned, labels, extras, discover_unexpected, service):
     discovery = None
     inference_started = perf_counter()
-    if request.discover_unexpected:
+    # Check access on a real reference concept before spending on discovery.
+    await service.segment_concept(image_from_data_url(aligned["image_url"]), labels[0])
+    if discover_unexpected:
         # New classes need explicit concept discovery; prompting only reference
         # labels cannot establish that unexpected object types are absent.
         async def discover():
@@ -132,12 +145,22 @@ async def scan_workspace(template, request, service):
         raise ValueError("More than 12 object concepts were found. Narrow the workspace or disable discovery and supply reviewed extra concepts.")
     analysis = jsonable_encoder(await service.analyze(AIAnalysisRequest(image_url=aligned["image_url"], concepts=concepts)))
     inference_wall_ms = round((perf_counter()-inference_started)*1000)
+    return {"analysis": analysis, "concept_discovery": discovery, "inference_wall_ms": inference_wall_ms}
+
+
+async def scan_workspace(template, request, service):
+    started = perf_counter()
+    aligned = align_scene(template, request.image_url, request.alignment)
+    if not aligned["comparison_allowed"]:
+        raise ValueError("Position comparison is blocked. Confirm alignment and ensure the photo covers the complete reference workspace.")
+    recognition = await recognize_workspace(template, request, service)
+    analysis, discovery = recognition["analysis"], recognition["concept_discovery"]
     facts = inspect_facts(template, analysis["objects"], aligned["image_url"], inventory=request.inventory_confirmed)
     return {"template_id": template["id"], "template_revision": template["revision"], "template_snapshot": template,
             "current_image_url": request.image_url, "aligned_image": aligned,
             "analysis": analysis, "concept_discovery": discovery, "automatic_result": facts,
             "reviewed_result": None, "review": None, "explanation": None, "correction_plan": None,
-            "previous_inspection_id": request.previous_inspection_id, "inference_wall_ms": inference_wall_ms, "latency_ms": round((perf_counter()-started)*1000),
+            "previous_inspection_id": request.previous_inspection_id, "inference_wall_ms": recognition["inference_wall_ms"], "latency_ms": round((perf_counter()-started)*1000),
             "warnings": analysis["warnings"]+["Inspect all visible obstacles. SAM and concept discovery cannot prove an exhaustive inventory."]}
 
 
