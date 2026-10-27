@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUpRight, Box as BoxIcon, Check, CheckCheck, ChevronRight, CircleHelp, Crosshair, Download, Eye, EyeOff, Focus, ImagePlus, Layers3, LoaderCircle, LockKeyhole, Maximize, MousePointer2, Plus, RotateCcw, ScanLine, ShieldCheck, Sparkles, SquareDashed, Trash2, UnlockKeyhole, X } from 'lucide-react';
 import Canvas from './Canvas';
+import OperationStatus from './ui/OperationStatus';
+import Dialog from './ui/Dialog';
 import PhotoActions from './PhotoActions';
 import { exportJSON } from './exportFile';
 import AIPanel from './AIPanel';
@@ -19,7 +21,7 @@ const labels = ['Understand', 'Make a plan', 'Verify results'];
 const copyObjects = () => structuredClone(SAMPLE_OBJECTS);
 const getError = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Please try again.';
 
-export default function App() {
+export default function App({active=true}:{active?:boolean}) {
   const [image, setImage] = useState<SceneImage>(SAMPLE_IMAGE);
   const [objects, setObjects] = useState<SceneObject[]>(copyObjects);
   const [target, setTarget] = useState<Box | null>(SAMPLE_TARGET);
@@ -54,7 +56,7 @@ export default function App() {
   const [demoStep, setDemoStep] = useState(0);
   const [activeMove, setActiveMove] = useState(0);
   const [evidence, setEvidence] = useState<DemoEvidence | null>(null);
-  const [elapsed, setElapsed] = useState(0);
+  const requestLock=useRef(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const afterInput = useRef<HTMLInputElement>(null);
   const feasible = !!plan && ['ready', 'already_clear'].includes(plan.status);
@@ -64,20 +66,15 @@ export default function App() {
   const isSample = image.image_url === SAMPLE_IMAGE.image_url;
   const hasAIObjects = objects.some(obj => obj.source && obj.source !== 'manual');
 
-  useEffect(() => {
-    setElapsed(0);
-    if (!busy) return;
-    const started = Date.now();
-    const timer = window.setInterval(() => setElapsed(Math.floor((Date.now()-started)/1000)), 1000);
-    return () => window.clearInterval(timer);
-  }, [busy]);
+  useEffect(()=>{if(!active)setHelp(false);},[active]);
 
   useEffect(() => {
+    if(!active)return;
     let mounted = true;
     const ping = () => health().then(result => { if (mounted) { setOnline(true); setAICapabilities(result.ai); } }).catch(() => { if (mounted) setOnline(false); });
-    void ping(); const interval = window.setInterval(ping, 15000);
+    void ping(); const interval = window.setInterval(()=>{if(document.visibilityState!=='hidden')void ping();}, 15000);
     return () => { mounted = false; window.clearInterval(interval); };
-  }, []);
+  }, [active]);
 
   function invalidate() {
     setEvidence(previous => previous ? { ...previous, historical: true } : null); setActiveMove(0);
@@ -120,7 +117,8 @@ export default function App() {
     updateObjects(activeObjects.map(obj => obj.id === selected ? { ...obj, box } : obj));
   }
   async function upload(file: File | undefined, after = false) {
-    if (!file) return;
+    if (!file || busy || requestLock.current) return;
+    requestLock.current=true;
     setBusy(after ? 'Preparing final photo…' : 'Preparing your scene…'); setError(null);
     try {
       const result = await analyze(file);
@@ -134,13 +132,14 @@ export default function App() {
       }
       setOnline(true);
     } catch (error) { setError(getError(error)); }
-    finally { setBusy(null); }
+    finally { requestLock.current=false;setBusy(null); }
   }
   async function generate() {
     if (!target || !objects.length || !goal.trim()) { setError('Add at least one object, draw a target region, and describe your goal.'); return; }
     if (objects.some(obj => !obj.label.trim())) { setError('Give every object a label.'); return; }
     if (hasAIObjects && !aiReviewed) { setError('Review AI annotations, add missed obstacles, then confirm the scene before planning.'); return; }
     const req: PlanRequest = { objects: structuredClone(objects), target: { ...target }, workspace: { ...workspace }, goal: goal.trim(), clearance: 0.008, ...(constraints ? { constraints: structuredClone(constraints) } : {}) };
+    if(busy||requestLock.current)return;requestLock.current=true;
     setBusy('Finding a safe layout…'); setError(null);
     try {
       const result = await planScene(req);
@@ -148,14 +147,15 @@ export default function App() {
       setOriginalSnapshot(req); setOriginalImage(image); setRevision(null); setVisualResult(null); setVisualStale(false);
       setActiveMove(0); if (demo) setDemoStep(2);
     } catch (error) { setError(getError(error)); }
-    finally { setBusy(null); }
+    finally { requestLock.current=false;setBusy(null); }
   }
   async function verify() {
     if (!snapshot || !finalImage || reviewed.length !== observed.length) return;
+    if(busy||requestLock.current)return;requestLock.current=true;
     setBusy('Checking placements…'); setError(null);
     try { setVerification(visualResult || revision || observed.length !== snapshot.objects.length ? await verifyReviewed(reviewedState()) : await verifyScene(snapshot, observed)); setOnline(true); }
     catch (error) { setError(getError(error)); }
-    finally { setBusy(null); }
+    finally { requestLock.current=false;setBusy(null); }
   }
   function reviewedState() {
     return { original_request: originalSnapshot ?? snapshot!, plan_request: snapshot!, observed_objects: observed, reviewed_ids: reviewed, framing_confirmed: framingConfirmed, inventory_confirmed: inventoryConfirmed };
@@ -166,6 +166,7 @@ export default function App() {
   }
   async function automaticVerification() {
     if (!snapshot || !finalImage) return;
+    if(busy||requestLock.current)return;requestLock.current=true;
     setBusy('SAM is detecting final positions and checking identities…'); setError(null); setVerification(null); setVisualResult(null);
     try {
       const manualExtras = observed.filter(o => !snapshot.objects.some(original => original.id === o.id) && !o.id.startsWith('extra:'));
@@ -176,10 +177,11 @@ export default function App() {
       setObserved([...mapped, ...extras, ...manualExtras]); setReviewed([]); setCompare('after'); setShowBoxes(true);
       if (result.passed) setVerification({ source: result.source ?? 'sam_after_photo', passed: true, message: result.message, matched_count: result.matched_count, issues: result.issues, objects: result.objects.map(row => ({ ...row, edge_error: row.edge_error ?? 1 })) });
     } catch (error) { setError(getError(error)); }
-    finally { setBusy(null); }
+    finally { requestLock.current=false;setBusy(null); }
   }
   async function replan() {
     if (!snapshot || !finalImage) return;
+    if(busy||requestLock.current)return;requestLock.current=true;
     setBusy('Replanning from reviewed current positions…'); setError(null);
     try {
       const result = await replanScene(reviewedState()); setRevision(result);
@@ -189,7 +191,7 @@ export default function App() {
         setActiveMove(0); if (demo) setDemoStep(3);
       }
     } catch (error) { setError(getError(error)); }
-    finally { setBusy(null); }
+    finally { requestLock.current=false;setBusy(null); }
   }
   function reset() {
     invalidate(); setEvidence(null); setDemoStep(0); setImage(SAMPLE_IMAGE); setObjects(copyObjects()); setTarget(SAMPLE_TARGET); setWorkspace(FULL); setGoal('Make room for my laptop without moving my coffee.'); setSelected('notebook'); setStage('annotate'); setTool('select'); setShowBoxes(true);
@@ -205,7 +207,7 @@ export default function App() {
     else if (next >= 4 && feasible) { nav('verify'); setCompare('split'); }
   }
   function canvas(final = false, readonly = false) {
-    return <Canvas image={final ? finalImage! : image} objects={final ? observed : objects} target={target} workspace={workspace} tool={tool} selected={selected} onSelect={setSelected} onObjects={updateObjects} onTarget={box => { invalidate(); setTarget(box); setTool('select'); }} onWorkspace={box => { invalidate(); setWorkspace(box); setTool('select'); }} onAdd={addObject} plan={readonly ? null : plan} mode={readonly ? 'plan' : final ? 'final' : stage === 'plan' ? 'plan' : 'annotate'} showBoxes={showBoxes} activeMovement={demo && demoStep === 3 ? activeMove + 1 : undefined} placementStatuses={final ? Object.fromEntries(verification ? verification.objects.map(row => [row.object_id, row.matched ? 'completed' : 'incomplete']) : visualResult && !visualStale ? visualResult.objects.map(row => [row.object_id, row.status]) : []) : {}}/>;
+    return <Canvas disabled={!!busy} image={final ? finalImage! : image} objects={final ? observed : objects} target={target} workspace={workspace} tool={tool} selected={selected} onSelect={setSelected} onObjects={updateObjects} onTarget={box => { invalidate(); setTarget(box); setTool('select'); }} onWorkspace={box => { invalidate(); setWorkspace(box); setTool('select'); }} onAdd={addObject} plan={readonly ? null : plan} mode={readonly ? 'plan' : final ? 'final' : stage === 'plan' ? 'plan' : 'annotate'} showBoxes={showBoxes} activeMovement={demo && demoStep === 3 ? activeMove + 1 : undefined} placementStatuses={final ? Object.fromEntries(verification ? verification.objects.map(row => [row.object_id, row.matched ? 'completed' : 'incomplete']) : visualResult && !visualStale ? visualResult.objects.map(row => [row.object_id, row.status]) : []) : {}}/>;
   }
 
   return <div className="app-shell">
@@ -236,8 +238,8 @@ export default function App() {
               </> : stage === 'verify' && finalImage ? <><button aria-label="Draw final obstacle" className={tool === 'object' ? 'selected' : ''} disabled={!!busy} onClick={() => { setTool(tool === 'object' ? 'select' : 'object'); setCompare('after'); setShowBoxes(true); }}><Plus size={14}/>Obstacle</button><div className="comparison-controls">{(['before', 'after', 'split'] as const).map(value => <button key={value} className={compare === value ? 'selected' : ''} onClick={() => setCompare(value)}>{value === 'split' ? 'Side by side' : value === 'before' ? 'Before' : 'After'}</button>)}</div></> : <span className="toolbar-caption"><Crosshair size={15}/>{stage === 'plan' ? 'Follow the numbered arrows' : 'Upload a final photo to compare'}</span>}</div>
               <PhotoActions label={stage==='verify'?'Final photo':'Upload photo'} cameraLabel={stage==='verify'?'Take final photo':'Take scene photo'} disabled={!!busy||stage==='plan'} onPhoto={file=>upload(file,stage==='verify')}/></div>
               <div className={`canvas-area ${busy ? 'is-busy' : ''}`} onDragOver={e => { if (stage !== 'plan' && !busy) e.preventDefault(); }} onDrop={e => { e.preventDefault(); if (!busy && stage !== 'plan') void upload(e.dataTransfer.files[0], stage === 'verify'); }}>
-                {stage === 'verify' ? finalImage ? compare === 'split' ? <div className="split-scenes"><div><span className="image-tag">BEFORE</span>{canvas(false, true)}</div><div><span className="image-tag">AFTER · EDIT BOXES</span>{canvas(true)}</div></div> : <>{canvas(compare === 'after', compare === 'before')}<span className="image-tag">{compare === 'after' ? 'AFTER · REVIEW FINAL POSITIONS' : 'BEFORE'}</span></> : <div className="final-empty"><div className="upload-symbol"><ImagePlus size={32}/></div><h3>Let’s see what changed.</h3><p>Take a photo after following the plan.<br/>Use the same camera angle and framing.</p><PhotoActions label="Upload final photo" cameraLabel="Take final photo" disabled={!!busy} onPhoto={file=>upload(file,true)}/><span>JPEG, PNG or WebP · up to 12 MB</span></div> : <>{canvas()}<span className="image-tag">{isSample ? 'ILLUSTRATED SAMPLE' : 'YOUR SCENE'}</span></>}
-                {busy && <div className="loading-overlay" role="status"><LoaderCircle className="spin" size={28}/><span>{busy}</span><small>{elapsed}s elapsed. {elapsed >= 15 ? 'Still waiting for the engine. You can retry after a timeout or use manual annotations.' : 'Results appear when the request completes.'}</small></div>}
+                {stage === 'verify' ? finalImage ? compare === 'split' ? <div className="split-scenes"><div><span className="image-tag">BEFORE</span>{canvas(false, true)}</div><div><span className="image-tag">AFTER · EDIT BOXES</span>{canvas(true)}</div></div> : <>{canvas(compare === 'after', compare === 'before')}<span className="image-tag">{compare === 'after' ? 'AFTER · REVIEW FINAL POSITIONS' : 'BEFORE'}</span></> : <div className="final-empty"><div className="upload-symbol"><ImagePlus size={32}/></div><h3>Let’s see what changed.</h3><p>Take a photo after following the plan.<br/>Use the same camera angle and framing.</p><PhotoActions label="Upload final photo" cameraLabel="Take final photo" disabled={!!busy} onPhoto={file=>upload(file,true)}/><span>JPEG, PNG or WebP · optimized for mobile</span></div> : <>{canvas()}<span className="image-tag">{isSample ? 'ILLUSTRATED SAMPLE' : 'YOUR SCENE'}</span></>}
+                {busy && <div className="loading-overlay"><OperationStatus key={busy} message={busy}/></div>}
               </div>
               <div className="canvas-footer"><div className="flex items-center gap-2"><span className="file-dot"/>{stage === 'verify' && finalImage ? finalImage.name : image.name}<span className="image-dimensions">{image.width} × {image.height}</span></div><div className="legend"><span><i className="blue"/>Object</span><span><i className="amber"/>Locked</span><span><i className="lime"/>Target</span></div></div>
             </div>
@@ -275,6 +277,6 @@ export default function App() {
     </div>
     <input className="hidden" ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" aria-label="Upload scene image" onChange={e => { void upload(e.target.files?.[0]); e.target.value = ''; }}/>
     <input className="hidden" ref={afterInput} type="file" accept="image/jpeg,image/png,image/webp" aria-label="Upload final image" onChange={e => { void upload(e.target.files?.[0], true); e.target.value = ''; }}/>
-    {help && <div className="modal-backdrop" onClick={() => setHelp(false)}><section role="dialog" aria-modal="true" aria-labelledby="guide-title" className="guide-modal" onClick={e => e.stopPropagation()}><button className="close-modal icon-button" autoFocus aria-label="Close guide" onClick={() => setHelp(false)} onKeyDown={e => { if (e.key === 'Escape') setHelp(false); }}><X size={20}/></button><span className="section-kicker"><Layers3 size={18}/> WORLDOS QUICK GUIDE</span><h2 id="guide-title">From clutter to clarity.</h2><ol><li><strong>Understand your space.</strong> Upload a photo of a flat surface. Draw non-overlapping object boxes, label every obstacle, and lock anything that should stay. Draw a surface boundary if the full image isn’t usable.</li><li><strong>Make room.</strong> Draw the target area and describe your goal. Generate a plan, then follow the numbered lift-and-place movements. Check goal-inferred locks in the plan.</li><li><strong>Close the loop.</strong> Take a final photo from the same angle. Run Automatic Verify or locate objects manually. Review uncertain identities and final boxes, then verify placements or replan from the current state. Protected objects keep their original anchors.</li></ol><p>The included desk is a hand-annotated illustration for exploring the real planner. AI assistance is opt-in and uses configured providers. SAM requires object concepts; Muse Spark can discover them. Check AI assistance for configuration status. Manual mode makes no model calls.</p><button className="primary full-width" onClick={() => setHelp(false)}>Let’s make some space <ArrowRight size={16}/></button></section></div>}
+    <Dialog open={help} onClose={()=>setHelp(false)} title="Quick guide"><div className="guide-content"><span className="section-kicker"><Layers3 size={18}/> WORLDOS QUICK GUIDE</span><h2 id="guide-title">From clutter to clarity.</h2><ol><li><strong>Understand your space.</strong> Upload a photo of a flat surface. Draw non-overlapping object boxes, label every obstacle, and lock anything that should stay. Draw a surface boundary if the full image isn’t usable.</li><li><strong>Make room.</strong> Draw the target area and describe your goal. Generate a plan, then follow the numbered lift-and-place movements. Check goal-inferred locks in the plan.</li><li><strong>Close the loop.</strong> Take a final photo from the same angle. Run Automatic Verify or locate objects manually. Review uncertain identities and final boxes, then verify placements or replan from the current state. Protected objects keep their original anchors.</li></ol><p>The included desk is a hand-annotated illustration for exploring the real planner. AI assistance is opt-in and uses configured providers. SAM requires object concepts; Muse Spark can discover them. Check AI assistance for configuration status. Manual mode makes no model calls.</p><button className="primary full-width" onClick={() => setHelp(false)}>Let’s make some space <ArrowRight size={16}/></button></div></Dialog>
   </div>;
 }

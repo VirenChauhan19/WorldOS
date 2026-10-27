@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { LoaderCircle, RefreshCw, ShieldCheck } from 'lucide-react';
 import { connectionDiagnostics, testAIConnection } from './api';
 import type { AIIntegration, ConnectionDiagnostics } from './types';
@@ -21,6 +21,7 @@ export default function ConnectionStatus({ busy, onBusy }: Props) {
   const [diagnostics, setDiagnostics] = useState<ConnectionDiagnostics | null>(null);
   const [integration, setIntegration] = useState<AIIntegration>('muse');
   const [pending, setPending] = useState(false);
+  const lock=useRef(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     if(busy)return;
@@ -29,17 +30,18 @@ export default function ConnectionStatus({ busy, onBusy }: Props) {
     return () => { mounted = false; };
   }, [busy]);
   async function refresh() {
+    if(lock.current||busy)return;lock.current=true;
     setPending(true); setError(null);
     try { setDiagnostics(await connectionDiagnostics()); }
     catch { setError('Could not refresh connection diagnostics.'); }
-    finally { setPending(false); }
+    finally { lock.current=false;setPending(false); }
   }
   async function test() {
-    if(judge)return;
+    if(judge||busy||lock.current)return;lock.current=true;
     setPending(true); setError(null); onBusy(`Testing ${integration === 'muse' ? 'Muse Spark' : 'SAM 3.1'} connection…`);
     try { setDiagnostics(await testAIConnection(integration)); }
     catch (e) { setError(e instanceof Error ? e.message : 'The connection test could not finish. No live success is assumed.'); }
-    finally { setPending(false); onBusy(null); }
+    finally { lock.current=false;setPending(false); onBusy(null); }
   }
   return <div className="connection-status" aria-label="AI Connection Status">
     <div className="connection-title"><h3><ShieldCheck size={14}/> AI Connection Status</h3><button className="icon-button" aria-label="Refresh AI connection status" disabled={!!busy || pending} onClick={() => void refresh()}><RefreshCw size={13}/></button></div>

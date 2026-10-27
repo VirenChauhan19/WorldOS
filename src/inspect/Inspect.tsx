@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, CheckCheck, Download, Focus, LoaderCircle, Plus, ScanLine, ShieldCheck, Sparkles } from 'lucide-react';
+import { ArrowRight, CheckCheck, Download, Focus, Plus, ScanLine, ShieldCheck, Sparkles } from 'lucide-react';
 import Canvas from '../Canvas';
+import OperationStatus from '../ui/OperationStatus';
+import Photo from '../ui/Photo';
+import PhotoComparison from '../ui/PhotoComparison';
 import PhotoActions from '../PhotoActions';
 import { exportJSON } from '../exportFile';
 import ConnectionStatus from '../ConnectionStatus';
@@ -18,7 +21,7 @@ const DEFAULT_WORKSPACE={x:.03,y:.03,width:.94,height:.94};
 const errorText=(e:unknown)=>e instanceof Error?e.message:'The action could not be completed. Please retry.';
 const statusText=(value:string)=>value.replaceAll('_',' ');
 
-export default function Inspect() {
+export default function Inspect({active=true,initialTemplateId,initialInspectionId,navigationIntent}:{active?:boolean;initialTemplateId?:string;initialInspectionId?:string;navigationIntent?:string}) {
   const [templates,setTemplates]=useState<TemplateSummary[]>([]);
   const [template,setTemplate]=useState<WorkspaceTemplate|null>(null);
   const [stage,setStage]=useState(0);
@@ -55,7 +58,7 @@ export default function Inspect() {
   const [history,setHistory]=useState<{id:string;revision:number;created_at:string}[]>([]);
   const [deletePending,setDeletePending]=useState(false);
   const [busy,setBusy]=useState<string|null>('Loading workspace templates…');
-  const [elapsed,setElapsed]=useState(0);
+  const openedIntent=useRef<string|undefined>(undefined);
   const [error,setError]=useState<string|null>(null);
   const [notice,setNotice]=useState('');
   const [evaluationOpen,setEvaluationOpen]=useState(false);
@@ -72,12 +75,19 @@ export default function Inspect() {
     api.listTemplates().then(value=>{if(mounted)setTemplates(value.templates);}).catch(e=>{if(mounted)setError(errorText(e));}).finally(()=>{if(mounted)setBusy(null);});
     return ()=>{mounted=false;};
   },[]);
+  useEffect(()=>{if(error&&active)errorRef.current?.scrollIntoView?.({behavior:'instant',block:'nearest'});},[error,active]);
   useEffect(()=>{
-    setElapsed(0); if(!busy)return;
-    const start=Date.now(),timer=window.setInterval(()=>setElapsed(Math.floor((Date.now()-start)/1000)),1000);
-    return ()=>window.clearInterval(timer);
-  },[busy]);
-  useEffect(()=>{if(error)errorRef.current?.scrollIntoView?.({behavior:'smooth',block:'center'});},[error]);
+    if(!active||busy)return;
+    const intent=initialInspectionId?`inspection:${initialInspectionId}`:initialTemplateId?`template:${initialTemplateId}`:'';
+    if(!intent||openedIntent.current===intent+navigationIntent)return;
+    openedIntent.current=intent+navigationIntent;
+    if(initialInspectionId)void action('Opening saved inspection…',async()=>{
+      const value=await api.getInspection(initialInspectionId);
+      loadRecord(value);setEditing(false);setEvaluation(null);setEvaluationOpen(false);setPrevious(null);setCurrent(null);setStage(2);
+    });
+    else if(initialTemplateId==='new'){if(!editing)startNew();}
+    else if(initialTemplateId)void selectTemplate(initialTemplateId);
+  },[active,busy,initialTemplateId,initialInspectionId,navigationIntent]);
   async function action(label:string,operation:()=>Promise<void>) {
     if(lock.current || busy)return;
     lock.current=true;setBusy(label);setError(null);setNotice('');
@@ -140,7 +150,7 @@ export default function Inspect() {
     if(!reference)return;
     await action('Saving reference workspace…',async()=>{
       const value=await api.saveTemplate({name,description,location,reference_image_url:reference.image_url,objects,workspace,clearance,annotations_reviewed:referenceReviewed,reference_analysis:referenceAnalysis,reference_inference_wall_ms:referenceLatency,...(draftRevision?{revision:draftRevision}:{})},draftId);
-      setTemplate(value);setEditing(false);setStage(1);setCurrent(null);setRecord(null);setPrevious(null);setHistory([]);await refreshList();setNotice('Workspace template saved locally. Reference image and annotations survive a restart.');
+      setTemplate(value);setEditing(false);setStage(1);setCurrent(null);setRecord(null);setPrevious(null);setHistory([]);await refreshList();setNotice('Workspace template saved to this backend. Download a backup to keep a copy.');
     });
   }
   async function align(automatic:boolean) {
@@ -217,7 +227,7 @@ export default function Inspect() {
   const duplicateChoices=confirmed.map(id=>assignments[id]).filter(value=>value&&value!=='absent');
   const invalidChoices=new Set(duplicateChoices).size!==duplicateChoices.length||confirmed.some(id=>!assignments[id]);
   function scene(image:SceneImage,items:SceneObject[],editable=false,plan:Plan|null=null) {
-    return <Canvas image={image} objects={items} target={null} workspace={editing?workspace:template?.workspace??DEFAULT_WORKSPACE} tool={editable?tool:'select'} selected={selected} onSelect={setSelected}
+    return <Canvas disabled={busyFlag} image={image} objects={items} target={null} workspace={editing?workspace:template?.workspace??DEFAULT_WORKSPACE} tool={editable?tool:'select'} selected={selected} onSelect={setSelected}
       onObjects={editing?updateReference:updateObservations} onTarget={()=>{}} onWorkspace={box=>{setWorkspace(box);setReferenceReviewed(false);setTool('select');}}
       onAdd={box=>{if(busy)return;if(editing){if(objects.length>=12)return;const id=crypto.randomUUID();updateReference([...objects,{id,label:`Object ${objects.length+1}`,box,locked:false}]);setSelected(id);}else{if(observations.length>=24)return;const id=`manual-${crypto.randomUUID()}`;updateObservations([...observations,{id,label:`Observed object ${observations.length+1}`,box,locked:false,source:'manual',confidence:null}]);setSelected(id);}setTool('select');}}
       mode={editable?'annotate':'plan'} showBoxes plan={plan} activeMovement={stage===3?activeMove:undefined}
@@ -228,11 +238,11 @@ export default function Inspect() {
   }
 
   return <div className="inspect-shell">
-    <header className="inspect-heading"><div><span className="section-kicker"><ScanLine size={16}/> WORLDOS INSPECT · V0.8</span><h1>A place for everything.<br/><span>Know when it changes.</span></h1><p>Save the standard. Inspect the workspace. Restore it with confidence you can review.</p></div><div className="inspect-local"><ShieldCheck size={19}/><span>Templates stay on your backend<br/>AI runs only when you ask</span></div></header>
+    <header className="inspect-heading"><div><span className="section-kicker"><ScanLine size={16}/> WORLDOS INSPECT</span><h1>A place for everything.<br/><span>Know when it changes.</span></h1><p>Save the standard. Inspect the workspace. Restore it with confidence you can review.</p></div><div className="inspect-local"><ShieldCheck size={19}/><span>Templates stay on your backend<br/>AI runs only when you ask</span></div></header>
     {template&&!editing&&<div className="inspection-toolbar"><button className="secondary" disabled={busyFlag||evaluationOpen} onClick={()=>setEvaluationOpen(true)}>Evaluate real photographs</button><span>Capture, label, and measure a complete physical trial.</span></div>}
     <nav className="inspect-stages" aria-label="Inspection stages">{STAGES.map((label,index)=><button key={label} disabled={busyFlag||(index===0&&!editing)||(index===1&&!template)||(index===2&&!record)||(index===3&&!record?.correction_plan)||(index===4&&!previous&&!record)} aria-current={stage===index?'step':undefined} onClick={()=>setStage(index)}><span>{index+1}</span>{label}</button>)}</nav>
     {error&&<div ref={errorRef} className="error-banner" role="alert"><span>{error}</span><button disabled={busyFlag} onClick={()=>setError(null)}>Dismiss</button><button disabled={busyFlag} onClick={()=>void action('Refreshing templates…',refreshList)}>Reconnect</button></div>}
-    {(notice||busy)&&<div className="inspect-notice" role="status">{busy?<><LoaderCircle className="spin" size={17}/>{busy} <small>{elapsed}s · {elapsed>=15?'Still working. Requests have a time limit; any configured reasoning fallback is disclosed.':'Your current workspace is preserved while we work.'}</small></>:notice}</div>}
+    <div className="workflow-feedback">{busy?<OperationStatus key={busy} message={busy}/>:notice?<div className="inspect-notice" role="status">{notice}</div>:null}</div>
     <div className="inspect-layout"><aside className="inspect-library panel"><div className="panel-title"><h2>Your workspaces</h2><button className="icon-button" disabled={busyFlag} onClick={startNew} aria-label="Create workspace template"><Plus size={18}/></button></div><div className="inspect-library-body">
       <button className="secondary full-width" disabled={busyFlag} onClick={startNew}><Plus size={15}/>New template</button>
       {!templates.length&&!busy&&<p>No templates yet. Capture the workspace as it should look, then save your reference.</p>}
@@ -244,7 +254,7 @@ export default function Inspect() {
     <section className="inspect-workflow" aria-label="Inspection workspace">
       {evaluationOpen&&template&&!editing&&<EvaluationPanel template={template} trial={evaluation} current={current} alignment={alignment} phase={evaluationPhase} busy={busyFlag} onTrial={resumeEvaluation} onPhase={changeEvaluationPhase} onLeave={()=>{setEvaluationOpen(false);setEvaluation(null);setEvaluationPhase('inspection');}} onBusy={value=>setBusy(value?'Saving or loading evaluation evidence...':null)}/>}
 
-      {!editing&&!template&&<div className="panel inspect-welcome"><ScanLine size={38}/><h2>Make your workspace repeatable.</h2><p>A packing station, a tool bench, or a desk. Start with a reviewed reference, then see what changed each time.</p><button className="primary" disabled={busyFlag} onClick={startNew}>Create your first template <ArrowRight size={16}/></button><p>Photos and annotations persist locally. Model detections remain suggestions until their evidence is sufficient or you review them.</p></div>}
+      {!editing&&!template&&<div className="panel inspect-welcome"><ScanLine size={38}/><h2>Make your workspace repeatable.</h2><p>A packing station, a tool bench, or a desk. Start with a reviewed reference, then see what changed each time.</p><button className="primary" disabled={busyFlag} onClick={startNew}>Create your first template <ArrowRight size={16}/></button><p>Photos and annotations are stored on this backend. On free hosting, restarts can erase them. Model detections remain suggestions until their evidence is sufficient or you review them.</p></div>}
       {editing&&<><div className="panel inspection-section"><div className="inspect-section-heading"><div><span className="section-kicker">01 / CREATE TEMPLATE</span><h2>{draftId?'Refine your reference':'Set the workspace standard'}</h2></div><PhotoActions label="Upload reference photo" cameraLabel="Take reference photo" disabled={busyFlag} onPhoto={file=>upload(file,true)}/></div>
         <fieldset disabled={busyFlag} className="template-fields"><label>Workspace name<input aria-label="Workspace template name" maxLength={120} value={name} onChange={e=>{setName(e.target.value);setReferenceReviewed(false);}} placeholder="Packing station A"/></label><label>Location<input aria-label="Workspace location" maxLength={200} value={location} onChange={e=>setLocation(e.target.value)} placeholder="Workshop / north bench"/></label><label className="wide">What does this workspace support?<textarea aria-label="Workspace description" maxLength={2000} rows={2} value={description} onChange={e=>setDescription(e.target.value)} placeholder="Tools must return to their marked positions after each task."/></label></fieldset>
         {reference?<><div className="inspection-toolbar"><button className="secondary" disabled={busyFlag} onClick={()=>setTool('select')}>Select / edit</button><button className="secondary" disabled={busyFlag||objects.length>=12} onClick={()=>setTool('object')}>Draw object</button><button className="secondary" disabled={busyFlag} onClick={()=>setTool('workspace')}>Draw boundary</button><span>Photograph as expected · all coordinates use image percentages</span></div><fieldset disabled={busyFlag} className={busyFlag?'inspect-disabled-canvas':''}>{scene(reference,objects,true)}</fieldset>
@@ -255,13 +265,14 @@ export default function Inspect() {
       </div></>}
       {!editing&&template&&(stage===1||(stage===4&&!record))&&<div className="panel inspection-section"><div className="inspect-section-heading"><div><span className="section-kicker">{stage===4?'05 / VERIFY':'02 / SCAN WORKSPACE'}</span><h2>{stage===4?'Check the physical correction':'What changed since the reference?'}</h2></div><PhotoActions label={`Upload ${stage===4?"verification":"inspection"} photo`} cameraLabel={stage===4?"Take verification photo":"Take inspection photo"} disabled={busyFlag||!!evaluationCapture} onPhoto={file=>upload(file,false)}/></div>
         {current?<><AlignmentView template={template} current={current} value={alignment} busy={busyFlag||!!evaluationCapture} onChange={value=>{setAlignment(value);setAlignmentNotice('');}}/><div className="inspection-toolbar"><button className="secondary" disabled={busyFlag||!!evaluationCapture} onClick={()=>void align(true)}>Suggest alignment</button><button className="secondary" disabled={busyFlag} onClick={()=>void align(false)}>Check coverage</button><button className="text-button" disabled={busyFlag||!!evaluationCapture} onClick={()=>{setAlignment({...DEFAULT_ALIGNMENT});setAlignmentNotice('');}}>Reset alignment</button></div>{alignmentNotice&&<p className="inspection-warning" role="status">{alignmentNotice}</p>}
-        <fieldset disabled={busyFlag} className="inspect-scan-settings"><label className="inspection-check"><input type="checkbox" checked={discover} onChange={e=>setDiscover(e.target.checked)}/>Discover unexpected object types with Muse Spark before SAM inspection</label><label>Additional object concepts<input aria-label="Inspection extra concepts" value={extraConcepts} onChange={e=>setExtraConcepts(e.target.value)} placeholder="pallet, carton, loose cable"/></label><label className="inspection-check"><input type="checkbox" aria-label="Inspection inventory confirmed" disabled={!!evaluation} checked={evaluation?false:inventory} onChange={e=>setInventory(e.target.checked)}/>I checked the entire visible workspace for relevant objects and obstacles.</label><p>Reference labels are always included. Discovery and SAM can miss objects; inspect the photograph and review uncertain results. Upload and alignment make no model requests.</p></fieldset><button className="primary" disabled={busyFlag||(evaluation?!evaluationCapture:!alignment.confirmed)} onClick={()=>void scan()}><ScanLine size={17}/>{evaluationCapture&&!alignment.confirmed?'Record alignment abstention':stage===4?'Verify correction photo':'Inspect workspace'}<ArrowRight size={16}/></button></>:<div className="inspect-empty"><img src={template.reference_image_url} alt="Saved workspace reference"/><p>Reference v{template.revision} is saved. Take a separate photograph of this workspace, then align stationary features before inspection.</p><PhotoActions label="Choose current photograph" cameraLabel="Take inspection photo" disabled={busyFlag} onPhoto={file=>upload(file,false)}/></div>}
+        <fieldset disabled={busyFlag} className="inspect-scan-settings"><label className="inspection-check"><input type="checkbox" checked={discover} onChange={e=>setDiscover(e.target.checked)}/>Discover unexpected object types with Muse Spark before SAM inspection</label><label>Additional object concepts<input aria-label="Inspection extra concepts" value={extraConcepts} onChange={e=>setExtraConcepts(e.target.value)} placeholder="pallet, carton, loose cable"/></label><label className="inspection-check"><input type="checkbox" aria-label="Inspection inventory confirmed" disabled={!!evaluation} checked={evaluation?false:inventory} onChange={e=>setInventory(e.target.checked)}/>I checked the entire visible workspace for relevant objects and obstacles.</label><p>Reference labels are always included. Discovery and SAM can miss objects; inspect the photograph and review uncertain results. Upload and alignment make no model requests.</p></fieldset><button className="primary" disabled={busyFlag||(evaluation?!evaluationCapture:!alignment.confirmed)} onClick={()=>void scan()}><ScanLine size={17}/>{evaluationCapture&&!alignment.confirmed?'Record alignment abstention':stage===4?'Verify correction photo':'Inspect workspace'}<ArrowRight size={16}/></button></>:<div className="inspect-empty"><Photo src={template.reference_image_url} alt="Saved workspace reference" width={template.image_width} height={template.image_height}/><p>Reference v{template.revision} is saved. Take a separate photograph of this workspace, then align stationary features before inspection.</p><PhotoActions label="Choose current photograph" cameraLabel="Take inspection photo" disabled={busyFlag} onPhoto={file=>upload(file,false)}/></div>}
       </div>}
       {!editing&&record&&facts&&stage>=2&&<><section className={`panel inspection-section inspection-summary ${facts.passed&&!pendingReview?'passed':''}`}><div className="inspect-section-heading"><div><span className="section-kicker">{record.previous_inspection_id?'VERIFICATION RESULT':'INSPECTION RESULT'}</span><h2>{pendingReview?'Review changes before using this result':facts.passed?'Workspace verified':facts.review_required?'Review needed':'Workspace needs attention'}</h2></div><button className="secondary" disabled={busyFlag||pendingReview} onClick={()=>void exportReport()}><Download size={15}/>Export report</button></div><p>{pendingReview?'The saved result is historical while observations are being edited.':facts.message}</p><div className="inspection-stats"><div><strong>{facts.correct_count}/{facts.reference_count}</strong><span>correct placements</span></div><div><strong>{facts.issue_count}</strong><span>issues / uncertain findings</span></div><div><strong>{(record.latency_ms/1000).toFixed(1)}s</strong><span>scan + comparison</span></div><div><strong>{record.review||facts.evidence_mode==='human_assisted'?'Human assisted':'AI decisions'}</strong><span>{pendingReview?'changes pending':'with scene confirmation'}</span></div></div>
         {previous&&<p>Progress: {(previous.reviewed_result??previous.automatic_result).correct_count} previously correct → {facts.correct_count} now correct. Each verification uses a fresh photograph; no physical action is assumed.</p>}
         <p className="inspect-caption">{record.analysis.provider} / {record.analysis.model} · {record.analysis.inference_cache?.status==='hit'?'Cached genuine inference':record.analysis.inference_cache?.status==='shared'?'Shared genuine inference':'Genuine inference response'} · template v{record.template_revision} · {new Date(record.created_at).toLocaleString()}</p>
       </section>
       <section className="panel inspection-section"><div className="inspect-photo-pair"><figure><figcaption>REFERENCE · EXPECTED WORKSPACE</figcaption>{scene({image_url:record.template_snapshot.reference_image_url,width:record.template_snapshot.image_width,height:record.template_snapshot.image_height,name:'Reference'},record.template_snapshot.objects)}</figure><figure><figcaption>{stage===3?'CORRECTION MOVEMENTS':'CURRENT · ALIGNED PHOTOGRAPH'}</figcaption>{scene({image_url:record.aligned_image.image_url,width:record.aligned_image.width,height:record.aligned_image.height,name:'Inspection'},stage===3?facts.observed_objects:observations,stage!==3,stage===3?usablePlan:null)}</figure></div>
+        <PhotoComparison before={record.template_snapshot.reference_image_url} after={record.aligned_image.image_url} width={record.template_snapshot.image_width} height={record.template_snapshot.image_height}/>
         {record.aligned_image.warnings.map((warning,index)=><p className="inspect-caption" key={index}>{warning}</p>)}
         {stage!==3&&<><div className="inspection-toolbar"><button className="secondary" disabled={busyFlag} onClick={()=>setTool('select')}>Edit observations</button><button className="secondary" disabled={busyFlag||observations.length>=24} onClick={()=>setTool('object')}>Draw missed object</button><span>Editing boxes invalidates displayed success until review is applied.</span></div>{selectedObservation&&<ObjectEditor object={selectedObservation} busy={busyFlag} onChange={next=>updateObservations(observations.map(o=>o.id===next.id?next:o))}/>}</>}
       </section>

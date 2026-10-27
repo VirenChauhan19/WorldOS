@@ -22,6 +22,19 @@ it('keeps draft input mounted without a reload banner when an older helper repor
   expect(screen.getByLabelText('Unsaved template name')).toBe(draft);
   expect((draft as HTMLInputElement).value).toBe('My unsaved workspace');
 });
+it('prevents duplicate photo submissions and releases controls after a failed upload',async()=>{
+  let rejectUpload!:(error:Error)=>void;
+  const received=vi.fn(()=>new Promise<void>((_,reject)=>{rejectUpload=reject;}));
+  render(<PhotoActions label="Choose photo" disabled={false} onPhoto={received}/>);
+  const input=screen.getByLabelText('Choose photo library input');
+  const files=[new File(['synthetic'],'photo.png',{type:'image/png'})];
+  fireEvent.change(input,{target:{files}});fireEvent.change(input,{target:{files}});
+  await waitFor(()=>expect(received).toHaveBeenCalledTimes(1));
+  expect((screen.getByRole('button',{name:'Choose photo'}) as HTMLButtonElement).disabled).toBe(true);
+  await act(async()=>rejectUpload(new Error('Synthetic upload failed')));
+  expect(screen.getByRole('alert').textContent).toBe('Synthetic upload failed');
+  expect((screen.getByRole('button',{name:'Choose photo'}) as HTMLButtonElement).disabled).toBe(false);
+});
 it('warns about ephemeral storage before sign-in and in the workspace',async()=>{
   for(const authenticated of [false,true]){
     vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response(JSON.stringify({required:true,authenticated,storage_mode:'ephemeral'}))));

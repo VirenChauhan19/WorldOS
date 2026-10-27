@@ -5,6 +5,7 @@ import { App as NativeApp } from '@capacitor/app';
 import { Download, LockKeyhole, Settings2, WifiOff } from 'lucide-react';
 import { apiFetch, backendURL, configureBackend, nativeNeedsBackend, setAccessToken, setCookieSession, usesCookies, validateBackendURL } from './backend';
 import { AccessContext } from './access';
+import Dialog from './ui/Dialog';
 import type { WorkspaceAccess } from './access';
 
 interface InstallPrompt extends Event { prompt: () => Promise<void>; userChoice: Promise<{outcome:string}> }
@@ -26,7 +27,12 @@ export default function MobileShell({children}:{children:ReactNode}) {
   const [installHelp,setInstallHelp]=useState(false);
   const [generation,setGeneration]=useState(0);
   const [restored,setRestored]=useState(false);
-  const connectionAttempt=useRef(0);
+  const connectionAttempt=useRef(0),submitLock=useRef(false);
+  useEffect(()=>{
+    const connection=()=>setSettings(true),installation=()=>setInstallHelp(true);
+    window.addEventListener('worldos:open-connection',connection);window.addEventListener('worldos:install',installation);
+    return()=>{window.removeEventListener('worldos:open-connection',connection);window.removeEventListener('worldos:install',installation);};
+  },[]);
 
   async function connect() {
     const attempt=++connectionAttempt.current;
@@ -66,7 +72,7 @@ export default function MobileShell({children}:{children:ReactNode}) {
     return()=>{void handle.then(listener=>listener.remove());};
   },[]);
   async function login(event:React.FormEvent) {
-    event.preventDefault();setPending(true);setError('');
+    event.preventDefault();if(submitLock.current)return;submitLock.current=true;setPending(true);setError('');
     try{
       const response=await apiFetch('auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password,access,mode:usesCookies()?'cookie':'bearer'}),signal:AbortSignal.timeout(15000)});
       const data=await response.json();
@@ -76,17 +82,18 @@ export default function MobileShell({children}:{children:ReactNode}) {
       else throw new Error('The backend returned an invalid session.');
       setAccess(data.access==='judge'?'judge':'owner');setJudgeExpiry(data.judge_expires_at??null);
       setPassword('');setState('ready');
-    }catch(e){setPassword('');setError(e instanceof Error?e.message:'Sign-in failed.');}finally{setPending(false);}
+    }catch(e){setPassword('');setError(e instanceof Error?e.message:'Sign-in failed.');}finally{submitLock.current=false;setPending(false);}
   }
   async function signOut(){
+    if(submitLock.current)return;submitLock.current=true;
     setPending(true);setError('');
     try{const response=await apiFetch('auth/logout',{method:'POST',signal:AbortSignal.timeout(5000)});if(!response.ok&&response.status!==401)throw new Error('Sign-out failed.');}
     catch{if(usesCookies()){setError('Could not sign out of the backend. Reconnect and retry; this browser session is still active.');return;}}
-    finally{setPending(false);}
+    finally{submitLock.current=false;setPending(false);}
     setAccessToken('');setState('login');setGeneration(n=>n+1);
   }
   async function changeBackend(event:React.FormEvent){
-    event.preventDefault();setError('');setPending(true);
+    event.preventDefault();if(submitLock.current)return;submitLock.current=true;setError('');setPending(true);
     try{
       validateBackendURL(url);
       if(authRequired&&state==='ready'&&usesCookies()){
@@ -94,7 +101,7 @@ export default function MobileShell({children}:{children:ReactNode}) {
         if(!response.ok&&response.status!==401)throw new Error('Sign out before changing servers.');
       }
       configureBackend(url);setSettings(false);setState('loading');setGeneration(n=>n+1);await connect();
-    }catch(e){setError(e instanceof Error?e.message:'Cannot change the backend.');}finally{setPending(false);}
+    }catch(e){setError(e instanceof Error?e.message:'Cannot change the backend.');}finally{submitLock.current=false;setPending(false);}
   }
   return <>
     <div className="mobile-utility"><span><LockKeyhole size={14}/>{authRequired?(access==='judge'?'Judge demo':'Private workspace'):'Local workspace'}</span><div>
@@ -105,15 +112,15 @@ export default function MobileShell({children}:{children:ReactNode}) {
     {ephemeralStorage&&<div className="mobile-banner" role="status">Temporary storage: saved work, uploaded photos, and login sessions may be lost when this server restarts, redeploys, or sleeps. Export important work and download backups to your device.</div>}
     {!online&&<div className="mobile-banner" role="status"><WifiOff size={18}/><span>Offline. AI, uploads, and saved inspections require a connection. Nothing will be queued or reported as completed.</span></div>}
     {restored&&<div className="mobile-banner" role="status">The system restarted WorldOS while the camera was open. Sign in, reopen the saved workspace, and retake the photograph. No scan was automatically started.<button onClick={()=>setRestored(false)}>Dismiss</button></div>}
-    {installHelp&&<aside className="mobile-banner"><p>On iPhone: open the HTTPS app in Safari, tap Share, then Add to Home Screen and Open as Web App. On Android: use your browser’s Install app or Add to Home screen menu. Installation needs a secure connection; AI still needs the backend.</p></aside>}
-    {settings&&<form className="connection-settings" onSubmit={event=>void changeBackend(event)}>
+    <Dialog open={installHelp} onClose={()=>setInstallHelp(false)} title="Install WorldOS"><p>On iPhone: open the HTTPS app in Safari, tap Share, then Add to Home Screen and Open as Web App. On Android: use your browser’s Install app or Add to Home screen menu. Installation needs a secure connection; AI still needs the backend.</p></Dialog>
+    <Dialog open={settings} onClose={()=>setSettings(false)} title="Connection settings"><form className="connection-settings" onSubmit={event=>void changeBackend(event)}>
       <label>WorldOS backend address<input aria-label="WorldOS backend address" type="url" value={url} placeholder="https://worldos.your-domain.com" onChange={e=>setUrl(e.target.value)} autoCapitalize="none" autoCorrect="off" spellCheck={false}/></label>
       <p>Use your trusted WorldOS server. Leave blank for this website’s backend. Changing servers signs you out and clears unsaved work.</p><button className="primary" disabled={pending}>Connect</button>
-    </form>}
+    </form>{error&&<p role="alert">{error}</p>}</Dialog>
     {error&&<div className="mobile-banner" role="alert">{error}</div>}
     {state==='ready'&&access==='judge'&&<div className="mobile-banner" role="status">Judge demo workspace. Other judges share these demo photos and inspections; owner data and backups are private. Sessions last up to two hours.{judgeExpiry&&` Access ends ${new Date(judgeExpiry).toLocaleString()}.`}</div>}
     {state==='ready'?<AccessContext.Provider value={access}><div key={generation}>{children}</div></AccessContext.Provider>:<main className="access-screen">
-      <div className="access-card"><span className="section-kicker">WORLDOS · V0.8</span><h1>{state==='login'?'Your workspace. Securely.':state==='loading'?'Connecting to WorldOS':'Connect your workspace'}</h1>
+      <div className="access-card"><span className="section-kicker">WORLDOS</span><h1>{state==='login'?'Your workspace. Securely.':state==='loading'?'Connecting to WorldOS':'Connect your workspace'}</h1>
       <p>Inspect physical spaces, review what changed, and follow validated corrections. Your backend stores photos and sends them to configured AI providers only when you request inference. API keys never enter this app.</p>
       {state==='login'&&judgeEnabled&&<label>Access<select aria-label="Workspace access" value={access} disabled={pending} onChange={e=>{setAccess(e.target.value as WorkspaceAccess);setPassword('');setError('');}}><option value="owner">Owner workspace</option><option value="judge">Judge demo workspace</option></select></label>}
       {state==='login'&&access==='judge'&&<p>Use the separate demo passphrase from the owner. Demo sessions last up to two hours and end when the access window closes.</p>}

@@ -49,7 +49,8 @@ describe('WorldOS workflow', () => {
     await makePlan();
     fireEvent.click(screen.getByRole('button',{name:'4Guide'}));
     expect(screen.getByText('Movement 1 of 1: Notebook')).toBeTruthy();
-    expect(document.querySelector('animateMotion')?.getAttribute('repeatCount')).toBe('indefinite');
+    expect(document.querySelector('animateMotion')).toBeNull();
+    expect(screen.getByLabelText('Movement 1: Notebook').querySelector('path')?.getAttribute('d')).toMatch(/^M /);
     expect(screen.queryByText('Task verified')).toBeNull();
   });
   it('shows an automatic demo success only until its evidence is edited', async () => {
