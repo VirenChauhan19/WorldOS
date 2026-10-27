@@ -1,0 +1,243 @@
+{
+  "schema_version": 1,
+  "version": "0.4.0",
+  "recorded_at": "2026-10-26T21:05:57.160189+00:00",
+  "mode": "recorded",
+  "provenance_notice": "Physical capture and independent truth are author declarations. Recordings bind inputs by hash; this is not a provider authenticity attestation.",
+  "scenario_count": 10,
+  "captured_pairs": 0,
+  "evaluated_pairs": 0,
+  "pending_scenarios": [
+    "single_move",
+    "multiple_moves",
+    "unchanged_control",
+    "partial_completion",
+    "protected_moved",
+    "duplicate_objects",
+    "occluded_object",
+    "new_obstacle",
+    "lighting_change",
+    "camera_shift"
+  ],
+  "cases": [],
+  "user_corrected_pairs": 0,
+  "automated_metrics": {
+    "object_matching": {
+      "correct_over_all_identities": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "precision_among_decided": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "coverage": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      }
+    },
+    "movements": {
+      "correct_over_all": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "accuracy_among_decided": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "coverage": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "false_success_over_actual_negatives": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "false_success_over_positive_decisions": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "abstentions": 0
+    },
+    "protected": {
+      "correct_over_all": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "accuracy_among_decided": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "coverage": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "false_success_over_actual_negatives": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "false_success_over_positive_decisions": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "abstentions": 0
+    },
+    "goal": {
+      "correct_over_all": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "accuracy_among_decided": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "coverage": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "false_success_over_actual_negatives": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "false_success_over_positive_decisions": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "abstentions": 0
+    },
+    "decision_counts": {
+      "passed": 0,
+      "failed": 0,
+      "needs_review": 0,
+      "provider_error": 0
+    }
+  },
+  "user_corrected_metrics": {
+    "object_matching": {
+      "correct_over_all_identities": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "precision_among_decided": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "coverage": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      }
+    },
+    "movements": {
+      "correct_over_all": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "accuracy_among_decided": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "coverage": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "false_success_over_actual_negatives": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "false_success_over_positive_decisions": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "abstentions": 0
+    },
+    "protected": {
+      "correct_over_all": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "accuracy_among_decided": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "coverage": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "false_success_over_actual_negatives": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "false_success_over_positive_decisions": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "abstentions": 0
+    },
+    "goal": {
+      "correct_over_all": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "accuracy_among_decided": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "coverage": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "false_success_over_actual_negatives": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "false_success_over_positive_decisions": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "abstentions": 0
+    },
+    "decision_counts": {
+      "passed": 0,
+      "failed": 0,
+      "needs_review": 0,
+      "provider_error": 0
+    }
+  },
+  "measurement_status": "unmeasured"
+}

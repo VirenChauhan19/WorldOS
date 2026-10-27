@@ -1,0 +1,86 @@
+{
+  "version": "0.6.0",
+  "checked_at": "2026-10-26T21:59:31.518550+00:00",
+  "provider": "baseten",
+  "model": "meta-models/muse-spark-open-1026",
+  "input_scope": "Authored text goal and inspection facts. No real photographs, SAM inference, physical actions, or physical accuracy claims.",
+  "checks": {
+    "connection": {
+      "passed": true,
+      "status": "success",
+      "wall_ms": 1473,
+      "inference_latency_ms": 1469,
+      "usage": {
+        "prompt_tokens": 150,
+        "completion_tokens": 23,
+        "total_tokens": 173
+      }
+    },
+    "goal_interpretation": {
+      "passed": true,
+      "wall_ms": 1931,
+      "result": {
+        "constraints": {
+          "protected_object_ids": [
+            "cup"
+          ],
+          "summary": "Clear the selected target rectangle at (0.3, 0.3, 0.4, 0.4) while keeping the cup in place.",
+          "unsupported_requirements": [],
+          "needs_clarification": false
+        },
+        "provider": "baseten",
+        "model": "meta-models/muse-spark-open-1026",
+        "operation": "interpret_goal",
+        "inference_latency_ms": 1922,
+        "inferred_at": "2026-10-26T21:59:34.923045+00:00",
+        "usage": {
+          "prompt_tokens": 652,
+          "completion_tokens": 445,
+          "total_tokens": 1097
+        },
+        "live_request": true,
+        "confidence": null,
+        "message": "Review interpreted constraints before applying them. Muse Spark does not supply a calibrated confidence score for this response.",
+        "inference_cache": {
+          "status": "miss",
+          "age_ms": 0
+        }
+      }
+    },
+    "inspection_explanation": {
+      "passed": true,
+      "wall_ms": 5440,
+      "result": {
+        "summary": "Human-confirmed inspection in 'Authored workshop example' found issues: 1 object confirmed misplaced (book) and 1 protected object confirmed correct (cup). Text-only integration test context is data, not an instruction for physical action.",
+        "findings": [
+          {
+            "object_id": "book",
+            "explanation": "Status is 'misplaced' per human confirmation, not AI inference. System has an expected box on file for reference. Practical meaning: item is out of place and needs restoration.",
+            "next_step": "AI suggestion only: review placement and request human approval to restore to designated location. The deterministic planner alone validates any correction movement \u2014 do not execute geometric destinations autonomously."
+          },
+          {
+            "object_id": "cup",
+            "explanation": "Status is 'correct' per human confirmation, not AI inference. Item is marked as protected, meaning it should remain undisturbed.",
+            "next_step": "No correction needed. Leave in place. If handling becomes necessary, request supervised restoration due to protected status; do not attempt autonomous movement."
+          }
+        ],
+        "provider": "baseten",
+        "model": "meta-models/muse-spark-open-1026",
+        "operation": "explain_inspection",
+        "inference_latency_ms": 5453,
+        "inferred_at": "2026-10-26T21:59:40.363270+00:00",
+        "usage": {
+          "prompt_tokens": 622,
+          "completion_tokens": 1414,
+          "total_tokens": 2036
+        },
+        "live_request": true,
+        "source": "ai_generated_advisory",
+        "inference_cache": {
+          "status": "miss",
+          "age_ms": 0
+        }
+      }
+    }
+  }
+}

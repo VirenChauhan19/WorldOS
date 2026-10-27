@@ -1,25 +1,67 @@
 import asyncio
 import os
+from contextlib import asynccontextmanager, suppress
+from functools import lru_cache
 from pathlib import Path
-
 from dotenv import load_dotenv
+
 from fastapi import Depends, FastAPI, HTTPException, Response, UploadFile
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from PIL import Image
 
 from .adapters import ManualSegmentation
 from .ai_service import AIService
 from .connection import ConnectionRegistry, ConnectionTester, ConnectionTestRequest, diagnostics
+from .environment import BackendEnvironment
+from .security import SecuritySettings, SessionAuth
+from .production import data_directory, storage_ready
+from .request_limits import RequestLimitsMiddleware
+from .backups import backup_loop, scheduled_backup
 from .imaging import prepare_image
+from .inspect_routes import build_inspect_router
 from .models import AIAnalysisRequest, PlanRequest, PlanResponse, ReasonRequest, VerifyRequest
 from .planner import generate_plan, verify_positions
 from .providers import AISettings, ProviderError, ProviderHTTP, capabilities, logger
 from .visual_verification import ReviewedStateRequest, VisualVerifyRequest, adaptive_replan, automatic_verify, verify_reviewed
 
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
-app = FastAPI(title="WorldOS", version="0.3.0", description="Reviewed AI or manual annotations, visual verification, and adaptive spatial planning.")
-app.add_middleware(CORSMiddleware, allow_origins=os.getenv("WORLDOS_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(","), allow_methods=["GET", "POST"], allow_headers=["Content-Type"])
+backend_environment = BackendEnvironment()
+load_dotenv(Path(__file__).resolve().parents[1] / ".env.auth", override=False)
+load_dotenv(Path(__file__).resolve().parents[1] / ".env.judge", override=False)
+security_settings = SecuritySettings.from_env()
+session_auth = SessionAuth(security_settings, session_path=data_directory()/'auth.sqlite3' if security_settings.encoded_password else None)
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    worker = None
+    if security_settings.deployment == 'public':
+        storage_ready()
+        if os.getenv('WORLDOS_BACKUPS_ENABLED','1') == '1':
+            worker = asyncio.create_task(backup_loop(data_directory()))
+    yield
+    if worker:
+        worker.cancel()
+        with suppress(asyncio.CancelledError): await worker
+
+
+app = FastAPI(title="WorldOS", version="0.8.0", lifespan=lifespan, description="Visual workspace inspection, persistent reference templates, and adaptive spatial planning.")
+app.add_middleware(RequestLimitsMiddleware, production=security_settings.deployment=='public')
+app.middleware("http")(session_auth.middleware)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(security_settings.hosts))
+app.add_middleware(CORSMiddleware, allow_origins=list(security_settings.origins), allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"])
+app.include_router(session_auth.router())
+
+
+@app.exception_handler(RequestValidationError)
+async def safe_auth_validation(request, error):
+    if request.url.path.startswith("/api/auth/"):
+        return JSONResponse({"detail": "Invalid sign-in request."}, 422, headers={"Cache-Control": "no-store"})
+    return await request_validation_exception_handler(request, error)
 MAX_BYTES = int(os.getenv("WORLDOS_MAX_UPLOAD_MB", "12")) * 1024 * 1024
 Image.MAX_IMAGE_PIXELS = 24_000_000
 connection_registry = ConnectionRegistry()
@@ -29,23 +71,67 @@ def get_connection_registry():
     return connection_registry
 
 
+@app.get('/healthz', include_in_schema=False)
+def production_health():
+    try:
+        storage_ready()
+        session_auth.store.check()
+    except Exception:
+        return JSONResponse({'status':'unavailable'},503,headers={'Cache-Control':'no-store'})
+    return {'status':'ok'}
+
+
+@app.post('/api/admin/backups')
+def create_workspace_backup():
+    try:
+        storage_ready()
+        return scheduled_backup(data_directory())
+    except Exception:
+        raise HTTPException(503,'Backup failed. Check storage capacity and permissions; existing workspace data is unchanged.') from None
+
+
+@app.get('/api/admin/backups/latest')
+def download_workspace_backup():
+    import json
+    import re
+    folder = (data_directory()/'backups').resolve()
+    try:
+        data = json.loads((folder/'latest.json').read_text(encoding='utf-8'))
+        if not re.fullmatch(r'worldos-\d{8}T\d{6}-[a-f0-9]{8}\.sqlite3', data['file']): raise ValueError()
+        path = folder/data['file']
+        if path.is_symlink() or path.resolve().parent != folder or not path.is_file(): raise ValueError()
+        return FileResponse(path,media_type='application/octet-stream',filename=path.name,headers={'Cache-Control':'no-store'})
+    except (OSError,ValueError,KeyError,TypeError):
+        raise HTTPException(404,'No valid workspace backup is available. Create a backup first.') from None
+
+
 @app.get("/api/health")
 def health(registry: ConnectionRegistry = Depends(get_connection_registry)):
     try:
         settings = AISettings.from_env()
         ai = capabilities(settings)
-        for name, entry in diagnostics(settings, registry)["integrations"].items():
-            if entry["last_test"]["live_request_succeeded"]:
-                ai[name].update(status="live_verified", message="An explicit provider inference test succeeded in this server process.")
-        ai["live_tested"] = any(registry.state(settings, name)["ever_live_request_succeeded"] for name in ("muse", "sam"))
+        entries = diagnostics(settings, registry, configured_ai_service(settings).http)["integrations"]
+        for name, entry in entries.items():
+            ai[name]["readiness"] = entry["readiness"]
+            if entry["readiness"]["status"] == "verified":
+                ai[name].update(status="live_verified", message="A validated real provider inference succeeded in this server process.")
+            elif entry["readiness"]["status"] in {"needs_retest", "checking"}:
+                ai[name].update(status=entry["readiness"]["status"], message=entry["readiness"]["message"])
+        ai["live_tested"] = any(entry["last_test"]["ever_live_request_succeeded"] or (entry.get("last_inference") or {}).get("live_request", False) for entry in entries.values())
     except (ValueError, ProviderError):
         ai = {"configuration_error": "Check backend AI environment settings."}
     return {"status": "ok", "vision": "manual", "reasoning": "deterministic_rules", "ai": ai}
 
 
-def get_ai_service():
+@lru_cache(maxsize=2)
+def configured_ai_service(settings):
+    # Scope cache to all backend settings, including credential identity. No cross-key reuse.
+    return AIService(ProviderHTTP(settings))
+
+
+async def get_ai_service():
     try:
-        return AIService(ProviderHTTP(AISettings.from_env()))
+        return configured_ai_service(AISettings.from_env())
     except (ValueError, ProviderError):
         raise HTTPException(503, "Invalid backend AI configuration. Check environment settings.") from None
 
@@ -54,10 +140,11 @@ def get_ai_service():
 def ai_diagnostics(response: Response, registry: ConnectionRegistry = Depends(get_connection_registry)):
     response.headers["Cache-Control"] = "no-store"
     try:
-        return diagnostics(AISettings.from_env(), registry)
+        settings = AISettings.from_env()
+        return {**diagnostics(settings, registry, configured_ai_service(settings).http), "environment": backend_environment.diagnostics()}
     except (ValueError, ProviderError):
         selected = os.getenv("WORLDOS_SAM_PROVIDER", "baseten")
-        return {"configuration_error": "Invalid backend AI settings. Check WORLDOS_SAM_PROVIDER, WORLDOS_MUSE_MODEL, and WORLDOS_AI_TIMEOUT_SECONDS.", "selected_sam_provider": selected if selected in {"meta", "baseten"} else None,
+        return {"configuration_error": "Invalid backend AI settings. Check WORLDOS_SAM_PROVIDER, WORLDOS_MUSE_PROVIDER, WORLDOS_MUSE_MODEL, BASETEN_MUSE_MODEL, BASETEN_BASE_URL, and WORLDOS_AI_TIMEOUT_SECONDS.", "selected_sam_provider": selected if selected in {"meta", "baseten"} else None, "environment": backend_environment.diagnostics(),
                 "credentials": {"meta_api_key_configured": bool(os.getenv("MODEL_API_KEY", "").strip()), "baseten_api_key_configured": bool(os.getenv("BASETEN_API_KEY", "").strip()), "baseten_sam_model_id_configured": bool(os.getenv("BASETEN_SAM_MODEL_ID", "").strip())}, "integrations": {}}
 
 
@@ -65,7 +152,7 @@ def ai_diagnostics(response: Response, registry: ConnectionRegistry = Depends(ge
 async def ai_connection_test(request: ConnectionTestRequest, response: Response, service: AIService = Depends(get_ai_service), registry: ConnectionRegistry = Depends(get_connection_registry)):
     response.headers["Cache-Control"] = "no-store"
     try:
-        return await ConnectionTester(service.http, registry).test(request.integration)
+        return {**await ConnectionTester(service.http, registry).test(request.integration), "environment": backend_environment.diagnostics()}
     except ProviderError as error:
         raise HTTPException(error.status, str(error)) from None
 
@@ -167,6 +254,17 @@ def verify(request: VerifyRequest):
         return verify_positions(request, planned)
     except ValueError as error:
         raise HTTPException(422, str(error))
+
+
+app.include_router(build_inspect_router(get_ai_service, run_ai))
+
+
+@app.middleware("http")
+async def private_inspection_responses(request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/api/inspect/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 # Build with `npm run build` before starting the server for a single-origin app.

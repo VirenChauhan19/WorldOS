@@ -10,4 +10,9 @@ __pycache__/
 *.log
 *.tsbuildinfo
 artifacts/
+data/
 .DS_Store
+*.jks
+*.keystore
+*.p12
+*.mobileprovision

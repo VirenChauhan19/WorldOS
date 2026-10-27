@@ -1,0 +1,14 @@
+.git
+.env
+.env.*
+.venv
+node_modules
+dist
+data
+artifacts
+android
+ios
+__pycache__
+*.log
+*.jks
+*.keystore

@@ -1,0 +1,952 @@
+{
+  "evidence_kind": "Actual real-photo integration calls, not physical movement evaluation",
+  "documentation_verified": {
+    "endpoint": "https://api.meta.ai/v1/responses",
+    "model": "sam-3.1",
+    "references": [
+      "https://dev.meta.ai/docs/sam/overview",
+      "https://dev.meta.ai/docs/sam/segmenting",
+      "https://dev.meta.ai/docs/sam/reading-segmentation"
+    ]
+  },
+  "final_pipeline": {
+    "version": "0.6.0",
+    "recorded_at": "2026-10-26T22:33:32.860739+00:00",
+    "scope": "Real public photograph + actual provider calls. Agent/human review is explicitly attributed. No physical object movement or fresh after-photo.",
+    "physical_trials": 0,
+    "physical_accuracy_metrics": null,
+    "initial_detection": {
+      "name": "SAM restoration: actual Jakub desk photograph, scoped phone and mouse",
+      "source": "https://unsplash.com/photos/a-desk-with-a-laptop-keyboard-mouse-and-a-cell-phone-ElFBCgOfoIM",
+      "image_sha256": "d8bde0e5c754d490389110474ac304974024425f551d4a6535d86522416b777f",
+      "width": 1600,
+      "height": 1067,
+      "concepts": [
+        "smartphone",
+        "mouse"
+      ],
+      "reference_provenance": "No independently labeled ground truth. Agent visually inspected the original public photograph. This is a live integration check, not an accuracy benchmark.",
+      "metrics": null,
+      "status": "success",
+      "objects": [
+        {
+          "id": "sam-0-0",
+          "label": "smartphone",
+          "box": {
+            "x": 0.4375,
+            "y": 0.6494845360824743,
+            "width": 0.06875,
+            "height": 0.2099343955014058
+          },
+          "locked": false,
+          "source": "sam_3_1",
+          "confidence": 0.9532163739204407
+        },
+        {
+          "id": "sam-1-0",
+          "label": "mouse",
+          "box": {
+            "x": 0.980625,
+            "y": 0.5435801312089972,
+            "width": 0.019375,
+            "height": 0.08622305529522024
+          },
+          "locked": false,
+          "source": "sam_3_1",
+          "confidence": 0.8439024686813354
+        },
+        {
+          "id": "sam-1-1",
+          "label": "mouse",
+          "box": {
+            "x": 0.554375,
+            "y": 0.7403936269915652,
+            "width": 0.083125,
+            "height": 0.1733833177132146
+          },
+          "locked": false,
+          "source": "sam_3_1",
+          "confidence": 0.96875
+        }
+      ],
+      "concept_latency_ms": {
+        "smartphone": 1474,
+        "mouse": 1917
+      },
+      "warnings": [
+        "Review every detection and label, add missed obstacles, and correct overlapping boxes before planning. Detection is not an exhaustive inventory."
+      ],
+      "latency_ms": 2115
+    },
+    "review": {
+      "actor": "agent_visual_review",
+      "notes": "The agent inspected the original public photograph and actual SAM boxes. The phone and central mouse boxes are retained unchanged. The partial mouse at the right image edge is outside the declared lower desk workspace, not labeled a false positive. This is not independent human ground truth or physical verification.",
+      "included_detection_ids": [
+        "sam-0-0",
+        "sam-1-1"
+      ],
+      "protected_ids": [
+        "sam-1-1"
+      ],
+      "workspace": {
+        "x": 0.43,
+        "y": 0.64,
+        "width": 0.44,
+        "height": 0.35
+      },
+      "target": {
+        "x": 0.435,
+        "y": 0.645,
+        "width": 0.08,
+        "height": 0.22
+      },
+      "clearance": 0.008,
+      "goal": "Clear the selected target rectangle by moving the smartphone. Keep the mouse in the selected workspace stationary. Use orientation-preserving lift-and-place moves."
+    },
+    "excluded_outside_workspace": [
+      {
+        "id": "sam-1-0",
+        "label": "mouse",
+        "box": {
+          "x": 0.980625,
+          "y": 0.5435801312089972,
+          "width": 0.019375,
+          "height": 0.08622305529522024
+        },
+        "locked": false,
+        "source": "sam_3_1",
+        "confidence": 0.8439024686813354
+      }
+    ],
+    "checks": {
+      "goal_interpretation": {
+        "constraints": {
+          "protected_object_ids": [
+            "sam-1-1"
+          ],
+          "summary": "Clear the selected target rectangle at [0.435, 0.645, 0.08, 0.22] by moving the smartphone (sam-0-0) outside it using orientation-preserving lift-and-place moves, while keeping the mouse (sam-1-1) stationary.",
+          "unsupported_requirements": [],
+          "needs_clarification": false
+        },
+        "provider": "baseten",
+        "model": "meta-models/muse-spark-open-1026",
+        "operation": "interpret_goal",
+        "inference_latency_ms": 7718,
+        "inferred_at": "2026-10-26T22:33:40.595190+00:00",
+        "usage": {
+          "prompt_tokens": 2919,
+          "completion_tokens": 548,
+          "total_tokens": 3467
+        },
+        "live_request": true,
+        "confidence": null,
+        "message": "Review interpreted constraints before applying them. Muse Spark does not supply a calibrated confidence score for this response.",
+        "inference_cache": {
+          "status": "miss",
+          "age_ms": 0
+        }
+      },
+      "geometric_plan": {
+        "request": {
+          "objects": [
+            {
+              "id": "sam-0-0",
+              "label": "smartphone",
+              "box": {
+                "x": 0.4375,
+                "y": 0.6494845360824743,
+                "width": 0.06875,
+                "height": 0.2099343955014058
+              },
+              "locked": false,
+              "source": "sam_3_1",
+              "confidence": 0.9532163739204407
+            },
+            {
+              "id": "sam-1-1",
+              "label": "mouse",
+              "box": {
+                "x": 0.554375,
+                "y": 0.7403936269915652,
+                "width": 0.083125,
+                "height": 0.1733833177132146
+              },
+              "locked": true,
+              "source": "sam_3_1",
+              "confidence": 0.96875
+            }
+          ],
+          "target": {
+            "x": 0.435,
+            "y": 0.645,
+            "width": 0.08,
+            "height": 0.22
+          },
+          "workspace": {
+            "x": 0.43,
+            "y": 0.64,
+            "width": 0.44,
+            "height": 0.35
+          },
+          "goal": "Clear the selected target rectangle by moving the smartphone. Keep the mouse in the selected workspace stationary. Use orientation-preserving lift-and-place moves.",
+          "clearance": 0.008,
+          "constraints": {
+            "protected_object_ids": [
+              "sam-1-1"
+            ],
+            "summary": "Clear the selected target rectangle at [0.435, 0.645, 0.08, 0.22] by moving the smartphone (sam-0-0) outside it using orientation-preserving lift-and-place moves, while keeping the mouse (sam-1-1) stationary.",
+            "unsupported_requirements": [],
+            "needs_clarification": false
+          }
+        },
+        "plan": {
+          "status": "ready",
+          "message": "A collision-free layout is ready in 1 movement.",
+          "movements": [
+            {
+              "number": 1,
+              "object_id": "sam-0-0",
+              "label": "smartphone",
+              "source": {
+                "x": 0.4375,
+                "y": 0.6494845360824743,
+                "width": 0.06875,
+                "height": 0.2099343955014058
+              },
+              "destination": {
+                "x": 0.6455,
+                "y": 0.645,
+                "width": 0.06875,
+                "height": 0.2099343955014058
+              },
+              "instruction": "Lift smartphone and place its top-left corner at 64.5% across, 64.5% down the image. Keep its orientation. Follow the listed order."
+            }
+          ],
+          "final_objects": [
+            {
+              "id": "sam-0-0",
+              "label": "smartphone",
+              "box": {
+                "x": 0.6455,
+                "y": 0.645,
+                "width": 0.06875,
+                "height": 0.2099343955014058
+              },
+              "locked": false,
+              "source": "sam_3_1",
+              "confidence": 0.9532163739204407
+            },
+            {
+              "id": "sam-1-1",
+              "label": "mouse",
+              "box": {
+                "x": 0.554375,
+                "y": 0.7403936269915652,
+                "width": 0.083125,
+                "height": 0.1733833177132146
+              },
+              "locked": true,
+              "source": "sam_3_1",
+              "confidence": 0.96875
+            }
+          ],
+          "locked_ids": [
+            "sam-1-1"
+          ],
+          "warnings": [
+            "Scene includes AI annotations. User review is required; annotations may omit or misidentify objects.",
+            "Lift objects to move them. Only final 2D footprints are checked; height, reach, stability, and travel paths are not modeled.",
+            "Reviewed protected-object constraints were applied. The deterministic planner calculates all movements and collisions."
+          ],
+          "explored_states": 1,
+          "reasoning_source": "user_reviewed_constraints"
+        },
+        "validation": {
+          "passed": true,
+          "scope": "Deterministic geometry only; proposed final boxes are NOT observed physical positions.",
+          "movement_count": 1,
+          "geometry": {
+            "passed": true,
+            "objects": [
+              {
+                "object_id": "sam-0-0",
+                "label": "smartphone",
+                "matched": true,
+                "edge_error": 0.0,
+                "tolerance": 0.025
+              },
+              {
+                "object_id": "sam-1-1",
+                "label": "mouse",
+                "matched": true,
+                "edge_error": 0.0,
+                "tolerance": 0.01
+              }
+            ],
+            "issues": [],
+            "message": "Final annotations match the plan and the target is clear.",
+            "source": "manual_final_annotations",
+            "matched_count": 2
+          },
+          "unchanged_annotations_negative_control": {
+            "passed": false,
+            "objects": [
+              {
+                "object_id": "sam-0-0",
+                "label": "smartphone",
+                "matched": false,
+                "edge_error": 0.208,
+                "tolerance": 0.025
+              },
+              {
+                "object_id": "sam-1-1",
+                "label": "mouse",
+                "matched": true,
+                "edge_error": 0.0,
+                "tolerance": 0.01
+              }
+            ],
+            "issues": [
+              "smartphone intrudes into the target or its clearance."
+            ],
+            "message": "Some placements need attention. Review the highlighted results.",
+            "source": "manual_final_annotations",
+            "matched_count": 1
+          },
+          "physical_verification": "not_performed"
+        }
+      },
+      "inspect_live_sam": {
+        "template_id": "fe04a1b8ae6a44c1811c46b113ccb79c",
+        "template_revision": 1,
+        "template_snapshot": {
+          "name": "Live SAM integration \u2014 unchanged public desk photo",
+          "description": "The agent inspected the original public photograph and actual SAM boxes. The phone and central mouse boxes are retained unchanged. The partial mouse at the right image edge is outside the declared lower desk workspace, not labeled a false positive. This is not independent human ground truth or physical verification.",
+          "location": "",
+          "objects": [
+            {
+              "id": "sam-0-0",
+              "label": "smartphone",
+              "box": {
+                "x": 0.4375,
+                "y": 0.6494845360824743,
+                "width": 0.06875,
+                "height": 0.2099343955014058
+              },
+              "locked": false,
+              "source": "sam_3_1",
+              "confidence": 0.9532163739204407,
+              "required": true,
+              "tolerance": 0.025
+            },
+            {
+              "id": "sam-1-1",
+              "label": "mouse",
+              "box": {
+                "x": 0.554375,
+                "y": 0.7403936269915652,
+                "width": 0.083125,
+                "height": 0.1733833177132146
+              },
+              "locked": true,
+              "source": "sam_3_1",
+              "confidence": 0.96875,
+              "required": true,
+              "tolerance": 0.025
+            }
+          ],
+          "workspace": {
+            "x": 0.43,
+            "y": 0.64,
+            "width": 0.44,
+            "height": 0.35
+          },
+          "clearance": 0.008,
+          "reference_analysis": null,
+          "reference_inference_wall_ms": null,
+          "id": "fe04a1b8ae6a44c1811c46b113ccb79c",
+          "revision": 1,
+          "created_at": "2026-10-26T22:33:40.600704+00:00",
+          "updated_at": "2026-10-26T22:33:40.600704+00:00"
+        },
+        "aligned_image": {
+          "width": 1600,
+          "height": 1067,
+          "alignment": {
+            "tx": 0,
+            "ty": 0,
+            "scale": 1,
+            "rotation": 0,
+            "confirmed": true
+          },
+          "workspace_coverage": 1.0,
+          "comparison_allowed": true,
+          "warnings": [],
+          "method": "user_confirmed_similarity"
+        },
+        "analysis": {
+          "objects": [
+            {
+              "id": "sam-0-0",
+              "label": "smartphone",
+              "box": {
+                "x": 0.4375,
+                "y": 0.6494845360824743,
+                "width": 0.06875,
+                "height": 0.2099343955014058
+              },
+              "locked": false,
+              "source": "sam_3_1",
+              "confidence": 0.9532163739204407
+            },
+            {
+              "id": "sam-1-0",
+              "label": "mouse",
+              "box": {
+                "x": 0.980625,
+                "y": 0.5435801312089972,
+                "width": 0.019375,
+                "height": 0.08622305529522024
+              },
+              "locked": false,
+              "source": "sam_3_1",
+              "confidence": 0.8400000333786011
+            },
+            {
+              "id": "sam-1-1",
+              "label": "mouse",
+              "box": {
+                "x": 0.554375,
+                "y": 0.7403936269915652,
+                "width": 0.083125,
+                "height": 0.1733833177132146
+              },
+              "locked": false,
+              "source": "sam_3_1",
+              "confidence": 0.96875
+            }
+          ],
+          "concepts": [
+            "smartphone",
+            "mouse"
+          ],
+          "summary": "User-supplied segmentation concepts.",
+          "annotation_source": "sam_3_1",
+          "provider": "meta",
+          "model": "sam-3.1",
+          "warnings": [
+            "Review every detection and label, add missed obstacles, and correct overlapping boxes before planning. Detection is not an exhaustive inventory."
+          ],
+          "message": "SAM returned 3 object(s). Review annotations before planning.",
+          "image_width": 1600,
+          "image_height": 1067,
+          "concept_latency_ms": {
+            "smartphone": 1814,
+            "mouse": 2522
+          },
+          "inferred_at": "2026-10-26T22:33:43.404352+00:00",
+          "inference_cache": {
+            "status": "miss",
+            "age_ms": 0
+          }
+        },
+        "concept_discovery": null,
+        "automatic_result": {
+          "passed": false,
+          "status": "needs_review",
+          "review_required": true,
+          "objects": [
+            {
+              "object_id": "sam-0-0",
+              "label": "smartphone",
+              "detection_id": "sam-0-0",
+              "candidate_ids": [
+                "sam-0-0"
+              ],
+              "certainty": "supported",
+              "provider_confidence": 0.9532163739204407,
+              "appearance_similarity": 0.9993,
+              "reasons": [],
+              "candidate_evidence": [
+                {
+                  "detection_id": "sam-0-0",
+                  "score": 0.9976,
+                  "label_similarity": 1.0,
+                  "footprint_similarity": 1.0,
+                  "appearance_similarity": 0.9993,
+                  "expected_center_distance": 0.0,
+                  "spatial_context_error": 0.0
+                }
+              ],
+              "evidence_score": 0.9976,
+              "score_margin": null,
+              "status": "correct",
+              "source": "ai_generated",
+              "observed_box": {
+                "x": 0.4375,
+                "y": 0.6494845360824743,
+                "width": 0.06875,
+                "height": 0.2099343955014058
+              },
+              "expected_box": {
+                "x": 0.4375,
+                "y": 0.6494845360824743,
+                "width": 0.06875,
+                "height": 0.2099343955014058
+              },
+              "edge_error": 2.7755575615628914e-17,
+              "tolerance": 0.025,
+              "required": true,
+              "protected": false,
+              "severity": "info"
+            },
+            {
+              "object_id": "sam-1-1",
+              "label": "mouse",
+              "detection_id": "sam-1-1",
+              "candidate_ids": [
+                "sam-1-1"
+              ],
+              "certainty": "supported",
+              "provider_confidence": 0.96875,
+              "appearance_similarity": 0.9997,
+              "reasons": [],
+              "candidate_evidence": [
+                {
+                  "detection_id": "sam-1-1",
+                  "score": 0.9984,
+                  "label_similarity": 1.0,
+                  "footprint_similarity": 1.0,
+                  "appearance_similarity": 0.9997,
+                  "expected_center_distance": 0.0,
+                  "spatial_context_error": 0.0
+                }
+              ],
+              "evidence_score": 0.9984,
+              "score_margin": null,
+              "status": "correct",
+              "source": "ai_generated",
+              "observed_box": {
+                "x": 0.554375,
+                "y": 0.7403936269915652,
+                "width": 0.083125,
+                "height": 0.1733833177132146
+              },
+              "expected_box": {
+                "x": 0.554375,
+                "y": 0.7403936269915652,
+                "width": 0.083125,
+                "height": 0.1733833177132146
+              },
+              "edge_error": 2.7755575615628914e-17,
+              "tolerance": 0.01,
+              "required": true,
+              "protected": true,
+              "severity": "info"
+            }
+          ],
+          "additional_objects": [],
+          "observed_objects": [
+            {
+              "id": "sam-0-0",
+              "label": "smartphone",
+              "box": {
+                "x": 0.4375,
+                "y": 0.6494845360824743,
+                "width": 0.06875,
+                "height": 0.2099343955014058
+              },
+              "locked": false,
+              "source": "sam_3_1",
+              "confidence": 0.9532163739204407
+            },
+            {
+              "id": "sam-1-1",
+              "label": "mouse",
+              "box": {
+                "x": 0.554375,
+                "y": 0.7403936269915652,
+                "width": 0.083125,
+                "height": 0.1733833177132146
+              },
+              "locked": true,
+              "source": "sam_3_1",
+              "confidence": 0.96875
+            }
+          ],
+          "issues": [],
+          "inventory_confirmed": false,
+          "evidence_mode": "automatic",
+          "correct_count": 2,
+          "reference_count": 2,
+          "issue_count": 0,
+          "message": "Resolve uncertain identities and confirm the full inventory."
+        },
+        "reviewed_result": null,
+        "review": null,
+        "explanation": null,
+        "correction_plan": null,
+        "previous_inspection_id": null,
+        "inference_wall_ms": 2682,
+        "latency_ms": 2847,
+        "warnings": [
+          "Review every detection and label, add missed obstacles, and correct overlapping boxes before planning. Detection is not an exhaustive inventory.",
+          "Inspect all visible obstacles. SAM and concept discovery cannot prove an exhaustive inventory."
+        ],
+        "id": "7b186308a5a44617aac153d4b3bdaeb9",
+        "revision": 1,
+        "created_at": "2026-10-26T22:33:43.451283+00:00"
+      },
+      "inspect_explanation": {
+        "summary": "AI inspection of the live SAM integration desk photo reviewed the lower desk workspace. Two required objects were retained unchanged with high AI evidence scores and no issues flagged; the partial mouse at the right edge was excluded as outside the declared workspace. This is an AI-generated assessment only, not independent human ground truth or physical verification, and remains needs_review. No correction movements are validated except by the deterministic planner.",
+        "findings": [
+          {
+            "object_id": "sam-0-0",
+            "explanation": "AI suggests smartphone status is correct: observed box matches expected box exactly with edge error ~0 within 0.025 tolerance, evidence_score 0.9976 and appearance_similarity 0.9993. This is AI-generated, not a human confirmation.",
+            "next_step": "No movement needed; retain current placement and request human review to confirm before any handling. Any future correction would require deterministic planner validation."
+          },
+          {
+            "object_id": "sam-1-1",
+            "explanation": "AI suggests mouse status is correct: observed box matches expected box exactly with edge error ~0 within 0.01 tolerance, evidence_score 0.9984 and appearance_similarity 0.9997. Required and marked protected. This is AI-generated, not a human confirmation.",
+            "next_step": "No movement needed at this time; maintain position. If future correction is needed, request supervised restoration due to protected status and allow deterministic planner to validate any movement."
+          }
+        ],
+        "provider": "baseten",
+        "model": "meta-models/muse-spark-open-1026",
+        "operation": "explain_inspection",
+        "inference_latency_ms": 5047,
+        "inferred_at": "2026-10-26T22:33:48.516514+00:00",
+        "usage": {
+          "prompt_tokens": 1241,
+          "completion_tokens": 1388,
+          "total_tokens": 2629
+        },
+        "live_request": true,
+        "source": "ai_generated_advisory",
+        "inference_cache": {
+          "status": "miss",
+          "age_ms": 0
+        }
+      },
+      "inspect_review_gate": {
+        "status": "blocked",
+        "message": "Correction plan withheld.",
+        "reasons": [
+          "Resolve uncertain matches and confirm the complete current inventory before planning."
+        ],
+        "movements": [],
+        "final_objects": [],
+        "locked_ids": [],
+        "warnings": []
+      },
+      "persistence": {
+        "passed": true,
+        "isolated_database": "worldos-live.sqlite3"
+      }
+    },
+    "status": "passed_integration_not_physical_completion",
+    "provider_requests": [
+      {
+        "provider": "baseten",
+        "model": "meta-models/muse-spark-open-1026",
+        "operation": "interpret_goal",
+        "status": "http_success",
+        "inference_latency_ms": 7718,
+        "inferred_at": "2026-10-26T22:33:40.594684+00:00",
+        "usage": {
+          "prompt_tokens": 2919,
+          "completion_tokens": 548,
+          "total_tokens": 3467
+        },
+        "live_request": true,
+        "wall_ms": 7719
+      },
+      {
+        "provider": "meta",
+        "model": "sam-3.1",
+        "operation": "segment_concept",
+        "status": "http_success",
+        "inference_latency_ms": 1812,
+        "inferred_at": "2026-10-26T22:33:42.551709+00:00",
+        "usage": {
+          "total_tokens": 0,
+          "input_tokens": 0,
+          "output_tokens": 0
+        },
+        "live_request": true,
+        "wall_ms": 1814
+      },
+      {
+        "provider": "meta",
+        "model": "sam-3.1",
+        "operation": "segment_concept",
+        "status": "http_success",
+        "inference_latency_ms": 2516,
+        "inferred_at": "2026-10-26T22:33:43.403346+00:00",
+        "usage": {
+          "total_tokens": 0,
+          "input_tokens": 0,
+          "output_tokens": 0
+        },
+        "live_request": true,
+        "wall_ms": 2522
+      },
+      {
+        "provider": "baseten",
+        "model": "meta-models/muse-spark-open-1026",
+        "operation": "explain_inspection",
+        "status": "http_success",
+        "inference_latency_ms": 5047,
+        "inferred_at": "2026-10-26T22:33:48.516015+00:00",
+        "usage": {
+          "prompt_tokens": 1241,
+          "completion_tokens": 1388,
+          "total_tokens": 2629
+        },
+        "live_request": true,
+        "wall_ms": 5057
+      }
+    ],
+    "readiness": {
+      "selected_sam_provider": "meta",
+      "scope": "current_server_process_and_configuration",
+      "credentials": {
+        "meta_api_key_configured": true,
+        "baseten_api_key_configured": true,
+        "baseten_sam_model_id_configured": false
+      },
+      "integrations": {
+        "muse": {
+          "provider": "baseten",
+          "model": "meta-models/muse-spark-open-1026",
+          "last_inference": {
+            "provider": "baseten",
+            "model": "meta-models/muse-spark-open-1026",
+            "operation": "explain_inspection",
+            "inference_latency_ms": 5047,
+            "inferred_at": "2026-10-26T22:33:48.516015+00:00",
+            "usage": {
+              "prompt_tokens": 1241,
+              "completion_tokens": 1388,
+              "total_tokens": 2629
+            },
+            "live_request": true
+          },
+          "readiness": {
+            "status": "verified",
+            "message": "A validated live inference succeeded in this process. This verifies connectivity, not photograph accuracy or physical task completion.",
+            "required_variable": "BASETEN_API_KEY"
+          },
+          "fallback_available": true,
+          "configuration": {
+            "status": "configured_not_verified",
+            "credentials_configured": true,
+            "message": "A credential is configured. This does not establish validity, credits, model access, or a working connection."
+          },
+          "last_test": {
+            "status": "not_tested",
+            "message": "No connection inference has been tested with this configuration in this server process.",
+            "last_attempt_at": null,
+            "last_completed_at": null,
+            "last_success_at": null,
+            "live_request_succeeded": false,
+            "ever_live_request_succeeded": false,
+            "test_in_progress": false,
+            "provider_http_status": null,
+            "inference_latency_ms": null,
+            "usage": {}
+          },
+          "test_scope": "text_inference"
+        },
+        "sam": {
+          "provider": "meta",
+          "model": "sam-3.1",
+          "last_inference": {
+            "provider": "meta",
+            "model": "sam-3.1",
+            "operation": "segment_concept",
+            "inference_latency_ms": 2516,
+            "inferred_at": "2026-10-26T22:33:43.403346+00:00",
+            "usage": {
+              "total_tokens": 0,
+              "input_tokens": 0,
+              "output_tokens": 0
+            },
+            "live_request": true
+          },
+          "readiness": {
+            "status": "verified",
+            "message": "A validated live inference succeeded in this process. This verifies connectivity, not photograph accuracy or physical task completion.",
+            "required_variable": "MODEL_API_KEY"
+          },
+          "fallback_available": false,
+          "configuration": {
+            "status": "configured_not_verified",
+            "credentials_configured": true,
+            "message": "A credential is configured. This does not establish validity, credits, model access, or a working connection."
+          },
+          "last_test": {
+            "status": "not_tested",
+            "message": "No connection inference has been tested with this configuration in this server process.",
+            "last_attempt_at": null,
+            "last_completed_at": null,
+            "last_success_at": null,
+            "live_request_succeeded": false,
+            "ever_live_request_succeeded": false,
+            "test_in_progress": false,
+            "provider_http_status": null,
+            "inference_latency_ms": null,
+            "usage": {}
+          },
+          "test_scope": "synthetic_image_segmentation"
+        }
+      }
+    }
+  },
+  "preserved_earlier_attempts": [
+    {
+      "status": "failed",
+      "failed_stage": "inspect_explanation",
+      "error": {
+        "code": "malformed_response",
+        "http_status": null
+      },
+      "provider_requests": [
+        {
+          "provider": "baseten",
+          "model": "meta-models/muse-spark-open-1026",
+          "operation": "interpret_goal",
+          "status": "http_success",
+          "inference_latency_ms": 9532,
+          "inferred_at": "2026-10-26T22:30:30.364641+00:00",
+          "usage": {
+            "prompt_tokens": 2868,
+            "completion_tokens": 694,
+            "total_tokens": 3562
+          },
+          "live_request": true,
+          "wall_ms": 9523
+        },
+        {
+          "provider": "meta",
+          "model": "sam-3.1",
+          "operation": "segment_concept",
+          "status": "http_success",
+          "inference_latency_ms": 2437,
+          "inferred_at": "2026-10-26T22:30:32.959648+00:00",
+          "usage": {
+            "total_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0
+          },
+          "live_request": true,
+          "wall_ms": 2435
+        },
+        {
+          "provider": "meta",
+          "model": "sam-3.1",
+          "operation": "segment_concept",
+          "status": "http_success",
+          "inference_latency_ms": 3891,
+          "inferred_at": "2026-10-26T22:30:34.578228+00:00",
+          "usage": {
+            "total_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0
+          },
+          "live_request": true,
+          "wall_ms": 3894
+        },
+        {
+          "provider": "baseten",
+          "model": "meta-models/muse-spark-open-1026",
+          "operation": "explain_inspection",
+          "status": "http_success",
+          "inference_latency_ms": 14078,
+          "inferred_at": "2026-10-26T22:30:48.720135+00:00",
+          "usage": {
+            "prompt_tokens": 1221,
+            "completion_tokens": 2038,
+            "total_tokens": 3259
+          },
+          "live_request": true,
+          "wall_ms": 14087
+        }
+      ]
+    },
+    {
+      "scope": "Explicit explanation-only retry on saved actual live inspection facts; no new photo scan or physical trial.",
+      "status": "failed",
+      "response_shape": {
+        "finish_reason": "stop",
+        "content_type": "str",
+        "content_characters": 1902,
+        "starts_with_fence": false,
+        "schema_valid": false,
+        "validation_errors": [
+          {
+            "type": "extra_forbidden",
+            "loc": [
+              "$defs"
+            ]
+          }
+        ]
+      },
+      "provider_metadata": {
+        "provider": "baseten",
+        "model": "meta-models/muse-spark-open-1026",
+        "operation": "explain_inspection",
+        "inference_latency_ms": 4641,
+        "inferred_at": "2026-10-26T22:31:47.407553+00:00",
+        "usage": {
+          "prompt_tokens": 1221,
+          "completion_tokens": 1281,
+          "total_tokens": 2502
+        },
+        "live_request": true
+      },
+      "error": {
+        "code": "malformed_response",
+        "message": "Muse Spark returned incomplete, refused, or invalid structured output. No AI result was applied."
+      }
+    },
+    {
+      "scope": "Explicit explanation-only retry on saved actual live inspection facts; no new photo scan or physical trial.",
+      "status": "success",
+      "response_shape": {
+        "finish_reason": "stop",
+        "content_type": "str",
+        "content_characters": 1527,
+        "starts_with_fence": false,
+        "schema_valid": true
+      },
+      "provider_metadata": {
+        "provider": "baseten",
+        "model": "meta-models/muse-spark-open-1026",
+        "operation": "explain_inspection",
+        "inference_latency_ms": 5281,
+        "inferred_at": "2026-10-26T22:32:59.071454+00:00",
+        "usage": {
+          "prompt_tokens": 1241,
+          "completion_tokens": 1431,
+          "total_tokens": 2672
+        },
+        "live_request": true
+      }
+    }
+  ],
+  "validation": {
+    "backend_passed": 269,
+    "backend_live_skipped": 2,
+    "frontend_passed": 80,
+    "production_build": "passed",
+    "http_smokes": "passed; mocked provider fixtures",
+    "physical_trials_completed": 0
+  },
+  "usage_scope": {
+    "baseten_requests_including_failed_validation": 6,
+    "baseten_total_tokens_including_failed_validation": 18091,
+    "sam_requests": 6,
+    "note": "The initial two SAM requests are in initial_detection. Zero reported SAM tokens do not imply zero cost; SAM uses image billing. These are individual observations, not a latency benchmark."
+  }
+}

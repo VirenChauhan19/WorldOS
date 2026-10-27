@@ -1,0 +1,206 @@
+{
+  "schema_version": 1,
+  "fixture_type": "physical_inspection_pairs",
+  "cases": [
+    {
+      "id": "correct_workspace",
+      "captured": false,
+      "reference": "correct_workspace/reference.jpg",
+      "current": "correct_workspace/current.jpg",
+      "template": "correct_workspace/template.json",
+      "truth": "correct_workspace/truth.json",
+      "recording": "correct_workspace/inference.json",
+      "reviewed": null,
+      "alignment": {
+        "tx": 0,
+        "ty": 0,
+        "scale": 1,
+        "rotation": 0,
+        "confirmed": false
+      },
+      "inventory_confirmed": false,
+      "discover_unexpected": true,
+      "extra_concepts": []
+    },
+    {
+      "id": "missing_object",
+      "captured": false,
+      "reference": "missing_object/reference.jpg",
+      "current": "missing_object/current.jpg",
+      "template": "missing_object/template.json",
+      "truth": "missing_object/truth.json",
+      "recording": "missing_object/inference.json",
+      "reviewed": null,
+      "alignment": {
+        "tx": 0,
+        "ty": 0,
+        "scale": 1,
+        "rotation": 0,
+        "confirmed": false
+      },
+      "inventory_confirmed": false,
+      "discover_unexpected": true,
+      "extra_concepts": []
+    },
+    {
+      "id": "misplaced_object",
+      "captured": false,
+      "reference": "misplaced_object/reference.jpg",
+      "current": "misplaced_object/current.jpg",
+      "template": "misplaced_object/template.json",
+      "truth": "misplaced_object/truth.json",
+      "recording": "misplaced_object/inference.json",
+      "reviewed": null,
+      "alignment": {
+        "tx": 0,
+        "ty": 0,
+        "scale": 1,
+        "rotation": 0,
+        "confirmed": false
+      },
+      "inventory_confirmed": false,
+      "discover_unexpected": true,
+      "extra_concepts": []
+    },
+    {
+      "id": "unexpected_object",
+      "captured": false,
+      "reference": "unexpected_object/reference.jpg",
+      "current": "unexpected_object/current.jpg",
+      "template": "unexpected_object/template.json",
+      "truth": "unexpected_object/truth.json",
+      "recording": "unexpected_object/inference.json",
+      "reviewed": null,
+      "alignment": {
+        "tx": 0,
+        "ty": 0,
+        "scale": 1,
+        "rotation": 0,
+        "confirmed": false
+      },
+      "inventory_confirmed": false,
+      "discover_unexpected": true,
+      "extra_concepts": []
+    },
+    {
+      "id": "multiple_misplaced",
+      "captured": false,
+      "reference": "multiple_misplaced/reference.jpg",
+      "current": "multiple_misplaced/current.jpg",
+      "template": "multiple_misplaced/template.json",
+      "truth": "multiple_misplaced/truth.json",
+      "recording": "multiple_misplaced/inference.json",
+      "reviewed": null,
+      "alignment": {
+        "tx": 0,
+        "ty": 0,
+        "scale": 1,
+        "rotation": 0,
+        "confirmed": false
+      },
+      "inventory_confirmed": false,
+      "discover_unexpected": true,
+      "extra_concepts": []
+    },
+    {
+      "id": "duplicate_objects",
+      "captured": false,
+      "reference": "duplicate_objects/reference.jpg",
+      "current": "duplicate_objects/current.jpg",
+      "template": "duplicate_objects/template.json",
+      "truth": "duplicate_objects/truth.json",
+      "recording": "duplicate_objects/inference.json",
+      "reviewed": null,
+      "alignment": {
+        "tx": 0,
+        "ty": 0,
+        "scale": 1,
+        "rotation": 0,
+        "confirmed": false
+      },
+      "inventory_confirmed": false,
+      "discover_unexpected": true,
+      "extra_concepts": []
+    },
+    {
+      "id": "protected_moved",
+      "captured": false,
+      "reference": "protected_moved/reference.jpg",
+      "current": "protected_moved/current.jpg",
+      "template": "protected_moved/template.json",
+      "truth": "protected_moved/truth.json",
+      "recording": "protected_moved/inference.json",
+      "reviewed": null,
+      "alignment": {
+        "tx": 0,
+        "ty": 0,
+        "scale": 1,
+        "rotation": 0,
+        "confirmed": false
+      },
+      "inventory_confirmed": false,
+      "discover_unexpected": true,
+      "extra_concepts": []
+    },
+    {
+      "id": "different_camera_angle",
+      "captured": false,
+      "reference": "different_camera_angle/reference.jpg",
+      "current": "different_camera_angle/current.jpg",
+      "template": "different_camera_angle/template.json",
+      "truth": "different_camera_angle/truth.json",
+      "recording": "different_camera_angle/inference.json",
+      "reviewed": null,
+      "alignment": {
+        "tx": 0,
+        "ty": 0,
+        "scale": 1,
+        "rotation": 0,
+        "confirmed": false
+      },
+      "inventory_confirmed": false,
+      "discover_unexpected": true,
+      "extra_concepts": []
+    },
+    {
+      "id": "partial_occlusion",
+      "captured": false,
+      "reference": "partial_occlusion/reference.jpg",
+      "current": "partial_occlusion/current.jpg",
+      "template": "partial_occlusion/template.json",
+      "truth": "partial_occlusion/truth.json",
+      "recording": "partial_occlusion/inference.json",
+      "reviewed": null,
+      "alignment": {
+        "tx": 0,
+        "ty": 0,
+        "scale": 1,
+        "rotation": 0,
+        "confirmed": false
+      },
+      "inventory_confirmed": false,
+      "discover_unexpected": true,
+      "extra_concepts": []
+    },
+    {
+      "id": "failed_detection",
+      "captured": false,
+      "reference": "failed_detection/reference.jpg",
+      "current": "failed_detection/current.jpg",
+      "template": "failed_detection/template.json",
+      "truth": "failed_detection/truth.json",
+      "recording": "failed_detection/inference.json",
+      "reviewed": null,
+      "alignment": {
+        "tx": 0,
+        "ty": 0,
+        "scale": 1,
+        "rotation": 0,
+        "confirmed": false
+      },
+      "inventory_confirmed": false,
+      "discover_unexpected": true,
+      "extra_concepts": []
+    }
+  ]
+}

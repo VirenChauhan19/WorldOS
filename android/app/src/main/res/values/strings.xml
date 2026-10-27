@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">WorldOS</string>
+    <string name="title_activity_main">WorldOS</string>
+    <string name="package_name">app.worldos.inspect</string>
+    <string name="custom_url_scheme">app.worldos.inspect</string>
+</resources>

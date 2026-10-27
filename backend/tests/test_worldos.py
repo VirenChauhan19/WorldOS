@@ -104,6 +104,7 @@ def test_search_exhaustion_is_not_claimed_impossible(monkeypatch):
     monkeypatch.setattr(planner, "MAX_STATES", 0)
     result = generate_plan(scene())
     assert result.status == "search_limit"
+    assert result.explored_states == 0
     assert "not proof" in result.message
 
 

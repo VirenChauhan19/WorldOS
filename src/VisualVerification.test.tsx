@@ -12,6 +12,15 @@ function result(): VisualVerification {
     steps:[{number:1,object_id:'cup',status:'uncertain'}],issues:[],unexpected_movements:[],uncertain_ids:['cup'],detections:[detection],observed_objects:[original],latency_ms:1200,confidence:'uncertain'};
 }
 afterEach(cleanup);
+it('exposes matching evidence as a heuristic and clears confidence on identity correction', () => {
+  const apply=vi.fn(); const value=result(); value.objects[0].evidence_score=.71;
+  value.objects[0].candidate_evidence=[{detection_id:'sam-0',score:.71,label_similarity:1,footprint_similarity:.9,spatial_context_error:null}];
+  render(<VisualVerificationPanel result={value} originals={[original]} busy={false} stale={false} onVerify={vi.fn()} onApply={apply}/>);
+  expect(screen.getByText(/Heuristic score, not an identity probability/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:'Apply identity choices for review'}));
+  expect(apply.mock.calls[0][0][0].source).toBe('ai_corrected');
+  expect(apply.mock.calls[0][0][0].confidence).toBeNull();
+});
 it('does not infer on mount and displays actual provider confidence and uncertainty', () => {
   const verify=vi.fn();
   render(<VisualVerificationPanel result={result()} originals={[original]} busy={false} stale={false} onVerify={verify} onApply={vi.fn()}/>);

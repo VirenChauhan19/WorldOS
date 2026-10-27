@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUpRight, Box as BoxIcon, Check, CheckCheck, ChevronRight, CircleHelp, Crosshair, Download, Eye, EyeOff, Focus, ImagePlus, Layers3, LoaderCircle, LockKeyhole, Maximize, MousePointer2, Plus, RotateCcw, ScanLine, ShieldCheck, Sparkles, SquareDashed, Trash2, UnlockKeyhole, Upload, X } from 'lucide-react';
+import { ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUpRight, Box as BoxIcon, Check, CheckCheck, ChevronRight, CircleHelp, Crosshair, Download, Eye, EyeOff, Focus, ImagePlus, Layers3, LoaderCircle, LockKeyhole, Maximize, MousePointer2, Plus, RotateCcw, ScanLine, ShieldCheck, Sparkles, SquareDashed, Trash2, UnlockKeyhole, X } from 'lucide-react';
 import Canvas from './Canvas';
+import PhotoActions from './PhotoActions';
+import { exportJSON } from './exportFile';
 import AIPanel from './AIPanel';
 import VisualVerificationPanel from './VisualVerification';
+import DemoMode from './DemoMode';
+import type { DemoEvidence } from './DemoMode';
 import { analyze, automaticVerify, health, planScene, replanScene, verifyReviewed, verifyScene } from './api';
 import { clamp } from './geometry';
 import { SAMPLE_IMAGE, SAMPLE_OBJECTS, SAMPLE_TARGET } from './sample';
@@ -46,6 +50,11 @@ export default function App() {
   const [showBoxes, setShowBoxes] = useState(true);
   const [compare, setCompare] = useState<'before' | 'after' | 'split'>('after');
   const [help, setHelp] = useState(false);
+  const [demo, setDemo] = useState(false);
+  const [demoStep, setDemoStep] = useState(0);
+  const [activeMove, setActiveMove] = useState(0);
+  const [evidence, setEvidence] = useState<DemoEvidence | null>(null);
+  const [elapsed, setElapsed] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null);
   const afterInput = useRef<HTMLInputElement>(null);
   const feasible = !!plan && ['ready', 'already_clear'].includes(plan.status);
@@ -56,6 +65,14 @@ export default function App() {
   const hasAIObjects = objects.some(obj => obj.source && obj.source !== 'manual');
 
   useEffect(() => {
+    setElapsed(0);
+    if (!busy) return;
+    const started = Date.now();
+    const timer = window.setInterval(() => setElapsed(Math.floor((Date.now()-started)/1000)), 1000);
+    return () => window.clearInterval(timer);
+  }, [busy]);
+
+  useEffect(() => {
     let mounted = true;
     const ping = () => health().then(result => { if (mounted) { setOnline(true); setAICapabilities(result.ai); } }).catch(() => { if (mounted) setOnline(false); });
     void ping(); const interval = window.setInterval(ping, 15000);
@@ -63,6 +80,7 @@ export default function App() {
   }, []);
 
   function invalidate() {
+    setEvidence(previous => previous ? { ...previous, historical: true } : null); setActiveMove(0);
     setPlan(null); setSnapshot(null); setFinalImage(null); setObserved([]); setReviewed([]); setVerification(null); setError(null);
     setConstraints(null); setAIReviewed(false);
     setVisualResult(null); setVisualStale(false); setOriginalSnapshot(null); setOriginalImage(null); setRevision(null); setFramingConfirmed(false); setInventoryConfirmed(false);
@@ -112,7 +130,7 @@ export default function App() {
         setFinalImage(next); setObserved(structuredClone(snapshot!.objects).map(obj => ({ ...obj, source: 'manual', confidence: null }))); setReviewed([]); setVerification(null); setCompare('after'); setSelected(snapshot!.objects[0]?.id ?? null);
         setVisualResult(null); setVisualStale(false); setFramingConfirmed(false); setInventoryConfirmed(false);
       } else {
-        invalidate(); setImage(next); setObjects([]); setTarget(null); setWorkspace(FULL); setSelected(null); setStage('annotate'); setTool('object');
+        invalidate(); setEvidence(null); setImage(next); setObjects([]); setTarget(null); setWorkspace(FULL); setSelected(null); setStage('annotate'); setTool('object');
       }
       setOnline(true);
     } catch (error) { setError(getError(error)); }
@@ -128,6 +146,7 @@ export default function App() {
       const result = await planScene(req);
       setPlan(result); setSnapshot(req); setFinalImage(null); setObserved([]); setReviewed([]); setVerification(null); setStage('plan'); setTool('select'); setOnline(true);
       setOriginalSnapshot(req); setOriginalImage(image); setRevision(null); setVisualResult(null); setVisualStale(false);
+      setActiveMove(0); if (demo) setDemoStep(2);
     } catch (error) { setError(getError(error)); }
     finally { setBusy(null); }
   }
@@ -155,7 +174,7 @@ export default function App() {
       const mapped = snapshot.objects.map(original => result.observed_objects.find(o => o.id === original.id) ?? { ...original, source: 'manual' as const, confidence: null });
       const extras = result.observed_objects.filter(o => !snapshot.objects.some(original => original.id === o.id));
       setObserved([...mapped, ...extras, ...manualExtras]); setReviewed([]); setCompare('after'); setShowBoxes(true);
-      if (result.passed) setVerification({ passed: true, message: result.message, matched_count: result.matched_count, issues: result.issues, objects: result.objects.map(row => ({ ...row, edge_error: row.edge_error ?? 1 })) });
+      if (result.passed) setVerification({ source: result.source ?? 'sam_after_photo', passed: true, message: result.message, matched_count: result.matched_count, issues: result.issues, objects: result.objects.map(row => ({ ...row, edge_error: row.edge_error ?? 1 })) });
     } catch (error) { setError(getError(error)); }
     finally { setBusy(null); }
   }
@@ -167,20 +186,26 @@ export default function App() {
       if (result.revised_plan && result.plan_request) {
         setPlan(result.revised_plan); setSnapshot(result.plan_request); setObjects(result.plan_request.objects); setImage(finalImage);
         setFinalImage(null); setObserved([]); setReviewed([]); setVerification(null); setVisualResult(null); setVisualStale(false); setStage('plan');
+        setActiveMove(0); if (demo) setDemoStep(3);
       }
     } catch (error) { setError(getError(error)); }
     finally { setBusy(null); }
   }
   function reset() {
-    invalidate(); setImage(SAMPLE_IMAGE); setObjects(copyObjects()); setTarget(SAMPLE_TARGET); setWorkspace(FULL); setGoal('Make room for my laptop without moving my coffee.'); setSelected('notebook'); setStage('annotate'); setTool('select'); setShowBoxes(true);
+    invalidate(); setEvidence(null); setDemoStep(0); setImage(SAMPLE_IMAGE); setObjects(copyObjects()); setTarget(SAMPLE_TARGET); setWorkspace(FULL); setGoal('Make room for my laptop without moving my coffee.'); setSelected('notebook'); setStage('annotate'); setTool('select'); setShowBoxes(true);
   }
   function exportPlan() {
-    const blob = new Blob([JSON.stringify({ app: 'WorldOS', version: '0.3.0', annotation_source: hasAIObjects ? 'ai_and_user_review' : 'manual', original_request: originalSnapshot, request: snapshot, plan, revision, verification, visual_verification: visualResult, visual_result_stale: visualStale, observed_objects: finalImage ? observed : null }, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'worldos-plan.json'; a.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    void exportJSON({ app: 'WorldOS', version: '0.6.0', annotation_source: hasAIObjects ? 'ai_and_user_review' : 'manual', original_request: originalSnapshot, request: snapshot, plan, revision, verification, visual_verification: visualResult, visual_result_stale: visualStale, observed_objects: finalImage ? observed : null, reviewed_ids: reviewed, framing_confirmed: framingConfirmed, inventory_confirmed: inventoryConfirmed, inference_evidence: evidence ? { analysis: evidence.analysis, reasoning: evidence.reasoning, historical: evidence.historical } : null }, 'worldos-plan.json').catch(error=>setError(getError(error)));
   }
   function nav(next: Stage) { if (busy) return; setStage(next); setTool('select'); setError(null); }
+  function demoNavigate(next: number) {
+    setDemoStep(next);
+    if (next <= 1) nav('annotate');
+    else if (next <= 3 && plan) nav('plan');
+    else if (next >= 4 && feasible) { nav('verify'); setCompare('split'); }
+  }
   function canvas(final = false, readonly = false) {
-    return <Canvas image={final ? finalImage! : image} objects={final ? observed : objects} target={target} workspace={workspace} tool={tool} selected={selected} onSelect={setSelected} onObjects={updateObjects} onTarget={box => { invalidate(); setTarget(box); setTool('select'); }} onWorkspace={box => { invalidate(); setWorkspace(box); setTool('select'); }} onAdd={addObject} plan={readonly ? null : plan} mode={readonly ? 'plan' : final ? 'final' : stage === 'plan' ? 'plan' : 'annotate'} showBoxes={showBoxes} placementStatuses={final ? Object.fromEntries(verification ? verification.objects.map(row => [row.object_id, row.matched ? 'completed' : 'incomplete']) : visualResult && !visualStale ? visualResult.objects.map(row => [row.object_id, row.status]) : []) : {}}/>;
+    return <Canvas image={final ? finalImage! : image} objects={final ? observed : objects} target={target} workspace={workspace} tool={tool} selected={selected} onSelect={setSelected} onObjects={updateObjects} onTarget={box => { invalidate(); setTarget(box); setTool('select'); }} onWorkspace={box => { invalidate(); setWorkspace(box); setTool('select'); }} onAdd={addObject} plan={readonly ? null : plan} mode={readonly ? 'plan' : final ? 'final' : stage === 'plan' ? 'plan' : 'annotate'} showBoxes={showBoxes} activeMovement={demo && demoStep === 3 ? activeMove + 1 : undefined} placementStatuses={final ? Object.fromEntries(verification ? verification.objects.map(row => [row.object_id, row.matched ? 'completed' : 'incomplete']) : visualResult && !visualStale ? visualResult.objects.map(row => [row.object_id, row.status]) : []) : {}}/>;
   }
 
   return <div className="app-shell">
@@ -189,13 +214,14 @@ export default function App() {
       <div className="rail-line"/>
       <button className="rail-button active" title="Spatial workspace" aria-label="Spatial workspace" onClick={() => nav('annotate')}><ScanLine size={21}/></button>
       <button className="rail-button" title="How WorldOS works" aria-label="How WorldOS works" onClick={() => setHelp(true)}><CircleHelp size={21}/></button>
-      <div className="rail-bottom"><span className="version-vertical">V0.3</span><div className="avatar">W</div></div>
+      <div className="rail-bottom"><span className="version-vertical">V0.6</span><div className="avatar">W</div></div>
     </aside>
     <div className="main-shell">
-      <header className="topbar"><a href="#" className="wordmark" onClick={e => { e.preventDefault(); nav('annotate'); }}>world<span>os</span><span className="beta">LABS</span></a><div className="breadcrumbs"><span>Personal workspace</span><ChevronRight size={13}/><strong>Spatial studio</strong></div><div className={`api-status ${online === false ? 'offline' : ''}`}><i/>{online === null ? 'Connecting' : online ? 'Local engine online' : 'API offline'}</div><button className="top-help" onClick={() => setHelp(true)}>Quick guide <ArrowUpRight size={13}/></button></header>
+      <header className="topbar"><a href="#" className="wordmark" onClick={e => { e.preventDefault(); nav('annotate'); }}>world<span>os</span><span className="beta">LABS</span></a><div className="breadcrumbs"><span>Personal workspace</span><ChevronRight size={13}/><strong>Spatial studio</strong></div><div className={`api-status ${online === false ? 'offline' : ''}`}><i/>{online === null ? 'Connecting' : online ? 'Local engine online' : 'API offline'}</div><button className="top-help demo-toggle" aria-pressed={demo} disabled={!!busy} onClick={() => setDemo(!demo)}>{demo ? 'Exit Demo Mode' : 'Demo Mode'}</button><button className="top-help" onClick={() => setHelp(true)}>Quick guide <ArrowUpRight size={13}/></button></header>
       <main>
         <div className="page-heading"><div><div className="eyebrow"><span/> THE SPATIAL INTELLIGENCE WORKSPACE</div><h1>Your space, reimagined<span>.</span></h1><p>A photo. A goal. A clear way forward.</p></div><button className="secondary reset" onClick={reset} disabled={!!busy}><RotateCcw size={15}/> Reset sample</button></div>
         <div className="workflow" aria-label="Workflow steps">{STAGES.map((s, i) => <button key={s} className={`workflow-step ${stage === s ? 'current' : ''} ${i < STAGES.indexOf(stage) ? 'complete' : ''}`} disabled={!!busy || (s === 'plan' && !plan) || (s === 'verify' && !feasible)} onClick={() => nav(s)}><span className="step-number">{i < STAGES.indexOf(stage) ? <Check size={14}/> : `0${i + 1}`}</span><span>{labels[i]}</span>{i < 2 && <ChevronRight className="step-chevron" size={15}/>}</button>)}<div className="workflow-note"><ShieldCheck size={14}/> You stay in control</div></div>
+        {demo && <DemoMode step={demoStep} onStep={demoNavigate} busy={!!busy} sample={isSample && !revision} plan={plan} verification={verification} visual={visualResult} stale={visualStale} evidence={evidence} before={originalImage ?? image} after={finalImage ?? (revision && originalImage?.image_url !== image.image_url ? image : null)} activeMove={activeMove} onMove={setActiveMove} revisionReasons={revision?.reasons ?? []}/>}
         {error && <div className="error-banner" role="alert"><CircleHelp size={18}/><span>{error}</span><button aria-label="Dismiss error" onClick={() => setError(null)}><X size={16}/></button></div>}
         {online === false && <div className="connection-note">Start the backend to upload photos, plan, and verify. <code>.venv\Scripts\python.exe -m uvicorn backend.main:app --reload</code></div>}
         <div className="studio-grid">
@@ -208,10 +234,10 @@ export default function App() {
                 <button aria-label="Draw target region" className={tool === 'target' ? 'selected' : ''} disabled={!!busy} onClick={() => setTool('target')}><Focus size={16}/><span>Target</span></button>
                 <button aria-label="Draw workspace boundary" title="Restrict placements to a flat usable surface" className={tool === 'workspace' ? 'selected' : ''} disabled={!!busy} onClick={() => setTool('workspace')}><SquareDashed size={16}/><span>Surface</span></button>
               </> : stage === 'verify' && finalImage ? <><button aria-label="Draw final obstacle" className={tool === 'object' ? 'selected' : ''} disabled={!!busy} onClick={() => { setTool(tool === 'object' ? 'select' : 'object'); setCompare('after'); setShowBoxes(true); }}><Plus size={14}/>Obstacle</button><div className="comparison-controls">{(['before', 'after', 'split'] as const).map(value => <button key={value} className={compare === value ? 'selected' : ''} onClick={() => setCompare(value)}>{value === 'split' ? 'Side by side' : value === 'before' ? 'Before' : 'After'}</button>)}</div></> : <span className="toolbar-caption"><Crosshair size={15}/>{stage === 'plan' ? 'Follow the numbered arrows' : 'Upload a final photo to compare'}</span>}</div>
-              <button className="upload-button" onClick={() => stage === 'verify' ? afterInput.current?.click() : fileInput.current?.click()} disabled={!!busy || stage === 'plan'}><Upload size={14}/><span>{stage === 'verify' ? 'Final photo' : 'Upload photo'}</span></button></div>
+              <PhotoActions label={stage==='verify'?'Final photo':'Upload photo'} cameraLabel={stage==='verify'?'Take final photo':'Take scene photo'} disabled={!!busy||stage==='plan'} onPhoto={file=>upload(file,stage==='verify')}/></div>
               <div className={`canvas-area ${busy ? 'is-busy' : ''}`} onDragOver={e => { if (stage !== 'plan' && !busy) e.preventDefault(); }} onDrop={e => { e.preventDefault(); if (!busy && stage !== 'plan') void upload(e.dataTransfer.files[0], stage === 'verify'); }}>
-                {stage === 'verify' ? finalImage ? compare === 'split' ? <div className="split-scenes"><div><span className="image-tag">BEFORE</span>{canvas(false, true)}</div><div><span className="image-tag">AFTER · EDIT BOXES</span>{canvas(true)}</div></div> : <>{canvas(compare === 'after', compare === 'before')}<span className="image-tag">{compare === 'after' ? 'AFTER · REVIEW FINAL POSITIONS' : 'BEFORE'}</span></> : <div className="final-empty"><div className="upload-symbol"><ImagePlus size={32}/></div><h3>Let’s see what changed.</h3><p>Take a photo after following the plan.<br/>Use the same camera angle and framing.</p><button className="primary" onClick={() => afterInput.current?.click()} disabled={!!busy}><Upload size={16}/> Upload final photo</button><span>JPEG, PNG or WebP · up to 12 MB</span></div> : <>{canvas()}<span className="image-tag">{isSample ? 'ILLUSTRATED SAMPLE' : 'YOUR SCENE'}</span></>}
-                {busy && <div className="loading-overlay" role="status"><LoaderCircle className="spin" size={28}/><span>{busy}</span></div>}
+                {stage === 'verify' ? finalImage ? compare === 'split' ? <div className="split-scenes"><div><span className="image-tag">BEFORE</span>{canvas(false, true)}</div><div><span className="image-tag">AFTER · EDIT BOXES</span>{canvas(true)}</div></div> : <>{canvas(compare === 'after', compare === 'before')}<span className="image-tag">{compare === 'after' ? 'AFTER · REVIEW FINAL POSITIONS' : 'BEFORE'}</span></> : <div className="final-empty"><div className="upload-symbol"><ImagePlus size={32}/></div><h3>Let’s see what changed.</h3><p>Take a photo after following the plan.<br/>Use the same camera angle and framing.</p><PhotoActions label="Upload final photo" cameraLabel="Take final photo" disabled={!!busy} onPhoto={file=>upload(file,true)}/><span>JPEG, PNG or WebP · up to 12 MB</span></div> : <>{canvas()}<span className="image-tag">{isSample ? 'ILLUSTRATED SAMPLE' : 'YOUR SCENE'}</span></>}
+                {busy && <div className="loading-overlay" role="status"><LoaderCircle className="spin" size={28}/><span>{busy}</span><small>{elapsed}s elapsed. {elapsed >= 15 ? 'Still waiting for the engine. You can retry after a timeout or use manual annotations.' : 'Results appear when the request completes.'}</small></div>}
               </div>
               <div className="canvas-footer"><div className="flex items-center gap-2"><span className="file-dot"/>{stage === 'verify' && finalImage ? finalImage.name : image.name}<span className="image-dimensions">{image.width} × {image.height}</span></div><div className="legend"><span><i className="blue"/>Object</span><span><i className="amber"/>Locked</span><span><i className="lime"/>Target</span></div></div>
             </div>
@@ -221,7 +247,7 @@ export default function App() {
           </section>
           <aside className="details-column">
             {revision && stage === 'plan' && <section className="panel visual-body"><h2>Original plan versus revised plan</h2><p>Original plan: {revision.original_plan.movements.length} moves / Revised plan: {revision.revised_plan?.movements.length ?? 0} moves / {revision.status}</p><ul>{revision.reasons.map((reason, i) => <li key={i}>{reason}</li>)}</ul><details><summary>Compare movement sequences</summary><p>Original</p><ol>{revision.original_plan.movements.map(s => <li key={s.number}>{s.instruction}</li>)}</ol><p>Revised</p><ol>{revision.revised_plan?.movements.map(s => <li key={s.number}>{s.instruction}</li>)}</ol>{originalImage && <img src={originalImage.image_url} alt="Original scene before any replanning" className="revision-original"/>}</details><p>The canvas shows updated arrows from the latest reviewed scene. Original goal and protective anchors are retained.</p></section>}
-            {stage === 'annotate' && <><AIPanel image={image} isSample={isSample} objects={objects} target={target} goal={goal} busy={busy} capabilities={aiCapabilities} constraints={constraints} onBusy={setBusy} onError={setError} onAnnotations={next => { updateObjects(next); setSelected(next[0]?.id ?? null); setTool('select'); setShowBoxes(true); }} onConstraints={value => { setPlan(null); setSnapshot(null); setConstraints(value); setError(null); }}/>{hasAIObjects && <label className="ai-scene-review"><input type="checkbox" aria-label="I reviewed all AI annotations and added missed obstacles" disabled={!!busy} checked={aiReviewed} onChange={e => setAIReviewed(e.target.checked)}/>I reviewed all AI annotations, corrected boxes and labels, and added missed obstacles.</label>}</>}
+            {stage === 'annotate' && <><AIPanel onInference={next => setEvidence(previous => ({ ...(previous?.imageUrl === next.imageUrl ? previous : {}), ...next, historical: false }))} image={image} isSample={isSample} objects={objects} target={target} goal={goal} busy={busy} capabilities={aiCapabilities} constraints={constraints} onBusy={setBusy} onError={setError} onAnnotations={next => { updateObjects(next); setSelected(next[0]?.id ?? null); setTool('select'); setShowBoxes(true); }} onConstraints={value => { setPlan(null); setSnapshot(null); setConstraints(value); setError(null); }}/>{hasAIObjects && <label className="ai-scene-review"><input type="checkbox" aria-label="I reviewed all AI annotations and added missed obstacles" disabled={!!busy} checked={aiReviewed} onChange={e => setAIReviewed(e.target.checked)}/>I reviewed all AI annotations, corrected boxes and labels, and added missed obstacles.</label>}</>}
             {stage === 'annotate' ? <>
               <section className="panel objects-panel"><div className="panel-title"><div className="flex items-center gap-2"><h2>Scene objects</h2><span className="count-badge">{objects.length.toString().padStart(2, '0')}</span></div><button className="icon-button" title="Draw a new object" aria-label="Add object" disabled={!!busy || objects.length >= 12} onClick={() => { setTool('object'); setShowBoxes(true); }}><Plus size={17}/></button></div><div className="manual-note"><span className="status-dot"/> {hasAIObjects ? 'AI + user annotations' : 'Manually annotated'} <span>{hasAIObjects ? 'Review required' : 'Manual mode'}</span></div>
                 <fieldset disabled={!!busy} className="object-list">{objects.length === 0 ? <div className="empty-objects"><BoxIcon size={24}/><p>Every object starts with a box.</p><span>Draw tight, non-overlapping rectangles around objects on your surface. Include everything that could obstruct a move.</span></div> : objects.map((obj, i) => <div key={obj.id} className={`object-row ${selected === obj.id ? 'chosen' : ''}`}><button className="object-select" onClick={() => { setSelected(obj.id); setTool('select'); setShowBoxes(true); }}><span className={`object-number ${obj.locked ? 'protected' : ''}`}>{`0${i + 1}`}</span><span className="object-copy"><strong>{obj.label || 'Unnamed object'}</strong><small>{obj.source === 'sam_3_1' ? `SAM 3.1 · ${obj.confidence == null ? 'confidence unavailable' : `${(obj.confidence * 100).toFixed(1)}%`}` : obj.source === 'ai_corrected' ? 'User corrected · confidence cleared' : obj.locked ? 'Protected from movement' : 'Available to move'}</small></span></button><button aria-label={`${obj.locked ? 'Unlock' : 'Lock'} ${obj.label}`} title={obj.locked ? 'Unlock object for planning' : 'Protect object from movement'} className={`lock-button ${obj.locked ? 'locked' : ''}`} onClick={() => updateObjects(objects.map(o => o.id === obj.id ? { ...o, locked: !o.locked } : o))}>{obj.locked ? <LockKeyhole size={15}/> : <UnlockKeyhole size={15}/>}</button></div>)}</fieldset>

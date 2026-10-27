@@ -90,6 +90,12 @@ def test_meta_sam_probe_sends_only_generated_image_and_one_concept():
     result = run(make_tester(handler).test("sam"))
     assert result["integrations"]["sam"]["last_test"]["status"] == "validated_test_response"
     assert result["integrations"]["sam"]["test_scope"] == "synthetic_image_segmentation"
+    entry = result["integrations"]["sam"]
+    assert entry["last_test"]["inference_latency_ms"] >= 0
+    assert entry["last_inference"]["inferred_at"]
+    assert entry["last_inference"]["operation"] == "test_connection"
+    assert entry["last_inference"]["live_request"] is False
+    assert entry["readiness"]["status"] == "unverified"
 
 
 @pytest.mark.parametrize("http_status,code,expected", [(401, "invalid_api_key", "invalid_credentials"), (402, "billing_not_configured", "insufficient_credits"), (403, None, "unsupported_model_access"), (404, "model_not_found", "unsupported_model_access"), (404, "file_not_found", "provider_error"), (408, None, "timeout"), (504, "gateway_timeout", "timeout"), (429, "rate_limit_exceeded", "rate_limited"), (503, "backend_unavailable", "provider_error")])
@@ -113,6 +119,56 @@ def test_invalid_json_and_sam_output_fail_validation():
     assert result["integrations"]["muse"]["last_test"]["status"] == "malformed_response"
     result = run(make_tester(lambda _: httpx.Response(200, json={"status": "completed", "output": ["not-a-record"]})).test("sam"))
     assert result["integrations"]["sam"]["last_test"]["status"] == "malformed_response"
+    assert result["integrations"]["sam"]["last_inference"] is None
+    assert result["integrations"]["sam"]["readiness"]["status"] == "needs_retest"
+
+
+def test_readiness_keeps_meta_sam_and_baseten_muse_credentials_independent():
+    settings = AISettings(baseten_key="synthetic-baseten-secret", sam_provider="meta")
+    result = diagnostics(settings, ConnectionRegistry())
+    assert result["integrations"]["sam"]["readiness"] == {
+        "status": "blocked", "required_variable": "MODEL_API_KEY",
+        "message": "Set MODEL_API_KEY on the backend. No provider request has been made."}
+    assert result["integrations"]["muse"]["provider"] == "baseten"
+    assert result["integrations"]["muse"]["readiness"]["status"] == "unverified"
+    assert result["integrations"]["muse"]["readiness"]["required_variable"] == "BASETEN_API_KEY"
+    assert "synthetic-baseten-secret" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("failure", ["invalid_credentials", "timeout", "rate_limited", "malformed_response"])
+def test_new_failed_probe_overrides_historical_success_in_readiness_and_health(monkeypatch, failure):
+    # Synthetic state machine regression, not evidence of a real provider call.
+    from backend.main import configured_ai_service
+    monkeypatch.setenv("MODEL_API_KEY", "synthetic-test-secret")
+    monkeypatch.setenv("WORLDOS_SAM_PROVIDER", "meta")
+    settings = AISettings.from_env()
+    registry = ConnectionRegistry()
+    http = configured_ai_service(settings).http
+    http.record_validated({"provider": "meta", "model": "sam-3.1", "live_request": True, "inferred_at": "2000-01-01T00:00:00+00:00"})
+    assert diagnostics(settings, registry, http)["integrations"]["sam"]["readiness"]["status"] == "verified"
+    registry.begin(settings, "sam")
+    assert diagnostics(settings, registry, http)["integrations"]["sam"]["readiness"]["status"] == "checking"
+    registry.finish(settings, "sam", failure, "Synthetic test failure")
+    entry = diagnostics(settings, registry, http)["integrations"]["sam"]
+    assert entry["readiness"]["status"] == "needs_retest"
+    app.dependency_overrides[get_connection_registry] = lambda: registry
+    try:
+        assert TestClient(app).get("/api/health").json()["ai"]["sam"]["status"] == "needs_retest"
+    finally:
+        app.dependency_overrides.clear()
+        configured_ai_service.cache_clear()
+
+
+def test_new_validated_inference_can_recover_a_failed_probe():
+    settings = AISettings(meta_key="synthetic-test-secret", sam_provider="meta")
+    registry = ConnectionRegistry()
+    http = ProviderHTTP(settings, httpx.MockTransport(lambda _: pytest.fail("No request expected")))
+    registry.begin(settings, "sam")
+    registry.finish(settings, "sam", "timeout", "Synthetic timeout")
+    http.record_validated({"provider": "meta", "model": "sam-3.1", "live_request": True, "inferred_at": "2999-01-01T00:00:00+00:00"})
+    assert diagnostics(settings, registry, http)["integrations"]["sam"]["readiness"]["status"] == "verified"
+    changed = AISettings(sam_provider="meta")
+    assert diagnostics(changed, registry)["integrations"]["sam"]["readiness"]["status"] == "blocked"
 
 
 @pytest.mark.parametrize("error,expected", [(httpx.ReadTimeout("private-timeout"), "timeout"), (httpx.ConnectError("private-network"), "network_error")])

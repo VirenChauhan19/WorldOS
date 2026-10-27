@@ -1,6 +1,7 @@
 """Provider contracts verified against docs linked in docs/AI_INTEGRATION.md."""
 import json
 import re
+from contextvars import ContextVar
 from typing import TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -28,27 +29,77 @@ def validate_concepts(concepts: list[str]) -> list[str]:
     return result
 
 
+def inline_prompt_schema(schema: type[BaseModel]):
+    """Inline our finite output schemas so reference definitions aren't echoed as data."""
+    document = schema.model_json_schema()
+    definitions = document.pop("$defs", {})
+
+    def expand(value, trail=()):
+        if isinstance(value, list):
+            return [expand(item, trail) for item in value]
+        if not isinstance(value, dict):
+            return value
+        reference = value.get("$ref")
+        if reference:
+            name = reference.removeprefix("#/$defs/")
+            if not reference.startswith("#/$defs/") or name not in definitions or name in trail:
+                raise ValueError("The reasoning output schema requires an unsupported reference.")
+            return expand({**definitions[name], **{key: item for key, item in value.items() if key != "$ref"}}, (*trail, name))
+        return {key: expand(item, trail) for key, item in value.items()}
+
+    return expand(document)
+
+
 class MuseSparkReasoning:
     def __init__(self, http: ProviderHTTP):
         self.http = http
+        self._metadata = ContextVar(f"muse_metadata_{id(self)}", default=None)
+
+    def metadata(self):
+        return dict(self._metadata.get() or {})
 
     async def structured(self, *, operation: str, instruction: str, context: dict, schema: type[StructuredResult], image_url: str | None) -> StructuredResult:
+        self._metadata.set(None)
+        provider = self.http.settings.reasoning_provider
+        try:
+            return await self._structured_once(provider, operation, instruction, context, schema, image_url)
+        except ProviderError as error:
+            fallback_codes = {"missing_credentials", "invalid_credentials", "insufficient_credits", "unsupported_model_access", "rate_limited", "timeout", "network_error", "provider_error"}
+            if provider != "baseten" or not self.http.settings.meta_key or error.code not in fallback_codes:
+                raise
+            result = await self._structured_once("meta", operation, instruction, context, schema, image_url)
+            self._metadata.set({**self.metadata(), "fallback": {"from_provider": "baseten", "reason": error.code}})
+            return result
+
+    async def _structured_once(self, provider, operation, instruction, context, schema, image_url):
+        provider, model, base_url, key = self.http.settings.reasoning_config(provider)
         content = [{"type": "text", "text": json.dumps(context)}]
         if image_url:
             content.append({"type": "image_url", "image_url": {"url": image_url}})
-        data = await self.http.post(provider="meta", model=self.http.settings.muse_model, operation=operation,
-                                    url=f"{META_BASE}/chat/completions", key=self.http.settings.meta_key,
-                                    payload={"model": self.http.settings.muse_model, "messages": [
-                                        {"role": "developer", "content": instruction}, {"role": "user", "content": content}],
-                                        "max_completion_tokens": 4096,
-                                        "response_format": {"type": "json_schema", "json_schema": {"name": schema.__name__, "schema": schema.model_json_schema()}}})
+        if provider == "baseten":
+            # Muse Spark Open does not support response_format/JSON mode on
+            # Baseten. Strict local validation is mandatory, never a JSON claim.
+            output_schema = inline_prompt_schema(schema)
+            instruction += (
+                " Return one JSON DATA INSTANCE, not the JSON Schema itself. No markdown or commentary. "
+                "The only allowed top-level output fields are: " + ", ".join(output_schema["properties"]) + ". "
+                "Populate the fields with the answer. Never copy schema definitions or schema keywords into the answer. "
+                "JSON Schema for data validation: " + json.dumps(output_schema))
+            options = {"max_tokens": 4096}
+        else:
+            options = {"max_completion_tokens": 4096, "response_format": {"type": "json_schema", "json_schema": {"name": schema.__name__, "schema": schema.model_json_schema()}}}
+        data = await self.http.post(provider=provider, model=model, operation=operation, include_metadata=True,
+            url=f"{base_url}/chat/completions", key=key, payload={"model": model, "messages": [
+                {"role": "developer", "content": instruction}, {"role": "user", "content": content}], **options})
         try:
             choice = data["choices"][0]
             if not isinstance(choice, dict) or not isinstance(choice.get("message"), dict):
                 raise ValueError()
             if choice["finish_reason"] != "stop" or choice["message"].get("refusal"):
                 raise ValueError()
-            return schema.model_validate_json(choice["message"]["content"])
+            result = schema.model_validate_json(choice["message"]["content"], strict=True)
+            self._metadata.set(data.get("_worldos_metadata") or {"provider": provider, "model": model, "live_request": False})
+            return result
         except (KeyError, IndexError, TypeError, ValueError, ValidationError):
             raise ProviderError("Muse Spark returned incomplete, refused, or invalid structured output. No AI result was applied.", code="malformed_response") from None
 
@@ -60,6 +111,7 @@ class MuseSparkReasoning:
             result.concepts = validate_concepts(result.concepts)
         except ValueError:
             raise ProviderError("Muse Spark returned invalid segmentation concepts. Enter noun phrases manually.") from None
+        self.http.record_validated(self.metadata())
         return result
 
     async def interpret(self, req: ReasonRequest) -> PlanningConstraints:
@@ -72,6 +124,7 @@ class MuseSparkReasoning:
         if not set(result.protected_object_ids) <= ids:
             raise ProviderError("Muse Spark referenced unknown object IDs. No constraints were applied.")
         result.protected_object_ids = sorted(set(result.protected_object_ids) | {obj.id for obj in req.objects if obj.locked})
+        self.http.record_validated(self.metadata())
         return result
 
 
@@ -125,12 +178,17 @@ def parse_sam_image(text: str, concept: str, width: int, height: int) -> list[Sc
 class SAM31Segmentation:
     def __init__(self, http: ProviderHTTP):
         self.http = http
+        self._metadata = ContextVar(f"sam_metadata_{id(self)}", default=None)
 
-    async def segment(self, image: dict, concept: str) -> list[SceneObject]:
+    def metadata(self):
+        return dict(self._metadata.get() or {})
+
+    async def segment(self, image: dict, concept: str, *, connection_probe=False) -> list[SceneObject]:
+        self._metadata.set(None)
         if self.http.settings.sam_provider == "baseten":
             raise ProviderError("Baseten SAM is blocked until the deployment's actual request/response contract is supplied. Set WORLDOS_SAM_PROVIDER=meta to use the verified Meta SAM API, or annotate manually.", 503)
         concept = validate_concepts([concept])[0]
-        data = await self.http.post(provider="meta", model="sam-3.1", operation="segment_concept", url=f"{META_BASE}/responses", key=self.http.settings.meta_key,
+        data = await self.http.post(provider="meta", model="sam-3.1", operation="test_connection" if connection_probe else "segment_concept", include_metadata=True, url=f"{META_BASE}/responses", key=self.http.settings.meta_key,
             payload={"model": "sam-3.1", "input": [{"type": "message", "role": "user", "content": [
                 {"type": "input_text", "text": concept}, {"type": "input_image", "image_url": image["image_url"]}]}],
                 "stream": False, "metadata": {"include_confidence": "true", "mask_encoding": "one_bit"}})
@@ -150,4 +208,8 @@ class SAM31Segmentation:
             text = "".join(texts)
         except (KeyError, TypeError, ValueError):
             raise ProviderError("SAM returned an incomplete or invalid response envelope. No detections were applied.", code="malformed_response") from None
-        return parse_sam_image(text, concept, image["width"], image["height"])
+        objects = parse_sam_image(text, concept, image["width"], image["height"])
+        # Transport success alone cannot establish a working SAM contract.
+        self._metadata.set(data.get("_worldos_metadata"))
+        self.http.record_validated(self.metadata())
+        return objects

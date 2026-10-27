@@ -66,11 +66,18 @@ def test_meta_sam_request_format_confidence_and_normalization():
         assert data["input"][0]["content"][0] == {"type": "input_text", "text": "book"}
         assert data["input"][0]["content"][1]["image_url"].startswith("data:image/jpeg;base64,")
         return httpx.Response(200, json=sam_response())
-    result = run(service(handler).analyze(AIAnalysisRequest(image_url=photo(), concepts=["book"])))
+    ai = service(handler)
+    result = run(ai.analyze(AIAnalysisRequest(image_url=photo(), concepts=["book"])))
     obj = result["objects"][0]
     assert obj.box.model_dump() == {"x": .4, "y": .4, "width": .15, "height": .2}
     assert obj.confidence == .9609375
     assert obj.source == "sam_3_1"
+    metadata = ai.http.validated_inferences[("meta", "sam-3.1")]
+    assert metadata["operation"] == "segment_concept"
+    assert metadata["inference_latency_ms"] >= 0
+    assert metadata["inferred_at"]
+    assert metadata["live_request"] is False
+    assert metadata["usage"] == {}  # Never invent token usage if SAM omits it.
 
 
 def test_absent_confidence_is_none_and_inclusive_edges_are_preserved():
@@ -84,6 +91,10 @@ def test_absent_confidence_is_none_and_inclusive_edges_are_preserved():
 def test_malformed_detections_fail_closed(text):
     with pytest.raises(ProviderError):
         parse_sam_image(text, "book", 100, 60)
+    ai = service(lambda _: httpx.Response(200, json=sam_response(text)))
+    with pytest.raises(ProviderError):
+        run(ai.analyze(AIAnalysisRequest(image_url=photo(), concepts=["book"])))
+    assert not ai.http.validated_inferences  # HTTP 200 must not establish readiness.
 
 
 def test_sam_empty_matches_are_not_simulated_success():

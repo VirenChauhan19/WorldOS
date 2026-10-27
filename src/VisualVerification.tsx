@@ -20,7 +20,7 @@ export default function VisualVerification({ result, originals, busy, stale, onV
     if (!result || duplicate) return;
     const objects = originals.map(original => {
       const detection = result.detections.find(d => d.id === selected(original.id));
-      return detection ? { ...detection, id: original.id, label: original.label, locked: original.locked } : { ...original, source: 'manual' as const, confidence: null };
+      return detection ? { ...detection, id: original.id, label: original.label, locked: original.locked, source: 'ai_corrected' as const, confidence: null } : { ...original, source: 'manual' as const, confidence: null };
     });
     const reserved = new Set(objects.map(o => o.id));
     const extras = result.detections.filter(d => !used.includes(d.id) && !ignored.includes(d.id)).map(d => {
@@ -45,6 +45,8 @@ export default function VisualVerification({ result, originals, busy, stale, onV
           <strong>{row.label} {row.protected ? '· protected' : ''}</strong>
           <span className={row.matched && !stale ? 'match' : 'mismatch'}>{stale ? 'Needs recheck' : row.status}</span>
           <small>SAM confidence: {row.provider_confidence === null ? 'unavailable' : `${(row.provider_confidence * 100).toFixed(1)}%`}</small>
+          {row.evidence_score != null && <small>Matching evidence: {row.evidence_score.toFixed(2)} / support threshold 0.72. Heuristic score, not an identity probability.</small>}
+          {!!row.candidate_evidence?.length && <details><summary>Candidate matching evidence</summary><ul>{row.candidate_evidence.map(candidate => <li key={candidate.detection_id}>{candidate.detection_id}: score {candidate.score.toFixed(2)}, label {candidate.label_similarity.toFixed(2)}, footprint {candidate.footprint_similarity.toFixed(2)}, anchor error {candidate.spatial_context_error == null ? 'unavailable' : candidate.spatial_context_error.toFixed(3)}</li>)}</ul></details>}
           {row.reasons.map(reason => <small key={reason}>{reason}</small>)}
           <label>Identity assignment<select aria-label={`Detection for ${row.label} (${row.object_id})`} disabled={busy} value={selected(row.object_id)} onChange={e => assign(row.object_id, e.target.value)}>
             <option value="">Locate manually in after-photo</option>

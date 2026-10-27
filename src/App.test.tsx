@@ -39,6 +39,33 @@ async function openFinal() {
 }
 
 describe('WorldOS workflow', () => {
+  it('keeps the demo opt-in and animates the actual generated movement', async () => {
+    render(<App/>);
+    expect(screen.queryByLabelText('WorldOS Demo Mode')).toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:'Demo Mode'}));
+    fireEvent.click(screen.getByRole('button',{name:'Begin walkthrough'}));
+    expect(analyzeAI).not.toHaveBeenCalled();
+    expect(automaticVerify).not.toHaveBeenCalled();
+    await makePlan();
+    fireEvent.click(screen.getByRole('button',{name:'4Guide'}));
+    expect(screen.getByText('Movement 1 of 1: Notebook')).toBeTruthy();
+    expect(document.querySelector('animateMotion')?.getAttribute('repeatCount')).toBe('indefinite');
+    expect(screen.queryByText('Task verified')).toBeNull();
+  });
+  it('shows an automatic demo success only until its evidence is edited', async () => {
+    render(<App/>);
+    fireEvent.click(screen.getByRole('button',{name:'Demo Mode'}));
+    fireEvent.click(screen.getByRole('button',{name:'Begin walkthrough'}));
+    await openFinal();
+    fireEvent.click(screen.getByLabelText('Same camera framing confirmed'));
+    fireEvent.click(screen.getByLabelText('Complete current obstacle inventory confirmed'));
+    vi.mocked(automaticVerify).mockResolvedValueOnce(autoResult(true));
+    fireEvent.click(screen.getByRole('button',{name:'Automatic Verify'}));
+    await screen.findByText('Task verified');
+    expect(screen.getByText(/Automatic SAM evidence with scene confirmations/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Final x percent'),{target:{value:'20'}});
+    expect(screen.queryByText('Task verified')).toBeNull();
+  });
   it('clears successful automatic verification when an observed position changes', async () => {
     render(<App/>);
     await openFinal();

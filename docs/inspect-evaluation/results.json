@@ -1,0 +1,152 @@
+{
+  "version": "0.5.0",
+  "recorded_at": "2026-10-26T21:33:21.786336+00:00",
+  "mode": "recorded",
+  "provenance_notice": "Physical capture and independent truth are author declarations. Hashes bind inputs, not provider authenticity. Test fixtures are not physical validation.",
+  "measurement_status": "unmeasured",
+  "scenario_count": 10,
+  "captured_pairs": 0,
+  "pending_scenarios": [
+    "correct_workspace",
+    "missing_object",
+    "misplaced_object",
+    "unexpected_object",
+    "multiple_misplaced",
+    "duplicate_objects",
+    "protected_moved",
+    "different_camera_angle",
+    "partial_occlusion",
+    "failed_detection"
+  ],
+  "automatic_metrics": {
+    "detection_coverage": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    },
+    "identity_correct_over_present_reference_objects": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    },
+    "identity_precision_among_decided": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    },
+    "identity_coverage": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    },
+    "issue_precision": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    },
+    "issue_recall": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    },
+    "false_alarm_count": 0,
+    "false_alarms_per_trial": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    },
+    "verification_correct_over_all": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    },
+    "verification_decision_coverage": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    },
+    "verification_success_on_correct_workspaces": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    },
+    "false_acceptance_over_incorrect_workspaces": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    },
+    "human_review_required": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    }
+  },
+  "human_assisted_metrics": {
+    "detection_coverage": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    },
+    "identity_correct_over_present_reference_objects": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    },
+    "identity_precision_among_decided": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    },
+    "identity_coverage": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    },
+    "issue_precision": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    },
+    "issue_recall": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    },
+    "false_alarm_count": 0,
+    "false_alarms_per_trial": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    },
+    "verification_correct_over_all": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    },
+    "verification_decision_coverage": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    },
+    "verification_success_on_correct_workspaces": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    },
+    "false_acceptance_over_incorrect_workspaces": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    },
+    "human_review_required": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    }
+  },
+  "human_assisted_trials": 0,
+  "human_review_actions": 0,
+  "mean_inference_wall_ms": null,
+  "latency_sample_count": 0,
+  "cases": []
+}

@@ -6,3 +6,5 @@ python-multipart>=0.0.20,<1
 python-dotenv>=1.0,<2
 pytest>=8.3,<10
 httpx>=0.28,<1
+numpy>=2,<3
+opencv-python-headless>=4.10,<5

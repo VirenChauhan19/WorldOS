@@ -1,0 +1,88 @@
+:root { color-scheme: dark; }
+body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+.mobile-utility { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:5px max(16px,env(safe-area-inset-right)) 5px max(16px,env(safe-area-inset-left));background:#171d15;border-bottom:1px solid #34402e;font-size:12px; }
+.mobile-utility>span,.mobile-utility>div,.mobile-utility button {display:flex;align-items:center;gap:8px;}
+.mobile-utility button {min-height:42px;padding:8px 10px;color:#c7d9b7;}
+.mobile-banner {display:flex;align-items:center;gap:14px;padding:14px max(18px,env(safe-area-inset-left));background:#292c1a;border-bottom:1px solid #53593a;line-height:1.7;font-size:14px;}
+.mobile-banner button {border:1px solid #a1b384;border-radius:8px;padding:10px 15px;flex-shrink:0;}
+.connection-settings {padding:20px;max-width:700px;margin:auto;border-bottom:1px solid #4a5b3b;}
+.connection-settings label,.access-card label {display:block;font-size:14px;color:#d5e3c7;}
+.connection-settings input,.access-card input,.access-card select {display:block;width:100%;font:inherit;font-size:16px;padding:14px;border-radius:8px;border:1px solid #5b7048;background:#131a10;color:inherit;margin:8px 0 14px;min-height:44px;}
+.connection-settings p,.access-card p {font-size:14px;line-height:1.8;color:#aabd99;margin:12px 0 20px;}
+.access-screen {min-height:75dvh;display:grid;place-items:center;padding:30px 20px;}
+.access-card {max-width:510px;width:100%;padding:30px;border:1px solid #34432b;border-radius:18px;background:#182014;}
+.access-card h1 {font-size:32px;margin-top:20px;line-height:1.25;}
+.access-card .primary {min-height:48px;width:100%;}
+.photo-actions {display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+.photo-actions button {min-height:44px;}
+.photo-actions .photo-error {width:100%;font-size:13px;line-height:1.6;color:#ffb99d;}
+.canvas-access {display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;background:#172013;}
+.canvas-access label {font-size:12px;display:flex;align-items:center;gap:8px;flex:1;}
+.canvas-access select {min-width:0;max-width:240px;flex:1;background:#1c2915;border:1px solid #4e643d;border-radius:6px;padding:9px;color:#d8e6cc;}
+.canvas-access button {min-height:40px;min-width:40px;border:1px solid #4e643d;border-radius:6px;}
+.canvas-scroll {max-height:70dvh;overflow:auto;overscroll-behavior:contain;}
+.canvas-zoom {width:var(--canvas-zoom,100%);min-width:100%;}
+.scene-canvas.canvas-pan svg {touch-action:pan-x pan-y;}
+.scene-canvas svg {touch-action:none;}
+.scene-canvas .resize-hit {fill:transparent;stroke:none;cursor:nwse-resize;}
+.scene-canvas svg [role=button]:focus-visible {outline:none;stroke:#fff;stroke-width:4;}
+@media(max-width:760px) {
+  body {overflow-x:hidden;}
+  button,input,select,textarea {font-size:16px;}
+  input,select,textarea {max-width:100%;}
+  button,.secondary,.primary,.icon-button,.text-button {min-height:44px;}
+  input[type=checkbox] {width:22px;height:22px;flex-shrink:0;}
+  .mobile-utility {font-size:11px;gap:4px;}
+  .mobile-utility button {padding:8px;font-size:12px;}
+  .mobile-banner {align-items:flex-start;flex-wrap:wrap;}
+  .worldos-products {height:auto;min-height:60px;padding:10px 12px;gap:8px;flex-wrap:wrap;}
+  .worldos-products>span {font-size:11px;margin-right:auto;}
+  .worldos-products button {font-size:13px;padding:10px;}
+  .inspect-shell {padding:22px max(12px,env(safe-area-inset-left)) 40px;}
+  .inspect-heading h1 {font-size:30px;}
+  .inspect-heading p {font-size:14px;line-height:1.6;}
+  .inspect-stages {display:flex;overflow-x:auto;gap:8px;padding-bottom:8px;scroll-snap-type:x proximity;}
+  .inspect-stages button {flex:0 0 auto;min-width:136px;font-size:13px;scroll-snap-align:start;}
+  .inspect-layout,.studio-grid {display:flex;flex-direction:column;gap:18px;}
+  .inspect-library,.inspect-main,.scene-column,.details-column {width:100%;min-width:0;}
+  .inspection-section {padding:16px 12px;}
+  .inspect-section-heading {flex-wrap:wrap;gap:12px;}
+  .inspection-toolbar {flex-wrap:wrap;gap:10px;}
+  .inspection-toolbar>button {flex:1 1 130px;}
+  .inspection-toolbar>span {font-size:12px;line-height:1.6;}
+  .template-fields label,.alignment-fields label,.inspection-object-editor label,.inspection-check,.inspection-finding>p,.inspection-finding>small {font-size:13px;line-height:1.65;}
+  .template-fields input,.template-fields textarea,.alignment-fields input,.inspection-object-editor input,.inspection-assignment select {font-size:16px;padding:12px;min-height:44px;}
+  .reference-object {grid-template-columns:minmax(0,1fr) auto;gap:12px;}
+  .reference-object>label:last-child {grid-column:1/-1;}
+  .reference-object button,.reference-object label {font-size:13px;}
+  .inspection-stats strong {font-size:21px;overflow-wrap:anywhere;}
+  .inspection-stats span,.inspect-caption,.inspect-library-meta,.connection-model>p,.connection-time,.ai-help,.ai-disclosure,.ai-provider-state,.ai-replace,.ai-scene-review {font-size:12px;line-height:1.7;}
+  .connection-model>strong,.connection-title h3 {font-size:14px;}
+  .connection-model .connection-time {font-size:12px;}
+  .inspect-connection {max-width:100%;overflow-wrap:anywhere;}
+  .inspection-photo-pair,.inspect-photo-pair {grid-template-columns:1fr;}
+  .canvas-toolbar {flex-wrap:wrap;padding:8px;}
+  .tool-group {flex-wrap:wrap;}
+  .tool-group button {font-size:12px;padding:9px;}
+  .canvas-access {padding:8px;}
+  .canvas-access select {font-size:16px;}
+  .object-list,.object-details,.goal-input {font-size:14px;}
+  .rail {display:none;}
+  .main-shell {margin-left:0;}
+  main {padding:22px 12px 0;}
+  .topbar {padding:12px;min-height:64px;height:auto;gap:10px;flex-wrap:wrap;}
+  .breadcrumbs {display:none;}
+  .wordmark {font-size:23px;}
+  .page-heading {gap:12px;align-items:flex-start;}
+  .page-heading h1 {font-size:29px;}
+  .page-heading p {font-size:13px;line-height:1.6;}
+  .workflow {overflow-x:auto;gap:12px;padding:10px;}
+  .workflow-step {min-width:130px;font-size:12px;}
+  .workflow-note {display:none;}
+  .panel-title {padding:10px 12px;}
+  .loading-overlay {padding:18px;text-align:center;}
+  .loading-overlay small {font-size:13px;}
+  .access-card {padding:24px 18px;}
+}
+@media(pointer:coarse) { .secondary,.primary,.icon-button,.text-button {min-height:44px;} }
+@media(prefers-reduced-motion:reduce) { .spin {animation:none;} .movement-animation {display:none;} }

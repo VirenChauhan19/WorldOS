@@ -7,11 +7,13 @@ import re
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 import httpx
 
 logger = logging.getLogger("uvicorn.error.worldos.usage")
 META_BASE = "https://api.meta.ai/v1"
+BASETEN_BASE = "https://inference.baseten.co/v1"
 
 
 class ProviderError(Exception):
@@ -29,6 +31,9 @@ class AISettings:
     sam_provider: str = "baseten"
     baseten_sam_model_id: str = ""
     muse_model: str = "muse-spark-1.3"
+    muse_provider: str = "auto"
+    baseten_muse_model: str = "meta-models/muse-spark-open-1026"
+    baseten_base_url: str = BASETEN_BASE
     timeout: float = 45
 
     @classmethod
@@ -38,9 +43,18 @@ class AISettings:
                    sam_provider=os.getenv("WORLDOS_SAM_PROVIDER", "baseten"),
                    baseten_sam_model_id=os.getenv("BASETEN_SAM_MODEL_ID", ""),
                    muse_model=os.getenv("WORLDOS_MUSE_MODEL", "muse-spark-1.3"),
+                   muse_provider=os.getenv("WORLDOS_MUSE_PROVIDER", "auto").strip(),
+                   baseten_muse_model=os.getenv("BASETEN_MUSE_MODEL", "meta-models/muse-spark-open-1026").strip(),
+                   baseten_base_url=os.getenv("BASETEN_BASE_URL", BASETEN_BASE).rstrip('/'),
                    timeout=float(os.getenv("WORLDOS_AI_TIMEOUT_SECONDS", "45")))
 
     def validate(self):
+        if self.muse_provider not in {"auto", "meta", "baseten"}:
+            raise ProviderError("WORLDOS_MUSE_PROVIDER must be auto, meta, or baseten.", 503)
+        if self.baseten_base_url != BASETEN_BASE:
+            raise ProviderError("BASETEN_BASE_URL must use the official Baseten HTTPS Model API endpoint.", 503)
+        if not re.fullmatch(r"meta-models/muse-spark-open(?:-\d{4})?", self.baseten_muse_model):
+            raise ProviderError("BASETEN_MUSE_MODEL must name a Muse Spark Open model.", 503)
         if self.sam_provider not in {"meta", "baseten"}:
             raise ProviderError("WORLDOS_SAM_PROVIDER must be meta or baseten.", 503)
         if self.muse_model not in {"muse-spark-1.1", "muse-spark-1.2", "muse-spark-1.3"}:
@@ -48,19 +62,32 @@ class AISettings:
         if not 1 <= self.timeout <= 90:
             raise ProviderError("WORLDOS_AI_TIMEOUT_SECONDS must be between 1 and 90.", 503)
 
+    @property
+    def reasoning_provider(self):
+        return ("baseten" if self.baseten_key else "meta") if self.muse_provider == "auto" else self.muse_provider
+
+    def reasoning_config(self, provider=None):
+        provider = provider or self.reasoning_provider
+        return (provider, self.baseten_muse_model, self.baseten_base_url, self.baseten_key) if provider == "baseten" else (provider, self.muse_model, META_BASE, self.meta_key)
+
 
 class ProviderHTTP:
     def __init__(self, settings: AISettings, transport: httpx.AsyncBaseTransport | None = None):
         settings.validate()
         self.settings = settings
         self.transport = transport
+        self.validated_inferences = {}
 
-    async def post(self, *, provider: str, model: str, operation: str, url: str, key: str, payload: dict):
+    def record_validated(self, metadata):
+        if metadata:
+            self.validated_inferences[(metadata["provider"], metadata["model"])] = dict(metadata)
+
+    async def post(self, *, provider: str, model: str, operation: str, url: str, key: str, payload: dict, include_metadata=False):
         if not key:
             name = "MODEL_API_KEY" if provider == "meta" else "BASETEN_API_KEY"
             raise ProviderError(f"{name} is not configured on the backend. Manual mode remains available.", 503, "missing_credentials")
         event = {"event": "ai_usage", "request_id": uuid.uuid4().hex, "provider": provider,
-                 "model": model if provider == "meta" else "dedicated_deployment", "operation": operation}
+                 "model": model, "operation": operation}
         start = time.monotonic()
         event["outcome"] = "failed"
         try:
@@ -88,7 +115,11 @@ class ProviderHTTP:
                                 if type(value) is int and value >= 0:
                                     event[name] = value
                         event["outcome"] = "http_success"  # Output validation happens separately.
-                        return data
+                        metadata = {"provider": provider, "model": model, "operation": operation,
+                            "inference_latency_ms": round((time.monotonic()-start)*1000), "inferred_at": datetime.now(timezone.utc).isoformat(),
+                            "usage": {name:event[name] for name in ("prompt_tokens", "completion_tokens", "total_tokens", "input_tokens", "output_tokens") if name in event},
+                            "live_request": self.transport is None}
+                        return {**data, "_worldos_metadata": metadata} if include_metadata else data
         except (TimeoutError, httpx.TimeoutException):
             event["outcome"] = "timeout"
             raise ProviderError("AI request timed out. Manual mode remains available.", 504, "timeout") from None
@@ -111,7 +142,7 @@ def provider_failure(status: int, raw: bytes) -> ProviderError:
         pass
     if status == 401:
         return ProviderError("Provider rejected the API credential. Check for an invalid, revoked, or incorrectly copied key.", 502, "invalid_credentials", status)
-    if status == 402:
+    if status == 402 or (status == 429 and code in {"insufficient_quota", "insufficient_credits", "billing_hard_limit_reached"}):
         return ProviderError("Provider reports insufficient credits or an unconfigured billing account. Check credits and payment settings.", 502, "insufficient_credits", status)
     if status == 403 or (status == 404 and code == "model_not_found"):
         return ProviderError("The requested model is unavailable to this credential. Check the model ID, team permissions, and model access.", 502, "unsupported_model_access", status)
@@ -142,10 +173,11 @@ class BasetenDeployment:
 
 def capabilities(settings: AISettings):
     settings.validate()
+    provider, model, _, key = settings.reasoning_config()
     return {"live_tested": False, "sam": {
         "provider": settings.sam_provider, "model": "sam-3.1" if settings.sam_provider == "meta" else None,
         "status": "configured_not_live_verified" if settings.sam_provider == "meta" and settings.meta_key else "missing_credentials" if settings.sam_provider == "meta" else "blocked_deployment_contract",
         "message": "Meta SAM requires MODEL_API_KEY; one concept per request." if settings.sam_provider == "meta" else "Baseten SAM requires your deployment ID and its verified request/response contract. No SAM payload is guessed."},
-        "muse": {"provider": "meta", "model": settings.muse_model,
-                 "status": "configured_not_live_verified" if settings.meta_key else "missing_credentials",
-                 "message": "Set MODEL_API_KEY with Muse Spark model access and credits."}}
+        "muse": {"provider": provider, "model": model,
+                 "status": "configured_not_live_verified" if key else "missing_credentials",
+                 "message": "Baseten Muse Spark Open is preferred when configured; Meta reasoning remains available as fallback. SAM uses its separate provider configuration."}}

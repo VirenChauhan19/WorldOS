@@ -1,0 +1,47 @@
+services:
+  api:
+    build:
+      context: ..
+      target: app
+    restart: unless-stopped
+    env_file:
+      - ../.env
+      - ../.env.auth
+    environment:
+      WORLDOS_DEPLOYMENT: public
+      WORLDOS_ALLOWED_HOSTS: ${WORLDOS_DOMAIN:?Set your actual DNS hostname}
+      WORLDOS_CORS_ORIGINS: https://${WORLDOS_DOMAIN},capacitor://localhost,https://localhost
+      WORLDOS_DATA_DIR: /data
+    volumes:
+      - worldos_data:/data
+    networks:
+      internal:
+        ipv4_address: 172.30.0.3
+    # No published API port: only the trusted HTTPS proxy can reach it.
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: [/tmp]
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      WORLDOS_DOMAIN: ${WORLDOS_DOMAIN:?Set your actual DNS hostname}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      internal:
+        ipv4_address: 172.30.0.2
+    depends_on: [api]
+networks:
+  internal:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+volumes:
+  worldos_data:
+  caddy_data:
+  caddy_config:

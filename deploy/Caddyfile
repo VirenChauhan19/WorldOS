@@ -1,0 +1,22 @@
+{$WORLDOS_DOMAIN} {
+    request_body {
+        max_size 24MB
+    }
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+        X-Frame-Options "DENY"
+        Permissions-Policy "camera=(self), microphone=(), geolocation=()"
+        Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+    }
+    @api path /api/* /docs /redoc /openapi.json
+    header @api Cache-Control "no-store"
+    @worker path /sw.js /manifest.webmanifest
+    header @worker Cache-Control "no-cache"
+    reverse_proxy api:8000 {
+        transport http {
+            response_header_timeout 150s
+        }
+    }
+}

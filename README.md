@@ -1,4 +1,27 @@
-# WorldOS V0.3
+# WorldOS V0.8
+
+**Secure deployment preparation is complete; no public URL has been deployed.** The [V0.8 Render deployment and iPhone installation guide](docs/V08_DEPLOYMENT.md) covers account setup, server secrets, the validated `render.yaml`, persistent storage, backups/restore, and public verification. Browser sessions now use secure HttpOnly cookies, CSRF protection, and SQLite persistence across restarts; native bearer access remains supported.
+
+V0.8 validation: **310 backend tests passed (2 optional live tests skipped), 124 frontend tests passed, production build and four HTTP smoke scripts passed.** Separate real provider connectivity checks passed for Meta SAM 3.1 and Baseten Muse Spark through local production-mode authentication; this does not verify a hosted URL or physical accuracy. See [the sanitized live connectivity record](docs/v08-provider-connectivity.json).
+
+**Owner and judge access:** optional, expiring judge logins use a separate persistent demo workspace, with no access to owner data, backups, or connection probes. Judges can complete the existing scan, review, correction, and verification workflow. See the [judge setup and revocation instructions](docs/V08_DEPLOYMENT.md#optional-controlled-judgedemo-access). Judge access is disabled by default.
+
+**Mobile app infrastructure is implemented:** responsive Inspect and Spatial Studio, camera/library controls, touch selection and zoom, an installable PWA with an honest offline screen, generated Capacitor Android/iOS projects, and authenticated HTTPS backend deployment configuration. API credentials remain backend-only. Start with the [V0.7 installation, deployment, native builds, test results, and device checklist](docs/V07_MOBILE.md).
+
+V0.7 validation: **283 backend tests passed (2 optional live tests skipped), 117 frontend tests passed, production build and three HTTP smoke scripts passed.** Native projects were generated and synchronized; **no APK/AAB/IPA was compiled**, and physical-device camera/install validation remains required. Docker deployment was configured but not run. The earlier release notes below retain their historical results.
+
+**Baseten Muse Spark is integrated and live-tested for connection, goal interpretation, and Inspect explanations.** Meta SAM 3.1 remains the detector; the geometric planner and existing workflows are preserved. See the [V0.6 integration, actual request results, configuration, and remaining blockers](docs/V06_BASETEN.md). Baseten credentials stay in the ignored backend `.env`. Physical inspection accuracy is still unmeasured.
+
+
+**WorldOS Inspect adds persistent visual workspace standards, camera alignment, conservative inspection, and geometric restoration.** Open the app to create a reference template, inspect a new photo, review uncertainty, generate correction arrows, and verify another photo. Templates and inspection history persist in local SQLite. The existing desk workflow remains available under **Spatial Studio**.
+
+Start with the [V0.5 startup, first-template, inspection, demo, and evaluation guide](docs/V05_INSPECT.md). [Current Inspect physical evaluation report](docs/inspect-evaluation/results.json): **0 captured photo pairs / 10 defined scenarios; real-world inspection performance is unmeasured.** No V0.5 live provider inspection has been performed in this checkout.
+
+**Demo preparation:** the in-app **Evaluate real photographs** workflow now freezes independent labels before inference, saves inspection/corrected captures and failed attempts, retains original and human-assisted decisions, and exports trial evidence and metrics. Follow the [guided physical trials, demo readiness checklist, backup procedure, and final submission steps](docs/DEMO_READINESS.md). Software validation: **243 backend tests passed (2 optional live tests skipped), 76 frontend tests passed, production build and both HTTP smoke tests passed**. These are not physical accuracy measurements.
+
+Earlier desk releases and their historical observations are documented below.
+
+**V0.4 adds Demo Mode, stronger conservative identity matching, blocker-first movement ordering, fixed-space conflict explanations, bounded inference caching/request sharing, and a ten-scenario physical evaluation workflow.** Start with the [V0.4 demo recording runbook and evaluation protocol](docs/V04_DEMO_AND_EVALUATION.md). [Current physical evaluation report](docs/evaluation-v04/results.json): **0 captured / 10 specified scenarios; real-world movement accuracy remains unmeasured.** Existing single-photo V0.3 observations below are historical evidence, not physical movement trials.
 
 For the first real provider request, follow [First AI connection inference](docs/FIRST_INFERENCE.md): exact credential locations, backend environment setup, the **AI Connection Status** panel, and **Test AI Connection**.
 
@@ -47,7 +70,7 @@ npm run build
 .\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
 ```
 
-Open **http://127.0.0.1:8000**. FastAPI serves `dist/` when it exists at startup. This is a local MVP without authentication, persistence, or production deployment configuration.
+Open **http://127.0.0.1:8000**. FastAPI serves `dist/` when it exists at startup. Local loopback mode may run without a login; public deployment requires authentication and HTTPS. SQLite persists saved templates and inspections. See the V0.8 runbook for production setup.
 
 ## Test the complete workflow
 

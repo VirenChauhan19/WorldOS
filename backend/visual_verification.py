@@ -65,7 +65,7 @@ def validate_lineage(original, current):
 
 
 def label_key(label):
-    return re.sub(r"\s+", " ", label.strip().casefold())
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", label.casefold())).strip()
 
 
 def edge_error(a, b):
@@ -94,12 +94,59 @@ def color_similarity(before, after, a, b):
 
 
 def match_identities(expected, originals, detections, before=None, after=None):
-    """Never resolve same-label identities automatically using position alone."""
+    """Rank evidence, with a separate conservative gate for identity acceptance.
+
+    Scores are heuristics, not identity probabilities. A planned destination must
+    never be the sole reason an identity is accepted.
+    """
+    def center(box):
+        return box.x + box.width/2, box.y + box.height/2
+
+    def footprint(a, b):
+        return min(a.width/b.width, b.width/a.width) * min(a.height/b.height, b.height/a.height)
+
+    # Stationary, uniquely labelled anchors corroborate relative scene geometry.
+    anchors = []
+    for source in originals:
+        item = next(o for o in expected if o.id == source.id)
+        peers = [d for d in detections if label_key(d.label) == label_key(source.label)]
+        if (edge_error(source.box, item.box) <= .01 and len(peers) == 1
+                and sum(label_key(o.label) == label_key(source.label) for o in originals) == 1
+                and (peers[0].confidence or 0) >= .75 and footprint(source.box, peers[0].box) >= .6):
+            anchors.append((item, peers[0]))
     rows = []
     for obj in expected:
         source = next(o for o in originals if o.id == obj.id)
-        candidates = [d for d in detections if label_key(d.label) == label_key(obj.label)]
-        candidates.sort(key=lambda d: (hypot(d.box.x-obj.box.x, d.box.y-obj.box.y), d.id))
+        tokens = set(label_key(obj.label).split())
+        def label_score(d):
+            other = set(label_key(d.label).split())
+            return len(tokens & other)/len(tokens | other) if tokens | other else 0
+        candidates = [d for d in detections if label_score(d) >= .5]
+        evidence = []
+        for detection in candidates:
+            similarity = color_similarity(before, after, source.box, detection.box)
+            x, y = center(detection.box)
+            ex, ey = center(obj.box)
+            residuals = []
+            for anchor, seen in anchors:
+                if anchor.id == obj.id:
+                    continue
+                ax, ay = center(anchor.box)
+                sx, sy = center(seen.box)
+                residuals.append(hypot((x-sx)-(ex-ax), (y-sy)-(ey-ay)))
+            residual = sum(residuals)/len(residuals) if residuals else None
+            shape = footprint(source.box, detection.box)
+            distance = hypot(x-ex, y-ey)
+            score = (.35*label_score(detection) + .3*shape
+                     + .15*(similarity if similarity is not None else .5)
+                     + .1*max(0, 1-distance) + .05*(detection.confidence or 0)
+                     + .05*(max(0, 1-residual) if residual is not None else .5))
+            evidence.append({"detection_id": detection.id, "score": round(score, 4),
+                             "label_similarity": label_score(detection), "footprint_similarity": round(shape, 4),
+                             "appearance_similarity": similarity, "expected_center_distance": round(distance, 4),
+                             "spatial_context_error": round(residual, 4) if residual is not None else None})
+        evidence.sort(key=lambda e: (-e["score"], e["detection_id"]))
+        candidates = [next(d for d in candidates if d.id == e["detection_id"]) for e in evidence]
         duplicate_label = sum(label_key(o.label) == label_key(obj.label) for o in expected) > 1
         detection = candidates[0] if candidates else None
         reasons = []
@@ -109,20 +156,37 @@ def match_identities(expected, originals, detections, before=None, after=None):
         else:
             if duplicate_label or len(candidates) != 1:
                 reasons.append("Repeated label: identity requires user assignment, even if geometry is close.")
+            if label_key(detection.label) != label_key(obj.label):
+                reasons.append("Related label only; confirm the identity and label manually.")
+            if evidence[0]["score"] < .72:
+                reasons.append("Combined matching evidence is below the 0.72 support threshold.")
+            if len(evidence) > 1 and evidence[0]["score"] - evidence[1]["score"] < .12:
+                reasons.append("Candidate score margin is below 0.12; identity is ambiguous.")
             if detection.confidence is None or detection.confidence < .75:
                 reasons.append("Provider confidence is missing or below the 0.75 review threshold.")
             ratios = [detection.box.width/source.box.width, detection.box.height/source.box.height]
             if any(r < .6 or r > 1.6 for r in ratios):
                 reasons.append("Footprint size changed substantially; check framing, orientation, and identity.")
-            similarity = color_similarity(before, after, source.box, detection.box)
+            if evidence[0]["footprint_similarity"] < .6:
+                reasons.append("Footprint agreement is below 0.60; review size and orientation.")
+            similarity = evidence[0]["appearance_similarity"]
             if similarity is not None and similarity < .45:
                 reasons.append("Crop colors differ; lighting or identity may have changed.")
+            if evidence[0]["spatial_context_error"] is not None and evidence[0]["spatial_context_error"] > .35:
+                reasons.append("Placement differs substantially from stationary-anchor context; review framing and identity.")
         rows.append({"object_id": obj.id, "label": obj.label,
                      "detection_id": detection.id if detection else None,
                      "candidate_ids": [d.id for d in candidates],
                      "certainty": "missing" if not detection else "uncertain" if reasons else "supported",
                      "provider_confidence": detection.confidence if detection else None,
                      "appearance_similarity": similarity, "reasons": reasons})
+        rows[-1].update(candidate_evidence=evidence, evidence_score=evidence[0]["score"] if evidence else None,
+                        score_margin=round(evidence[0]["score"]-evidence[1]["score"], 4) if len(evidence) > 1 else None)
+    # Related labels can share candidates. Never promote a many-to-one assignment.
+    for row in rows:
+        if row["detection_id"] and sum(r["detection_id"] == row["detection_id"] for r in rows) > 1:
+            row["certainty"] = "uncertain"
+            row["reasons"].append("Detection is proposed for multiple identities; assign distinct objects manually.")
     return rows
 
 
@@ -213,7 +277,9 @@ async def automatic_verify(request, service, planner):
                               framing=request.framing_confirmed, inventory=request.inventory_confirmed, tolerance=request.tolerance)
     result.update(detections=detections, observed_objects=observed, concepts=concepts,
                   excluded_outside_workspace_ids=[d.id for d in all_detections if d not in detections],
-                  latency_ms=round((perf_counter()-started)*1000), warnings=analysis["warnings"])
+                  latency_ms=round((perf_counter()-started)*1000), warnings=analysis["warnings"],
+                  provider=analysis.get("provider"), model=analysis.get("model"),
+                  inferred_at=analysis.get("inferred_at"), inference_cache=analysis.get("inference_cache"))
     return result
 
 

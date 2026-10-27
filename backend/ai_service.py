@@ -3,6 +3,7 @@ from time import perf_counter
 
 from .ai_adapters import MuseSparkReasoning, SAM31Segmentation, validate_concepts
 from .imaging import image_from_data_url
+from .inference_cache import InferenceCache
 from .models import AIAnalysisRequest, ReasonRequest
 from .providers import ProviderError, ProviderHTTP
 
@@ -17,6 +18,7 @@ class AIService:
         self.http = http
         self.sam = SAM31Segmentation(http)
         self.muse = MuseSparkReasoning(http)
+        self.cache = InferenceCache()
 
     async def analyze(self, request: AIAnalysisRequest):
         # Validate before any billable request. Block an unsupported Baseten path before discovery.
@@ -24,6 +26,10 @@ class AIService:
             raise ProviderError("Baseten SAM is blocked: provide the deployment ID and verified SAM request/response contract. No external request was made. Optional verified alternative: WORLDOS_SAM_PROVIDER=meta.", 503)
         image = image_from_data_url(request.image_url)
         concepts = validate_concepts(request.concepts)
+        return await self.cache.get({"operation": "analyze", "image": image["image_url"], "concepts": concepts},
+                                    lambda: self._analyze(image, concepts))
+
+    async def _analyze(self, image, concepts):
         summary = "User-supplied segmentation concepts."
         if not concepts:
             discovery = await self.muse.discover(image["image_url"])
@@ -62,6 +68,10 @@ class AIService:
 
     async def reason(self, request: ReasonRequest):
         image_url = image_from_data_url(request.image_url)["image_url"] if request.image_url else None
-        result = await self.muse.interpret(request.model_copy(update={"image_url": image_url}))
-        return {"constraints": result, "provider": "meta", "model": self.http.settings.muse_model,
+        canonical = request.model_copy(update={"image_url": image_url})
+        return await self.cache.get({"operation": "reason", **canonical.model_dump()}, lambda: self._reason(canonical))
+
+    async def _reason(self, request):
+        result = await self.muse.interpret(request)
+        return {"constraints": result, **self.muse.metadata(),
                 "confidence": None, "message": "Review interpreted constraints before applying them. Muse Spark does not supply a calibrated confidence score for this response."}

@@ -1,18 +1,35 @@
 import type { AICapabilities, AIAnalysis, AIIntegration, Analysis, Box, ConnectionDiagnostics, Plan, PlanRequest, Reasoning, SceneObject, Verification, VisualVerification, ReviewedState, ReplanResult } from './types';
+import { apiFetch, requestScope } from './backend';
 
-async function request<T>(path: string, options?: RequestInit, timeoutMs = 60000): Promise<T> {
+const pending = new Map<string, Promise<unknown>>();
+function request<T>(path: string, options?: RequestInit, timeoutMs = 60000): Promise<T> {
+  // Share identical in-flight AI actions only. Never persist image bodies/results in browser storage.
+  if (!['ai/analyze', 'ai/reason', 'ai/verify'].includes(path)) return sendRequest<T>(path, options, timeoutMs);
+  const key = `${requestScope()}:${path}:${options?.body ?? ''}`;
+  const previous = pending.get(key);
+  if (previous) return previous as Promise<T>;
+  const operation = sendRequest<T>(path, options, timeoutMs);
+  pending.set(key, operation);
+  const clear = () => { pending.delete(key); };
+  void operation.then(clear, clear);
+  return operation;
+}
+
+async function sendRequest<T>(path: string, options?: RequestInit, timeoutMs = 60000): Promise<T> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(`/api/${path}`, { ...options, signal: controller.signal });
+    const response = await apiFetch(path, { ...options, signal: controller.signal });
     if (!response.ok) {
       const body = await response.json().catch(() => null);
       const detail = body?.detail;
       throw new Error(typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map((d: {msg: string}) => d.msg).join('; ') : `Request failed (${response.status}). Check that the API is running.`);
     }
-    return await response.json() as T;
+    const body = await response.json().catch(() => { throw new Error('WorldOS returned unreadable data. Retry the action or use manual annotations.'); });
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('WorldOS returned an invalid response. Retry the action.');
+    return body as T;
   } catch (error) {
-    if (error instanceof TypeError) throw new Error('Cannot reach WorldOS. Start the FastAPI server on port 8000 and try again.');
+    if (error instanceof TypeError) throw new Error('Cannot reach WorldOS. Check your connection and backend address, then retry.');
     if (error instanceof DOMException && error.name === 'AbortError') throw new Error('The request timed out. Try a smaller scene.');
     throw error;
   } finally { window.clearTimeout(timeout); }
