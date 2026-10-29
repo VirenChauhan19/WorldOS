@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 vi.mock('./App',()=>({default:()=> <input aria-label="Desk session" defaultValue="Desk"/>}));
 vi.mock('./simple/Wizard',()=>({default:()=> <input aria-label="Photo check draft" defaultValue=""/>}));
+vi.mock('./live/LiveSpace',()=>({default:({active}:{active:boolean})=> <input aria-label="Live fit dimensions" defaultValue="" data-active={active}/>}));
 vi.mock('./inspect/Inspect',()=>({default:({initialInspectionId}:{initialInspectionId?:string})=> <><input aria-label="Inspect session" defaultValue="Inspect"/><span>{initialInspectionId}</span></>}));
 vi.mock('./ConnectionStatus',()=>({default:()=> <div>Technical diagnostics</div>}));
 vi.mock('./inspect/api',()=>({listTemplates:vi.fn(async()=>({templates:[]})),listDrafts:vi.fn(async()=>({drafts:[]})),templateHistory:vi.fn(async()=>({inspections:[]}))}));
@@ -10,10 +11,20 @@ import WorldOS from './WorldOS';
 import { navigate } from './navigation';
 beforeEach(()=>{window.history.replaceState(null,'','/');localStorage.clear();vi.spyOn(window,'scrollTo').mockImplementation(()=>{});});
 afterEach(()=>{cleanup();vi.restoreAllMocks();delete document.documentElement.dataset.motion;});
-it('shows three simple destinations and opens a focused check without the bottom navigation',async()=>{
-  render(<WorldOS/>);expect(screen.getByRole('heading',{name:'Is everything in the right place?'})).toBeTruthy();
+it('opens the live camera workspace from the main action and preserves its entered dimensions',async()=>{
+  render(<WorldOS/>);expect(screen.getByRole('heading',{name:'See what fits. Before you move it.'})).toBeTruthy();
   const navigation=screen.getByRole('navigation',{name:'Main navigation'});expect(navigation.querySelectorAll('button').length).toBe(3);
   expect(screen.queryByText('Technical diagnostics')).toBeNull();fireEvent.click(screen.getByRole('button',{name:'Check my space'}));
+  const input=await screen.findByLabelText('Live fit dimensions');fireEvent.change(input,{target:{value:'2.5 by 5 metres'}});
+  expect(screen.queryByRole('navigation',{name:'Main navigation'})).toBeNull();
+  expect(window.location.hash).toBe('#/live');
+  act(()=>navigate('home'));expect(input.getAttribute('data-active')).toBe('false');
+  act(()=>window.history.back());await waitFor(()=>expect(window.location.hash).toBe('#/live'));
+  expect((screen.getByLabelText('Live fit dimensions') as HTMLInputElement).value).toBe('2.5 by 5 metres');
+  expect(input.getAttribute('data-active')).toBe('true');
+});
+it('keeps the saved-photo workflow available and preserves unfinished photo drafts',async()=>{
+  window.history.replaceState(null,'','#/inspect');render(<WorldOS/>);
   const input=await screen.findByLabelText('Photo check draft');fireEvent.change(input,{target:{value:'My workspace'}});
   expect(screen.queryByRole('navigation',{name:'Main navigation'})).toBeNull();
   act(()=>navigate('home'));act(()=>window.history.back());await waitFor(()=>expect(window.location.hash).toBe('#/inspect'));

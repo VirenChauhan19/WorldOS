@@ -1,4 +1,14 @@
-# WorldOS V1.3
+# WorldOS
+
+**Current local implementation: Room Studio (V1.6).** Furnish a whole room with a queen bed, desk, table and wardrobe together. Edit a scaled 3D layout, check the combined fit, and place the same furniture in native AR. Compatible runtimes can automatically estimate detected surfaces and labelled object geometry; other browsers retain manual measurement and 3D planning. See [Room Studio, automatic measurements, validation and limits](docs/V16_ROOM_STUDIO.md). **272 frontend tests and the production build pass. Physical-device accuracy is not yet validated; changes are local, not deployed.**
+
+**Live Space (V1.5).** “Check my space” opens a live camera with automatic item recognition, native WebXR measurement on compatible devices, and a measured “what fits here?” comparison. Saved-photo inspection remains available. See [the architecture, device support, evidence, and limits](docs/V15_LIVE_AR.md).
+
+Validation: **211 frontend tests, 36 backend security/production tests, and the production build passed.** Fake-camera browser checks covered five screen sizes; simulated XR covered rendering and tracking-loss behavior. Separately, one real automatic recognition chain on a public photograph returned **12 detections in 12.6 seconds** through Meta Muse Spark 1.3 and SAM 3.1. Physical AR accuracy and parking suitability remain unverified. These changes are local and have not been deployed.
+
+## Historical release notes: V1.3 and earlier
+
+The provider-access and deployment reports below describe their respective earlier checks. The V1.5 evidence above is the current implementation record; its single successful live request does not establish sustained provider reliability.
 
 **Choose a photo. Find your items. Check what changed.** The guided wizard automatically requests recognition after a new photo is chosen, saves the photo before inference, and keeps manual correction optional. See [V1.3 recognition findings and deployment blockers](docs/V13_AUTOMATIC_RECOGNITION.md).
 

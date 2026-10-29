@@ -1,0 +1,44 @@
+/* Spatial marks stay anchored to the original, uncropped photograph. */
+.photo-stage-wrap { min-width: 0; margin: 24px 0; }
+.photo-stage-wrap .photo-stage-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 42px; margin-bottom: 8px; color: var(--ink, #252a25); font-size: 12px; }
+.photo-stage-toolbar > span { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 550; }
+.photo-stage-wrap .photo-overlay-toggle { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; gap: 7px; min-height: 44px; padding: 7px 10px; border: 1px solid var(--line, #dedfd7); border-radius: 7px; color: var(--ink, #252a25); background: transparent; font: inherit; }
+.photo-stage-wrap .photo-overlay-toggle:hover { background: #e9eae2; color: #252a25; }
+.photo-stage-wrap .spatial-photo { position: relative; width: 100%; overflow: hidden; isolation: isolate; margin: 0; border: 0; border-radius: 12px; background: #20251f; box-shadow: 0 0 0 1px #1f2a2024; }
+.photo-stage-wrap .spatial-photo > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.photo-stage-wrap .spatial-annotations { position: absolute; inset: 0; pointer-events: none; }
+.spatial-annotations .spatial-outline { position: absolute; color: #d5f580; border: 1px solid #d5f58080; border-radius: 3px; background: #d5f58008; box-shadow: 0 0 0 1px #101b183b; }
+.spatial-annotations .spatial-outline::after { content: ''; position: absolute; inset: -2px; border-radius: 3px; background: linear-gradient(currentColor,currentColor) top left/12px 2px, linear-gradient(currentColor,currentColor) top left/2px 12px, linear-gradient(currentColor,currentColor) top right/12px 2px, linear-gradient(currentColor,currentColor) top right/2px 12px, linear-gradient(currentColor,currentColor) bottom left/12px 2px, linear-gradient(currentColor,currentColor) bottom left/2px 12px, linear-gradient(currentColor,currentColor) bottom right/12px 2px, linear-gradient(currentColor,currentColor) bottom right/2px 12px; background-repeat: no-repeat; }
+.spatial-annotations .spatial-outline.needs-review, .spatial-annotations .spatial-outline.is-moving { color: #ffd391; border-color: #ffd3918c; background: #ffd3910a; }
+.spatial-annotations .spatial-outline.is-context { opacity: .45; background: transparent; }
+.spatial-annotations .spatial-outline.is-destination { border: 2px dashed #d5f580; background: #d5f58020; }
+.spatial-annotations .spatial-outline.is-destination::after { display: none; }
+.spatial-annotations .spatial-label { position: absolute; z-index: 2; display: inline-flex; align-items: center; gap: 5px; min-height: 24px; padding: 4px 7px; color: #eef1e6; background: #20271f; border: 1px solid #ffffff24; border-radius: 5px; box-shadow: 0 2px 8px #00000025; font-family: inherit; font-size: 11px; font-weight: 500; line-height: 1.25; white-space: nowrap; letter-spacing: .01em; }
+.spatial-label > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.spatial-label > i { width: 5px; height: 5px; flex-shrink: 0; border-radius: 50%; background: #d5f580; }
+.spatial-label > svg { color: #d5f580; flex-shrink: 0; }
+.spatial-annotations .spatial-label small { color: #ffd391; font-size: 10px; margin-left: 6px; }
+.spatial-label .spatial-label-index, .spatial-label .spatial-review-indicator { display: grid; place-items: center; flex-shrink: 0; width: 15px; height: 15px; border-radius: 3px; background: #ffd391; color: #27251d; font-size: 10px; font-weight: 700; }
+.spatial-annotations .spatial-label.is-destination { color: #e8f8c6; border-color: #d5f58073; }
+.spatial-label .spatial-destination-dot { width: 9px; height: 9px; border: 1px solid #d5f580; border-radius: 50%; flex-shrink: 0; }
+.photo-stage-wrap .spatial-guidance { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.spatial-guidance .spatial-movement line { stroke: #d5f580; stroke-width: 2.5px; stroke-linecap: round; }
+.spatial-guidance .spatial-movement .spatial-movement-shadow { stroke: #18201999; stroke-width: 5px; }
+.spatial-guidance .spatial-crosshair { filter: drop-shadow(0 1px 1px #172019); }
+.photo-stage-wrap .photo-stage-description { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.photo-stage-wrap .photo-stage-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; padding: 12px 0 0; color: var(--muted, #687064); font-size: 11px; line-height: 1.5; }
+.photo-stage-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.photo-stage-legend i { display: inline-block; width: 10px; height: 10px; border: 1.5px solid #687c38; border-radius: 2px; }
+.photo-stage-legend .legend-destination { border-style: dashed; }
+.photo-stage-legend .legend-review, .photo-stage-legend .legend-source { border-color: #a26724; }
+.photo-stage-legend .photo-stage-medium { margin-left: auto; font-size: 10px; letter-spacing: .02em; }
+.photo-stage-wrap .mark-help { background: #edf1e3; border: 1px solid #d4dfbd; color: #344129 !important; font-size: 13px; }
+@media (max-width: 480px) {
+  .photo-stage-wrap { margin: 20px 0; }
+  .photo-stage-wrap .photo-stage-toolbar { font-size: 11px; gap: 6px; }
+  .photo-stage-wrap .photo-overlay-toggle { padding-inline: 7px; gap: 5px; }
+  .photo-stage-wrap .spatial-photo { border-radius: 9px; }
+  .spatial-annotations .spatial-label { font-size: 10px; padding: 3px 5px; min-height: 22px; }
+  .spatial-annotations .spatial-label small { margin-left: 4px; font-size: 9px; }
+  .photo-stage-wrap .photo-stage-legend { gap: 6px 10px; font-size: 10px; }
+}

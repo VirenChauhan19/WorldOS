@@ -1,0 +1,28 @@
+.room-preview{position:relative;min-width:0;overflow:hidden;background:#e8eadf;color:#293025;font:13px Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}
+.room-camera-angle{position:absolute;right:16px;top:16px;display:flex;gap:3px;padding:3px;border:1px solid #cdd5c1;border-radius:7px;background:#f8faf2ed;}
+.room-camera-angle button{min-height:32px;padding:6px 10px;color:#637151;border:0;border-radius:4px;background:transparent;font-size:10px;}
+.room-camera-angle button[aria-pressed=true]{background:#e2e9d7;color:#293823;}
+.room-preview button:disabled{opacity:.45;cursor:default;}
+.room-render-surface{position:relative;height:clamp(420px,54vh,650px);isolation:isolate;}
+.room-render-surface canvas{width:100%;height:100%;display:block;touch-action:none;cursor:grab;outline-offset:-4px!important;}
+.room-render-surface canvas[hidden]{display:none;}
+.room-render-surface canvas:active{cursor:grabbing;}
+.room-preview-labels{position:absolute;inset:0;pointer-events:none;overflow:hidden;}
+.room-preview-labels button{position:absolute;display:flex;align-items:center;gap:6px;max-width:150px;min-height:28px;transform:translate(-50%,-100%);border:1px solid #cad3be;background:#fcfdf7ed;box-shadow:0 3px 8px #34432312;border-radius:5px;padding:5px 8px;color:#3d4a31;font-size:10px;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;pointer-events:auto;}
+.room-preview-labels button i{width:5px;height:5px;border-radius:50%;background:#899d6d;flex-shrink:0;}
+.room-preview-labels button.is-selected{background:#2a3724;color:#f4f7eb;border-color:#526943;}
+.room-preview-labels button.is-selected i{background:#d5f580;}
+.room-preview-labels button:active{transform:translate(-50%,-100%);}
+.room-zoom-tools{position:absolute;right:16px;bottom:17px;display:flex;flex-direction:column;gap:3px;padding:4px;border:1px solid #cdd5c1;border-radius:8px;background:#f8faf2ed;box-shadow:0 4px 15px #324b1d0c;}
+.room-zoom-tools button{display:grid;place-items:center;width:34px;height:34px;min-height:34px;color:#4b5d39;background:transparent;border:0;border-radius:5px;}
+.room-zoom-tools button:hover{background:#e1e9d5;}
+.room-preview-help{position:absolute;left:18px;bottom:18px;max-width:calc(100% - 96px);margin:0;color:#637151;font-size:10px;line-height:1.7;pointer-events:none;}
+.room-preview-help span{display:block;font-size:9px;color:#7b886e;}
+.room-render-fallback{padding:24px 20px 60px;height:100%;display:flex;flex-direction:column;align-items:center;gap:15px;}
+.room-render-fallback p{font-size:12px;max-width:46ch;color:#626e54;line-height:1.6;margin:0;}
+.room-render-fallback svg{width:100%;min-height:0;flex:1;}
+.room-render-fallback g{cursor:pointer;}
+.room-preview-empty{display:flex;align-items:center;justify-content:center;flex-direction:column;min-height:350px;padding:40px;background:#e8eadf;border:1px solid #d5d9cc;border-radius:12px;color:#445538;text-align:center;}
+.room-preview-empty strong{font-size:23px;font-weight:500;letter-spacing:-.7px;}.room-preview-empty p{font-size:14px;max-width:32ch;color:#6b7960;}
+.room-preview :is(button,canvas,g):focus-visible{outline:2px solid #526e36;outline-offset:3px;}
+@media(max-width:760px){.room-camera-angle{top:12px;right:12px;}.room-camera-angle button{min-height:36px;padding:7px 9px;}.room-render-surface{height:440px;}.room-preview-labels button{font-size:9px;max-width:120px;min-height:30px;padding:4px 6px;}.room-zoom-tools{right:12px;bottom:14px;}.room-zoom-tools button{width:38px;height:38px;}.room-preview-help{left:13px;bottom:16px;font-size:9px;}.room-preview-help span{font-size:8px;}}

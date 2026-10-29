@@ -206,7 +206,7 @@ class SessionAuth:
         if self.settings.deployment == "public":
             response.headers["Strict-Transport-Security"] = "max-age=31536000"
             response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
-            response.headers['Permissions-Policy'] = 'camera=(self), microphone=(), geolocation=()'
+            response.headers['Permissions-Policy'] = 'camera=(self), xr-spatial-tracking=(self), microphone=(), geolocation=()'
         return response
 
     def router(self):

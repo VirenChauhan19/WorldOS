@@ -1,0 +1,8 @@
+WorldOS desk preview
+
+Photograph: Jakub Żerdzicki / Unsplash
+Original: https://unsplash.com/photos/ElFBCgOfoIM
+License: https://unsplash.com/license
+
+The local WebP is a compressed copy of the repository's existing desk photograph.
+Product preview annotations are illustrative and are drawn separately by the UI.

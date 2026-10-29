@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, ScanLine, X } from 'lucide-react';
 import { analyze, analyzeAI } from '../api';
 import * as api from '../inspect/api';
 import { navigate, replaceRoute, useRoute } from '../navigation';
@@ -19,6 +19,7 @@ import { finding, friendlyError, movementText, resultTitle } from './copy';
 
 const labels:Record<Step,string>={setup:'Save your setup',check:'Check your space',result:'What changed',fix:'Put things back',verify:'Check again'};
 const steps:Step[]=['setup','check','result','fix','verify'];
+const stepNames:Record<Step,string>={setup:'Setup',check:'Compare',result:'Review',fix:'Restore',verify:'Verify'};
 const imageOf=(template:WorkspaceTemplate):SceneImage=>({image_url:template.reference_image_url,width:template.image_width,height:template.image_height,name:template.name});
 
 export default function Wizard({active=true}:{active?:boolean}){
@@ -149,7 +150,7 @@ export default function Wizard({active=true}:{active?:boolean}){
 
   return <div className="consumer wizard">
     <div className="wizard-top"><button className="text-button" disabled={busyFlag} onClick={()=>{if(choosing||!ready)navigate('home');else if(step==='setup'||step==='check')void leave();else if(step==='verify'&&state.previous_id)navigate('inspect',{inspection:state.previous_id});else go(step==='fix'?'result':state.previous_id?'verify':'check');}}><ArrowLeft size={18}/>Back</button><button className="icon-button" aria-label="Save and close check" disabled={busyFlag} onClick={()=>void leave()}><X size={22}/></button></div>
-    {ready&&!choosing&&<div className="wizard-progress" aria-label={`Step ${progress+1} of 5: ${labels[step]}`}><span>Step {progress+1} of 5</span><div>{steps.map(s=><i key={s} className={steps.indexOf(s)<=progress?'filled':''}/>)}</div><span>{state.name}</span></div>}
+    {ready&&!choosing&&<div className="wizard-progress" aria-label={`Step ${progress+1} of 5: ${labels[step]}`}><div className="wizard-progress-caption"><span>YOUR SPACE / {state.name}</span><span>Step {progress+1} of 5</span></div><ol>{steps.map((s,index)=><li key={s} className={index<=progress?'filled':''} aria-current={index===progress?'step':undefined}><span>{index<progress?<Check size={14} aria-hidden="true"/>:String(index+1).padStart(2,'0')}</span><span>{stepNames[s]}</span></li>)}</ol></div>}
     {busy&&<OperationStatus message={busy} detail="Your photos stay here. Nothing is marked complete until the check finishes."/>}
     {error&&<div className="simple-alert" role="alert"><p>{error}</p>{details&&<details><summary>See details</summary><p>{details}</p></details>}</div>}
     {!ready&&!choosing&&!busy&&<button className="primary" onClick={()=>navigate('history')}>Go to My Spaces</button>}
@@ -157,7 +158,7 @@ export default function Wizard({active=true}:{active?:boolean}){
     {ready&&!choosing&&<>
       <h1 ref={heading} tabIndex={-1}>{step==='result'&&facts?resultTitle(facts,reviewedEvidence,!!record?.previous_inspection_id):step==='fix'&&validMove?`Put your ${validMove.label} back.`:labels[step]}</h1>
       {step==='setup'&&<><p>Arrange your things the way you want them. Take a photo so WorldOS knows what looks right.</p>
-        {!state.reference?<div className="capture-start"><PhotoActions cameraLabel="Take a setup photo" label="Choose from photos" disabled={busyFlag} onPhoto={file=>upload(file,true)}/><p className="quiet">Use a clear, overhead view. We’ll automatically look for your items when you choose a photo.</p></div>:<>
+        {!state.reference?<div className="capture-start"><div className="capture-guide"><span className="capture-viewfinder"><ScanLine size={34} strokeWidth={1.3} aria-hidden="true"/></span><strong>A good view is a good start.</strong><p>One surface. Everything in frame.<br/>Photograph it from above, in good light.</p></div><PhotoActions cameraLabel="Take a setup photo" label="Choose from photos" disabled={busyFlag} onPhoto={file=>upload(file,true)}/><p className="quiet">We’ll automatically look for your items when you choose a photo. You can review every outline.</p></div>:<>
           {editItems?<SetupItems image={state.reference} objects={state.objects} disabled={busyFlag} onChange={objects=>setState(old=>({...old,objects,manual:true}))}/>:<PhotoStage image={state.reference} objects={state.objects}/>}
           <details className="photo-options"><summary>Use a different photo</summary><PhotoActions label="Choose another setup photo" cameraLabel="Retake setup photo" disabled={busyFlag} onPhoto={file=>upload(file,true)}/></details>
           {!!state.objects.length&&<><h2>Does this look right?</h2><p>We’ll keep track of {state.objects.map(o=>o.label).join(', ')}. Check the names and outlines before saving.</p><label className="simple-label">Name your space<input value={state.name} maxLength={120} disabled={busyFlag} onChange={e=>setState(old=>({...old,name:e.target.value}))}/></label><button className="primary" disabled={busyFlag||!state.name.trim()} onClick={()=>void saveSetup()}>Save this setup <Check size={18}/></button></>}
