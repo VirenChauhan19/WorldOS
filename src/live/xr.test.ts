@@ -25,6 +25,7 @@ function runtime({ domOverlay = true, fallback = false, shaderFailure = false } 
   const source = { cancel: vi.fn() };
   const session = Object.assign(new EventTarget(), {
     visibilityState: 'visible', domOverlayState: domOverlay ? { type: 'screen' } : undefined,
+    enabledFeatures: undefined as readonly string[] | undefined,
     requestReferenceSpace: vi.fn(async (type: string) => { if (fallback && type === 'local-floor') throw new Error('Unsupported'); return type === 'viewer' ? viewer : reference; }),
     requestHitTestSource: vi.fn(async () => source), updateRenderState: vi.fn(),
     requestAnimationFrame: vi.fn((next: typeof callback) => { callback = next; return 7; }),
@@ -51,11 +52,11 @@ function runtime({ domOverlay = true, fallback = false, shaderFailure = false } 
   const canvas = document.createElement('canvas'), overlay = document.createElement('div');
   vi.spyOn(canvas, 'getContext').mockReturnValue(gl as unknown as WebGLRenderingContext);
   const states: WorldARState[] = [], measurements: (WorldARMeasurement | null)[] = [];
-  function tick(point: XRPoint | null, { tracked = true, horizontal = true, emulated = false } = {}) {
+  function tick(point: XRPoint | null, { tracked = true, horizontal = true, emulated = false, hitEmulated = false, viewerPosition = { x: 0, y: 1.6, z: 0 }, at = performance.now() } = {}) {
     const matrix = new Float32Array(identity); if (!horizontal) matrix[5] = 0;
-    callback(performance.now(), {
-      getViewerPose: () => tracked ? { views: [{ projectionMatrix: identity, transform: transform({ x: 0, y: 1.6, z: 0 }) }], emulatedPosition: emulated } : null,
-      getHitTestResults: () => point ? [{ getPose: () => ({ transform: transform(point, matrix) }) }] : [],
+    callback(at, {
+      getViewerPose: () => tracked ? { views: [{ projectionMatrix: identity, transform: transform(viewerPosition) }], emulatedPosition: emulated } : null,
+      getHitTestResults: () => point ? [{ getPose: () => ({ transform: transform(point, matrix), emulatedPosition: hitEmulated }) }] : [],
     });
   }
   return { xr, session, gl, layer, source, reference, tick, states, measurements, tickFrame: (frame: XRFrameLike) => callback(performance.now(), frame),
@@ -419,5 +420,130 @@ it('limits native object work and reports at most three current observations', a
   for (const time of [700, 950, 1300]) { vi.mocked(performance.now).mockReturnValue(time); r.tickFrame(detectedFrame([], [oversized])); }
   expect(r.states.at(-1)?.detectedObjects).toBeUndefined();
   expect(r.states.at(-1)?.phase).not.toBe('ended');
+  await ar.end();
+});
+
+const scannedFloor = [[0, 0], [2, 0], [2, 2], [0, 2], [1, 0], [1, 2]].map(([x, z]) => ({ x, y: 0, z }));
+function scanHits(r: ReturnType<typeof runtime>, start = 0) {
+  scannedFloor.forEach((point, index) => {
+    vi.mocked(performance.now).mockReturnValue(start + index * 250);
+    r.tick(point, { viewerPosition: { x: index * .2, y: 1.6, z: 0 } });
+  });
+}
+
+it('automatically builds, expands and freezes native hit coverage without plane detection or marked corners', async () => {
+  vi.spyOn(performance, 'now').mockReturnValue(0);
+  const r = runtime(); const ar = await startWorldAR({ ...r.options, measurementMode: 'scan' });
+  expect(r.states.at(-1)).toMatchObject({ scan: { phase: 'finding-floor', sampleCount: 0, area: 0 }, measurementSupport: { planes: false, meshes: false, hitTest: true } });
+  scanHits(r);
+  expect(ar.selectPoint()).toBe(false);
+  expect(r.states.at(-1)).toMatchObject({ points: 0, canSelect: false, scan: { phase: 'mapping', sampleCount: 6 }, detectedSurface: { label: 'scanned floor area', source: 'hit-test-scan', width: 1.98, length: 1.98 } });
+  expect(r.measurements).toEqual([]);
+  vi.mocked(performance.now).mockReturnValue(3000); r.tick(scannedFloor[5]);
+  expect(r.states.at(-1)?.scan?.phase).toBe('stable');
+  vi.mocked(performance.now).mockReturnValue(3250); r.tick({ x: 3, y: 0, z: 0 });
+  vi.mocked(performance.now).mockReturnValue(3500); r.tick({ x: 3, y: 0, z: 2 });
+  expect(r.states.at(-1)).toMatchObject({ scan: { phase: 'mapping', sampleCount: 8 } });
+  expect(r.states.at(-1)?.detectedSurface?.width).toBeCloseTo(2.98); expect(r.states.at(-1)?.detectedSurface?.length).toBeCloseTo(1.98);
+  expect(ar.useDetectedSurface()).toBe(true);
+  const frozen = r.measurements.at(-1)!;
+  expect(frozen.source).toBe('hit-test-scan'); expect(frozen.width).toBeCloseTo(2.98); expect(frozen.length).toBeCloseTo(1.98);
+  vi.mocked(performance.now).mockReturnValue(3750); r.tick({ x: 4, y: 0, z: 2 });
+  expect(r.measurements.at(-1)).toBe(frozen);
+  expect(r.states.at(-1)).toMatchObject({ phase: 'ready', points: 3, canSelect: false });
+  ar.reset();
+  expect(r.states.at(-1)).toMatchObject({ scan: { phase: 'finding-floor', sampleCount: 0, area: 0 } });
+  expect(r.states.at(-1)?.detectedSurface).toBeUndefined();
+  expect(r.measurements.at(-1)).toBeNull();
+  await ar.end();
+});
+
+it('rejects high, sloping, emulated and stale hit samples and restarts coverage after lost tracking', async () => {
+  vi.spyOn(performance, 'now').mockReturnValue(1000);
+  const r = runtime(); const ar = await startWorldAR({ ...r.options, measurementMode: 'scan' });
+  r.tick({ x: 0, y: 1.2, z: 0 });
+  r.tick({ x: 0, y: 0, z: 0 }, { horizontal: false });
+  r.tick({ x: 0, y: 0, z: 0 }, { hitEmulated: true });
+  r.tick({ x: 0, y: 0, z: 0 }, { at: 0 });
+  expect(r.states.at(-1)).toMatchObject({ phase: 'tracking-lost', scan: { sampleCount: 0 }, canSelect: false });
+  scanHits(r, 1250);
+  expect(r.states.at(-1)?.detectedSurface?.source).toBe('hit-test-scan');
+  vi.mocked(performance.now).mockReturnValue(2900);
+  expect(ar.useDetectedSurface()).toBe(false);
+  r.tick(null);
+  expect(r.states.at(-1)?.detectedSurface).toBeUndefined();
+  r.tick(null, { tracked: false });
+  r.tick(scannedFloor[0]);
+  expect(r.states.at(-1)?.scan?.sampleCount).toBe(1);
+  expect(ar.useDetectedSurface()).toBe(false);
+  r.reference.dispatchEvent(new Event('reset'));
+  expect(r.states.at(-1)?.scan?.sampleCount).toBe(0);
+  await ar.end();
+});
+
+it('reports enabled native features and offers only sufficiently large labelled floors in scan mode', async () => {
+  vi.spyOn(performance, 'now').mockReturnValue(0);
+  const r = runtime(); r.session.enabledFeatures = ['hit-test', 'plane-detection'];
+  const ar = await startWorldAR({ ...r.options, measurementMode: 'scan' });
+  expect(r.states.at(-1)?.measurementSupport).toEqual({ planes: true, meshes: false, hitTest: true });
+  const table = nativePlane('table'), unknown = nativePlane(), smallFloor = nativePlane('floor'); smallFloor.polygon = polygon(.8, .8);
+  for (const time of [0, 750, 1600]) { vi.mocked(performance.now).mockReturnValue(time); r.tickFrame(detectedFrame([table, unknown, smallFloor])); }
+  expect(r.states.at(-1)?.detectedSurface).toBeUndefined();
+  expect(ar.useDetectedSurface()).toBe(false);
+  const floor = nativePlane('floor');
+  for (const time of [1750, 2500, 3250]) { vi.mocked(performance.now).mockReturnValue(time); r.tickFrame(detectedFrame([table, unknown, floor])); }
+  expect(r.states.at(-1)).toMatchObject({ detectedSurface: { label: 'floor', source: 'plane' }, scan: { phase: 'stable', area: 11.86 } });
+  expect(r.states.at(-1)?.detectedSurface?.width).toBeCloseTo(3.98); expect(r.states.at(-1)?.detectedSurface?.length).toBeCloseTo(2.98);
+  expect(r.states.at(-1)?.measurementSupport).toEqual({ planes: true, meshes: false, hitTest: true });
+  expect(ar.useDetectedSurface()).toBe(true);
+  expect(r.measurements.at(-1)?.source).toBe('plane');
+  await ar.end();
+});
+
+it('keeps exact scan dimensions so acceptance cannot round an undersized floor up to a furniture size', async () => {
+  vi.spyOn(performance, 'now').mockReturnValue(0);
+  const r = runtime(); const ar = await startWorldAR({ ...r.options, measurementMode: 'scan' });
+  const floor = nativePlane('floor'); floor.polygon = polygon(1.666, 2.166);
+  for (const time of [0, 750, 1500]) { vi.mocked(performance.now).mockReturnValue(time); r.tickFrame(detectedFrame([floor])); }
+  const detected = r.states.at(-1)?.detectedSurface;
+  expect(detected).toBeDefined();
+  expect(detected!.width).toBeCloseTo(1.646); expect(detected!.length).toBeCloseTo(2.146);
+  expect(detected!.width).toBeLessThan(1.65); expect(detected!.length).toBeLessThan(2.15);
+  expect(ar.useDetectedSurface()).toBe(true);
+  expect(r.measurements.at(-1)?.width).toBe(detected!.width);
+  expect(r.measurements.at(-1)?.length).toBe(detected!.length);
+  await ar.end();
+});
+
+it('uses native labels to exclude known table-height hits from the floor scan', async () => {
+  vi.spyOn(performance, 'now').mockReturnValue(0);
+  const r = runtime(); const ar = await startWorldAR({ ...r.options, measurementMode: 'scan' });
+  const table = nativePlane('table'), tableMatrix = new Float32Array(identity); tableMatrix[13] = .75;
+  scannedFloor.forEach((point, index) => {
+    vi.mocked(performance.now).mockReturnValue(index * 250);
+    r.tickFrame({
+      ...detectedFrame([table], [], tableMatrix),
+      getViewerPose: () => ({ views: [{ projectionMatrix: identity, transform: transform({ x: index * .2, y: 1.6, z: 0 }) }] }),
+      getHitTestResults: () => [{ getPose: () => ({ transform: transform({ ...point, y: .75 }, tableMatrix) }) }],
+    });
+  });
+  expect(r.states.at(-1)?.scan?.sampleCount).toBe(0);
+  expect(r.states.at(-1)?.detectedSurface).toBeUndefined();
+  expect(ar.useDetectedSurface()).toBe(false);
+  await ar.end();
+});
+
+it('expires scan candidates when frames stop and cancels their accumulated samples', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
+  const r = runtime(); const ar = await startWorldAR({ ...r.options, measurementMode: 'scan' });
+  scannedFloor.forEach((point, index) => {
+    r.tick(point, { viewerPosition: { x: index * .2, y: 1.6, z: 0 } });
+    if (index < scannedFloor.length - 1) vi.advanceTimersByTime(250);
+  });
+  expect(r.states.at(-1)?.detectedSurface?.source).toBe('hit-test-scan');
+  vi.advanceTimersByTime(750);
+  expect(r.states.at(-1)).toMatchObject({ phase: 'tracking-lost', scan: { phase: 'limited', sampleCount: 0, area: 0 } });
+  expect(r.states.at(-1)?.detectedSurface).toBeUndefined(); expect(ar.useDetectedSurface()).toBe(false);
+  r.tick(scannedFloor[0]); expect(r.states.at(-1)?.scan?.sampleCount).toBe(1);
   await ar.end();
 });

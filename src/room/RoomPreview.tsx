@@ -53,12 +53,13 @@ function createRenderer(canvas:HTMLCanvasElement){
   };
 }
 
-function roomMeshes(room:RoomSize,eye:Vector):SceneMesh[]{
+function roomMeshes(room:RoomSize,eye:Vector,showWalls:boolean):SceneMesh[]{
   const {width:w,depth:d}=room,h=room.height??2.7,result:SceneMesh[]=[];
   // A neutral cutaway shell is conceptual; doors and windows are never invented.
   result.push(...boxMeshes(-.08,-.10,-.08,w+.16,.10,d+.16,material('#a99a83')));
   const planks=Math.min(90,Math.ceil(w/.20));
   for(let i=0;i<planks;i++)result.push(...boxMeshes(i*w/planks,.001,0,w/planks-.004,.012,d,material(i%3===0?'#cbb899':i%3===1?'#d3c2a6':'#cdbc9e')));
+  if(!showWalls)return result;
   const wallX=eye[0]>w/2?-.07:w,wallZ=eye[2]>d/2?-.07:d;
   const sideWall=boxMeshes(wallX,0,0,.07,h,d,material('#e1e3d9'));
   const backWall=boxMeshes(0,0,wallZ,w,h,.07,material('#eaece4'));
@@ -70,7 +71,7 @@ function roomMeshes(room:RoomSize,eye:Vector):SceneMesh[]{
   return result;
 }
 
-export default function RoomPreview({room,items,placements,selectedId,onSelect}:{room:RoomSize;items:readonly FurnitureItem[];placements:readonly FurniturePlacement[];selectedId?:string;onSelect?:(id:string)=>void}){
+export default function RoomPreview({room,items,placements,selectedId,onSelect,showWalls=true}:{room:RoomSize;items:readonly FurnitureItem[];placements:readonly FurniturePlacement[];selectedId?:string;onSelect?:(id:string)=>void;showWalls?:boolean}){
   const canvasRef=useRef<HTMLCanvasElement>(null),graphics=useRef<ReturnType<typeof createRenderer>|null>(null),orbit=useRef<Orbit>({...DEFAULT});
   const frame=useRef(0),drawRef=useRef<()=>void>(()=>{}),picks=useRef<Pick[]>([]);
   const pointers=useRef(new Map<number,{x:number;y:number}>()),gesture=useRef<{x:number;y:number;moved:boolean}|null>(null);
@@ -89,7 +90,7 @@ export default function RoomPreview({room,items,placements,selectedId,onSelect}:
     const distance=cameraDistance(room,target,o,width/height);
     const eye:Vector=[target[0]+Math.sin(o.yaw)*Math.cos(o.pitch)*distance,target[1]+Math.sin(o.pitch)*distance,target[2]+Math.cos(o.yaw)*Math.cos(o.pitch)*distance];
     const projection=perspective(width/height,Math.max(100,distance+Math.hypot(room.width,room.depth,room.height??2.7)*2)),view=lookAt(eye,target);
-    renderer.begin(projection,view);renderer.draw(batch(roomMeshes(room,eye)));
+    renderer.begin(projection,view);renderer.draw(batch(roomMeshes(room,eye,showWalls)));
     // Soft grounding shadows are illustrative, not a light simulation.
     for(const {item,placement:p} of placed){const w=p.rotation===90?item.depth:item.width,d=p.rotation===90?item.width:item.depth;renderer.draw([{vertices:[p.x-.025,.016,p.z-.025,p.x+w+.025,.016,p.z-.025,p.x+w+.025,.016,p.z+d+.025,p.x-.025,.016,p.z-.025,p.x+w+.025,.016,p.z+d+.025,p.x-.025,.016,p.z+d+.025],color:[.25,.26,.20,.12]}]);}
     renderer.draw(furniture);
@@ -116,7 +117,7 @@ export default function RoomPreview({room,items,placements,selectedId,onSelect}:
     return()=>{cancelAnimationFrame(frame.current);frame.current=0;resize?.disconnect();window.removeEventListener('resize',redraw);canvas.removeEventListener('wheel',wheel);canvas.removeEventListener('webglcontextlost',lost);canvas.removeEventListener('webglcontextrestored',restore);graphics.current?.dispose();graphics.current=null;pointers.current.clear();gesture.current=null;picks.current=[];};
   // The renderer persists as room and furniture data change.
   },[valid]);
-  useEffect(redraw,[furniture,room.width,room.depth,room.height,selectedId]);
+  useEffect(redraw,[furniture,room.width,room.depth,room.height,selectedId,showWalls]);
 
   function reset(top=false){orbit.current=top?{yaw:.001,pitch:1.50,zoom:.95}:{...DEFAULT};setViewMode(top?'top':'perspective');redraw();}
   function pointerDown(event:ReactPointerEvent<HTMLCanvasElement>){if(event.button!==0)return;event.currentTarget.setPointerCapture(event.pointerId);pointers.current.set(event.pointerId,{x:event.clientX,y:event.clientY});if(pointers.current.size===1)gesture.current={x:event.clientX,y:event.clientY,moved:false};else if(gesture.current)gesture.current.moved=true;}

@@ -35,6 +35,7 @@ export interface XRLayerLike {
 }
 export interface XRSessionLike extends EventTarget {
   visibilityState: 'visible' | 'visible-blurred' | 'hidden';
+  enabledFeatures?: readonly string[];
   domOverlayState?: { type: string };
   requestReferenceSpace(type: 'viewer' | 'local' | 'local-floor'): Promise<XRSpaceLike>;
   requestHitTestSource(options: { space: XRSpaceLike; entityTypes: ['plane'] }): Promise<XRHitTestSourceLike>;

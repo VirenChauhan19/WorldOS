@@ -6,7 +6,7 @@ import type { WorldARController, WorldARMeasurement, WorldAROptions } from '../l
 import type { FurnitureItem, FurniturePlacement, RoomSize } from './layout';
 import { orientedSize } from './layout';
 
-interface PreviewProps { room: RoomSize; items: FurnitureItem[]; placements: FurniturePlacement[] }
+interface PreviewProps { room: RoomSize; showWalls: boolean; items: FurnitureItem[]; placements: FurniturePlacement[] }
 vi.mock('./RoomPreview', () => ({ default: (props: PreviewProps) => <output data-testid="room-preview">{JSON.stringify(props)}</output> }));
 vi.mock('../live/useLiveCamera', () => ({ useLiveCamera: vi.fn() }));
 vi.mock('../live/xr', () => ({ isWorldARSupported: vi.fn(), startWorldAR: vi.fn() }));
@@ -38,7 +38,7 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); vi.restoreAllMocks(); });
 function preview(): PreviewProps { return JSON.parse(screen.getByTestId('room-preview').textContent!); }
 function change(label: string, value: string) { fireEvent.change(screen.getByLabelText(label), { target: { value } }); }
 function enterRoom(width: string, depth: string) {
-  fireEvent.click(screen.getByRole('button', { name: 'Enter my room size' }));
+  fireEvent.click(screen.getByRole('button', { name: 'I already know my room size' }));
   change('Room width', width);
   change('Room length', depth);
 }
@@ -59,42 +59,50 @@ async function startAR() {
 }
 
 describe('room furnishing controls', () => {
-  it('labels the initial scene as an example and places all four pieces together', async () => {
+  it('arranges every piece without room dimensions and keeps room fit unconfirmed', async () => {
     await renderStudio();
-    expect(screen.getByRole('heading', { name: 'All 4 fit this example' })).toBeTruthy();
-    expect(screen.getByText(/Illustrative room.*measure yours to check the fit/)).toBeTruthy();
-    expect(screen.queryByRole('heading', { name: /fit the measured space/ })).toBeNull();
+    expect(screen.getByRole('heading', { name: '4 pieces, one arrangement' })).toBeTruthy();
+    expect(screen.getByText(/Room fit is unconfirmed/)).toBeTruthy();
+    expectNoPositiveVerdict();
+    expect(screen.queryByLabelText('Room width')).toBeNull();
+    expect(screen.queryByLabelText('Room length')).toBeNull();
+    expect(screen.queryByLabelText('Ceiling height')).toBeNull();
     expect(preview().placements.map(value => value.itemId).sort()).toEqual(['desk', 'queen-bed', 'table', 'wardrobe']);
+    expect(preview().showWalls).toBe(false);
+    expect(preview().room.width).toBeGreaterThan(0); expect(preview().room.depth).toBeGreaterThan(0);
     expect(screen.getByText(/Check doors, windows, drawers, outlets and access/)).toBeTruthy();
   });
 
-  it('clears example dimensions and the fit verdict before accepting the user\'s room', async () => {
+  it('shows optional blank room fields and waits for both dimensions before checking a measured fit', async () => {
     await renderStudio();
-    fireEvent.click(screen.getByRole('button', { name: 'Enter my room size' }));
+    fireEvent.click(screen.getByRole('button', { name: 'I already know my room size' }));
     expect((screen.getByLabelText('Room width') as HTMLInputElement).value).toBe('');
     expect((screen.getByLabelText('Room length') as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText('Ceiling height') as HTMLInputElement).value).toBe('');
     expectNoPositiveVerdict();
-    expect(preview().placements).toEqual([]);
+    expect(preview().placements).toHaveLength(4);
     change('Room width', '4');
     expectNoPositiveVerdict();
+    expect(screen.queryByTestId('room-preview')).toBeNull();
     change('Room length', '4.5');
     expect(screen.getByRole('heading', { name: 'All 4 fit the measured space' })).toBeTruthy();
     expect(preview().room).toEqual({ width: 4, depth: 4.5 });
+    expect(preview().showWalls).toBe(true);
     expect(preview().placements).toHaveLength(4);
     expect(screen.getByText(/Ceiling height is not checked/)).toBeTruthy();
   });
 
-  it('keeps edited example dimensions attributed to the example until the user enters their own room', async () => {
+  it('resizes the suggested footprint when furniture changes without asking for or inventing room dimensions', async () => {
     await renderStudio();
-    fireEvent.click(screen.getByRole('button', { name: 'Example room dimensions' }));
-    change('Room width', '4.2');
-    expect(preview().room.width).toBe(4.2);
-    expect(screen.getByRole('heading', { name: 'All 4 fit this example' })).toBeTruthy();
-    expect(screen.queryByRole('heading', { name: /fit the measured space/ })).toBeNull();
-    expect(screen.getByText(/Illustrative room.*measure yours to check the fit/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Enter my room size' }));
-    expect((screen.getByLabelText('Room width') as HTMLInputElement).value).toBe('');
-    expect((screen.getByLabelText('Room length') as HTMLInputElement).value).toBe('');
+    const before = preview().room;
+    change('Furniture width', '6');
+    expect(preview().room).not.toEqual(before);
+    expect(Math.max(preview().room.width, preview().room.depth)).toBeGreaterThanOrEqual(6);
+    expect(preview().placements).toHaveLength(4);
+    expect(preview().showWalls).toBe(false);
+    expect(screen.queryByLabelText('Room width')).toBeNull();
+    expect(screen.getByRole('heading', { name: '4 pieces, one arrangement' })).toBeTruthy();
+    expect(screen.getByText(/Room fit is unconfirmed/)).toBeTruthy();
     expectNoPositiveVerdict();
   });
 
@@ -119,7 +127,8 @@ describe('room furnishing controls', () => {
     if (input === 'gap') change('Space between furniture', '-1');
     expectNoPositiveVerdict();
     expect(screen.getByRole('heading', { name: 'Add valid measurements' })).toBeTruthy();
-    expect(preview().placements).toEqual([]);
+    if (input === 'room') expect(screen.queryByTestId('room-preview')).toBeNull();
+    else expect(preview().placements).toEqual([]);
   });
 
   it('rechecks changed dimensions, removes furniture and adds a new piece to the shared layout', async () => {
@@ -153,6 +162,39 @@ describe('room furnishing controls', () => {
     expect(screen.getByRole('heading', { name: 'All 1 fit the measured space' })).toBeTruthy();
   });
 
+  it('expands an unmeasured furniture footprint after rotation and movement without inventing a room boundary', async () => {
+    await renderStudio();
+    for (const name of ['Desk', 'Table', 'Wardrobe']) fireEvent.click(screen.getByRole('button', { name: `Remove ${name}` }));
+    expect(preview().room).toEqual({ width: 1.65, depth: 2.15 });
+    fireEvent.click(screen.getByRole('button', { name: /Rotate 90/ }));
+    expect(preview().room).toEqual({ width: 2.15, depth: 1.65 });
+    expect(preview().placements).toEqual([{ itemId: 'queen-bed', x: 0, z: 0, rotation: 90 }]);
+    expect(screen.queryByRole('heading', { name: 'This arrangement needs a change' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Move furniture right' }));
+    expect(preview().placements[0].x).toBe(.1);
+    expect(preview().room.width).toBeCloseTo(2.25);
+    expect(preview().showWalls).toBe(false);
+    expect(screen.getByRole('heading', { name: '1 pieces, one arrangement' })).toBeTruthy();
+    expect(screen.queryByLabelText('Room width')).toBeNull();
+    expectNoPositiveVerdict();
+  });
+
+  it.each(['empty', 'incomplete', 'invalid'] as const)('shows no arbitrary floor rectangle when the scene is %s', async state => {
+    await renderStudio();
+    if (state === 'empty') for (const name of ['Queen bed', 'Desk', 'Table', 'Wardrobe']) fireEvent.click(screen.getByRole('button', { name: `Remove ${name}` }));
+    if (state === 'incomplete') {
+      fireEvent.click(screen.getByRole('button', { name: 'I already know my room size' }));
+      change('Room width', '4');
+    }
+    if (state === 'invalid') change('Furniture width', '');
+    expect(screen.queryByTestId('room-preview')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Floor plan' }));
+    expect(screen.queryByRole('group', { name: 'Editable room floor plan' })).toBeNull();
+    expect(screen.queryByText('4 m')).toBeNull(); expect(screen.queryByText('4.5 m')).toBeNull();
+    expect(screen.getAllByText(state === 'empty' ? 'Choose your furniture' : state === 'incomplete' ? 'Complete your room measurements' : 'Check furniture sizes').length).toBeGreaterThan(0);
+    expectNoPositiveVerdict();
+  });
+
   it('moves a floor-plan piece into another piece by keyboard and preserves the conflict when changing finish', async () => {
     await renderStudio();
     const snapshot = preview();
@@ -183,8 +225,8 @@ describe('room furnishing controls', () => {
   it('starts automatic camera recognition without using furniture targets as recognition prompts', async () => {
     await renderStudio();
     fireEvent.click(screen.getByRole('button', { name: 'Camera' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Open camera & recognize' }));
     expect(camera.start).toHaveBeenCalledOnce();
+    expect(screen.queryByLabelText('Room width')).toBeNull();
     const calls = vi.mocked(useLiveCamera).mock.calls;
     expect(calls.at(-1)![0].active).toBe(true);
     for (const [input] of calls) {
@@ -192,11 +234,33 @@ describe('room furnishing controls', () => {
       expect(Object.keys(input).sort()).toEqual(['active', 'autoAnalyze', 'videoRef']);
     }
   });
+
+  it('restarts camera access after a camera startup failure', async () => {
+    camera.status = 'error'; camera.error = 'Camera access was not allowed.';
+    await renderStudio();
+    fireEvent.click(screen.getByRole('button', { name: 'Camera' }));
+    vi.mocked(camera.start).mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(camera.start).toHaveBeenCalledOnce();
+    expect(camera.retry).not.toHaveBeenCalled();
+  });
+
+  it('retries recognition on an already live camera without reopening camera access', async () => {
+    camera.status = 'live'; camera.error = 'Recognition paused: connection unavailable.';
+    await renderStudio();
+    fireEvent.click(screen.getByRole('button', { name: 'Camera' }));
+    vi.mocked(camera.start).mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(camera.retry).toHaveBeenCalledOnce();
+    expect(camera.start).not.toHaveBeenCalled();
+  });
 });
 
 describe('tracked room session lifecycle', () => {
   it('waits for acceptance of a detected surface before using its dimensions to place every piece', async () => {
     await startAR();
+    expect(options.measurementMode).toBe('scan');
+    expect(screen.queryByLabelText('Room width')).toBeNull();
     const detected = { label: 'floor', width: 4, length: 4.5 };
     const detectedState = {
       phase: 'searching' as const, points: 0 as const, canSelect: true,
@@ -218,6 +282,40 @@ describe('tracked room session lifecycle', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit in 3D' }));
     expect(preview().room).toEqual({ width: 4, depth: 4.5 });
     expect(screen.getByText(/DETECTED SURFACE AREA/)).toBeTruthy();
+  });
+
+  it('automatically places all furniture when a stable native scan covers a large enough floor area', async () => {
+    await startAR();
+    vi.mocked(controller.useDetectedSurface).mockImplementation(() => {
+      options.onMeasurement({ ...measured, source: 'hit-test-scan' });
+      options.onState({ phase: 'ready', points: 3, canSelect: false, message: 'Scanned floor area stays anchored.' });
+      return true;
+    });
+    act(() => options.onState({
+      phase: 'measuring', points: 0, canSelect: false, message: 'Floor coverage is steady.',
+      detectedSurface: { label: 'scanned floor area', width: 4, length: 4.5, source: 'hit-test-scan' },
+      scan: { phase: 'stable', sampleCount: 12, area: 18, message: 'Observed floor coverage is steady.' },
+    }));
+    expect(controller.useDetectedSurface).toHaveBeenCalledOnce();
+    expect(controller.selectPoint).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('Room width')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'All 4 fit the measured space' })).toBeTruthy();
+    expect(vi.mocked(controller.setRoomLayout).mock.calls.at(-1)![0]!.placements).toHaveLength(4);
+  });
+
+  it('keeps scanning when stable observed floor coverage cannot fit every selected piece', async () => {
+    await startAR();
+    act(() => options.onState({
+      phase: 'measuring', points: 0, canSelect: false, message: 'Keep scanning to expand this area.',
+      detectedSurface: { label: 'scanned floor area', width: 1.1, length: 1.1, source: 'hit-test-scan' },
+      scan: { phase: 'stable', sampleCount: 6, area: 1.21, message: 'Observed floor coverage is steady.' },
+    }));
+    expect(controller.useDetectedSurface).not.toHaveBeenCalled();
+    expect(controller.setRoomLayout).toHaveBeenLastCalledWith(null);
+    expect(controller.selectPoint).not.toHaveBeenCalled();
+    expectNoPositiveVerdict();
+    expect(screen.getByRole('button', { name: 'Use detected surface' })).toBeTruthy();
+    expect(screen.getByText(/Keep scanning to include more floor/)).toBeTruthy();
   });
 
   it('renders all four pieces from an AR measurement, pauses fit feedback on tracking loss and clears invalid furniture', async () => {
@@ -263,9 +361,10 @@ describe('tracked room session lifecycle', () => {
     expect(controller.setRoomLayout).not.toHaveBeenCalled();
     if (cause !== 'unmount') {
       view.rerender(<RoomStudio active/>);
-      expect(screen.getByRole('heading', { name: 'All 4 fit this example' })).toBeTruthy();
+      expect(screen.getByRole('heading', { name: '4 pieces, one arrangement' })).toBeTruthy();
       expect(screen.queryByRole('button', { name: 'End AR' })).toBeNull();
-      expect(preview().room).toEqual({ width: 4, depth: 4.5, height: 2.6 });
+      expect(preview().placements).toHaveLength(4); expect(preview().showWalls).toBe(false);
+      expectNoPositiveVerdict();
     }
   });
 
@@ -274,7 +373,8 @@ describe('tracked room session lifecycle', () => {
     act(() => options.onState({ phase: 'ended', points: 0, canSelect: false, message: 'AR ended.' }));
     act(() => options.onMeasurement({ ...measured, width: 1, length: 1 }));
     expect(screen.queryByRole('button', { name: 'End AR' })).toBeNull();
-    expect(screen.getByRole('heading', { name: 'All 4 fit this example' })).toBeTruthy();
-    expect(preview().room).toEqual({ width: 4, depth: 4.5, height: 2.6 });
+    expect(screen.getByRole('heading', { name: '4 pieces, one arrangement' })).toBeTruthy();
+    expect(preview().placements).toHaveLength(4); expect(preview().showWalls).toBe(false);
+    expectNoPositiveVerdict();
   });
 });

@@ -3,6 +3,7 @@ import type { FurnitureItem, FurniturePlacement } from '../room/layout';
 import { furnitureMeshes } from '../room/furnitureGeometry';
 import type { SceneMesh } from '../room/furnitureGeometry';
 import { inscribedPlaneRectangle, observedMeshBounds, planeRectangleToWorld, supportedObjectLabel } from './xr-plane';
+import { createFloorScan, isPlausibleFloorHit } from './xr-scan';
 
 export type WorldARPhase = 'searching' | 'measuring' | 'ready' | 'tracking-lost' | 'ended';
 export interface WorldARState {
@@ -13,13 +14,24 @@ export interface WorldARState {
   detectedSurface?: WorldARSurface;
   detectedSurfaces?: WorldARSurface[];
   detectedObjects?: WorldARObject[];
+  scan?: WorldARScanState;
+  /** Native features enabled by the session or exposed by a received frame. */
+  measurementSupport?: { planes: boolean; meshes: boolean; hitTest: true };
 }
-export interface WorldARSurface { label: string; width: number; length: number }
+export interface WorldARScanState {
+  phase: 'finding-floor' | 'mapping' | 'stable' | 'limited';
+  sampleCount: number;
+  /** Rectangle area inside observed coverage, never a full-room area estimate. */
+  area: number;
+  message: string;
+}
+export interface WorldARSurface { label: string; width: number; length: number; source?: 'plane' | 'hit-test-scan' }
 export interface WorldARObject extends WorldARSurface { height: number }
 export interface WorldARMeasurement {
   width: number;
   length: number;
   corners: [XRPoint, XRPoint, XRPoint, XRPoint];
+  source?: WorldARSurface['source'];
 }
 export interface WorldARFootprint { width: number; length: number; clearance: number; rotated?: boolean }
 export interface WorldARRoomLayout { items: readonly FurnitureItem[]; placements: readonly FurniturePlacement[] }
@@ -35,6 +47,7 @@ export interface WorldAROptions {
   canvas: HTMLCanvasElement;
   overlay: HTMLElement;
   signal?: AbortSignal;
+  measurementMode?: 'manual' | 'scan';
   onState: (state: WorldARState) => void;
   onMeasurement: (measurement: WorldARMeasurement | null) => void;
 }
@@ -205,7 +218,7 @@ function centeredFootprint(measurement: WorldARMeasurement, width: number, lengt
 
 /** Must be called directly from a user action so the native AR permission prompt
  * is tied to that action. No camera frames are sent to a server by this engine. */
-export async function startWorldAR({ canvas, overlay, signal, onState, onMeasurement }: WorldAROptions): Promise<WorldARController> {
+export async function startWorldAR({ canvas, overlay, signal, measurementMode = 'manual', onState, onMeasurement }: WorldAROptions): Promise<WorldARController> {
   if (signal?.aborted) throw new DOMException('The AR start was cancelled.', 'AbortError');
   const xr = system();
   if (!window.isSecureContext || !xr) throw new Error('World-tracked AR is unavailable here. Use an AR-capable browser over HTTPS.');
@@ -224,14 +237,46 @@ export async function startWorldAR({ canvas, overlay, signal, onState, onMeasure
   type ObjectTrack = { changedAt: number; bounds: WorldARObject; anchorBounds: WorldARObject; basis: number[]; anchor: XRPoint; since: number; seen: number; frames: number };
   const planeTracks = new Map<XRPlaneLike, SurfaceTrack>(), meshTracks = new Map<XRMeshLike, ObjectTrack>();
   let surfaces: SurfaceTrack[] = [], objects: ObjectTrack[] = [];
+  const scanning = measurementMode === 'scan', floorScan = createFloorScan();
+  const measurementSupport = { planes: session.enabledFeatures?.includes('plane-detection') ?? false, meshes: session.enabledFeatures?.includes('mesh-detection') ?? false, hitTest: true as const };
+  let knownFloorHeight: number | null = null, excludedFloorHeights: number[] = [], scanStartedAt = performance.now();
   let stateKey = '';
-  function clearDetection() { planeTracks.clear(); meshTracks.clear(); surfaces = []; objects = []; }
+  function clearDetection() { planeTracks.clear(); meshTracks.clear(); surfaces = []; objects = []; knownFloorHeight = null; excludedFloorHeights = []; }
+  function clearScan() { floorScan.reset(); scanStartedAt = performance.now(); }
   const rounded = (value: number) => Math.round(value * 100) / 100;
-  function publish(phase: WorldARPhase, message: string, canSelect = !!hit && points.length < 3) {
-    const state: WorldARState = { phase, points: points.length as WorldARState['points'], canSelect, message };
+  function detectedCandidate(now: number): { current: WorldARMeasurement; label: string; source: 'plane' | 'hit-test-scan'; seen: number; stable: boolean } | null {
+    const plane = surfaces[0];
+    if (plane?.current && now - plane.seen <= 300) return { current: plane.current, label: plane.label, source: 'plane', seen: plane.seen, stable: now - plane.since >= 1500 };
+    if (!scanning) return null;
+    const scan = floorScan.snapshot(now), current = scan.measurement;
+    if (!current || now - scan.lastSeen > 300 || !matchesFloorLevel(current.corners[0].y)) return null;
+    return { current, label: 'scanned floor area', source: 'hit-test-scan', seen: scan.lastSeen, stable: scan.stable };
+  }
+  function matchesFloorLevel(height: number) {
+    return knownFloorHeight !== null ? Math.abs(height - knownFloorHeight) <= MAX_HEIGHT_DIFFERENCE : !excludedFloorHeights.some(level => Math.abs(height - level) <= MAX_HEIGHT_DIFFERENCE);
+  }
+  function scanState(now: number): WorldARScanState {
+    const scan = floorScan.snapshot(now), candidate = detectedCandidate(now);
+    const area = measurement ? measurement.width * measurement.length : candidate ? candidate.current.width * candidate.current.length : 0;
+    if (measurement) return { phase: 'stable', sampleCount: scan.sampleCount, area: rounded(area), message: 'Observed floor area saved. Walls, hidden floor and obstacles are not measured.' };
+    if (candidate) return { phase: candidate.stable ? 'stable' : 'mapping', sampleCount: scan.sampleCount, area: rounded(area), message: candidate.stable ? 'Observed floor coverage is steady. Keep scanning to expand it, or use this area.' : 'Floor coverage is growing. Walk slowly and sweep across more of the floor.' };
+    if (scan.sampleCount) return { phase: now - scan.lastSeen > 1000 ? 'limited' : 'mapping', sampleCount: scan.sampleCount, area: 0, message: 'Walk slowly and aim across a wider area of the same floor. Coverage needs at least 1 m in both directions.' };
+    return { phase: now - scanStartedAt > 12000 ? 'limited' : 'finding-floor', sampleCount: 0, area: 0, message: 'Aim down at a textured floor and move the phone slowly to start mapping.' };
+  }
+  function publish(phase: WorldARPhase, message: string, canSelect = !scanning && !!hit && points.length < 3) {
+    const state: WorldARState = { phase, points: points.length as WorldARState['points'], canSelect: !scanning && canSelect, message };
+    if (scanning) {
+      state.measurementSupport = { ...measurementSupport };
+      if (!ended) state.scan = phase === 'tracking-lost' ? { phase: 'limited', sampleCount: 0, area: 0, message } : scanState(performance.now());
+    }
     if (!ended && phase !== 'tracking-lost') {
-      if (!points.length && surfaces.length) {
-        state.detectedSurfaces = surfaces.map(surface => ({ label: surface.label, width: rounded(surface.current!.width), length: rounded(surface.current!.length) }));
+      const candidate = detectedCandidate(performance.now());
+      if (!points.length && candidate) {
+        state.detectedSurfaces = scanning
+          // Callers use these dimensions to decide whether to freeze a scan.
+          // Display rounding must never enlarge the area used by that decision.
+          ? [{ label: candidate.label, width: candidate.current.width, length: candidate.current.length, source: candidate.source }]
+          : surfaces.map(surface => ({ label: surface.label, width: rounded(surface.current!.width), length: rounded(surface.current!.length) }));
         state.detectedSurface = state.detectedSurfaces[0];
       }
       if (objects.length) state.detectedObjects = objects.map(object => ({ label: object.bounds!.label, width: rounded(object.bounds!.width), length: rounded(object.bounds!.length), height: rounded(object.bounds!.height) }));
@@ -239,10 +284,10 @@ export async function startWorldAR({ canvas, overlay, signal, onState, onMeasure
     const key = JSON.stringify(state);
     if (key !== stateKey) { stateKey = key; onState(state); }
   }
-  function clearMeasurement() { hit = null; lastHitAt = -Infinity; points = []; measurement = null; roomMeshes = null; worldRoomMeshes = null; clearDetection(); onMeasurement(null); }
+  function clearMeasurement() { hit = null; lastHitAt = -Infinity; points = []; measurement = null; roomMeshes = null; worldRoomMeshes = null; clearDetection(); clearScan(); onMeasurement(null); }
   function cleanup() {
     if (ended) return;
-    ended = true; hit = null; clearDetection();
+    ended = true; hit = null; clearDetection(); clearScan();
     session.cancelAnimationFrame(handle); window.clearInterval(watchdog); source?.cancel(); source = null;
     session.removeEventListener('end', cleanup); session.removeEventListener('visibilitychange', visibilityChanged);
     reference?.removeEventListener('reset', originChanged); canvas.removeEventListener('webglcontextlost', graphicsLost);
@@ -253,9 +298,9 @@ export async function startWorldAR({ canvas, overlay, signal, onState, onMeasure
     graphics?.dispose(); graphics = null; roomMeshes = null; worldRoomMeshes = null; onMeasurement(null);
     publish('ended', endMessage, false);
   }
-  function originChanged() { clearMeasurement(); publish('searching', 'Tracking origin changed. Measure the space again.', false); }
+  function originChanged() { clearMeasurement(); publish('searching', scanning ? 'Tracking origin changed. Scan the floor again.' : 'Tracking origin changed. Measure the space again.', false); }
   function visibilityChanged() {
-    if (session.visibilityState !== 'visible') { hit = null; clearDetection(); publish('tracking-lost', 'AR is paused. Return to the camera to continue.', false); }
+    if (session.visibilityState !== 'visible') { hit = null; clearDetection(); clearScan(); publish('tracking-lost', 'AR is paused. Return to the camera to continue.', false); }
   }
   async function stopSession(message = 'AR session ended.') {
     if (ended) return;
@@ -298,8 +343,15 @@ export async function startWorldAR({ canvas, overlay, signal, onState, onMeasure
     await stopSession(); throw error;
   }
 
-  function updateDetection(xrFrame: XRFrameLike, now: number) {
+  function updateDetection(xrFrame: XRFrameLike, now: number, viewerPosition: XRPoint) {
+    // An optional feature being requested is not evidence it was enabled.
+    // Older sessions omit enabledFeatures, so also observe actual frame APIs.
+    if (session.enabledFeatures === undefined) {
+      if (xrFrame.detectedPlanes !== undefined) measurementSupport.planes = true;
+      if (xrFrame.detectedMeshes !== undefined) measurementSupport.meshes = true;
+    }
     if (!xrFrame.getPose || !reference) { clearDetection(); return; }
+    knownFloorHeight = null; excludedFloorHeights = [];
     const seenPlanes = new Set<XRPlaneLike>();
     let planeCount = 0;
     // Cache polygon work by the native geometry revision, while refreshing poses
@@ -311,6 +363,15 @@ export async function startWorldAR({ canvas, overlay, signal, onState, onMeasure
       // A horizontal pose alone cannot make a labelled ceiling/wall a usable
       // furniture support surface, even when no floor has been detected yet.
       if (label === 'ceiling' || label === 'wall') continue;
+      // A room scan must not silently promote an unlabelled tabletop to floor.
+      // Browsers without semantic floors use the explicit floor-aimed hit scan.
+      if (scanning && label !== 'floor') {
+        if (supportedObjectLabel(label)) {
+          const pose = xrFrame.getPose(plane.planeSpace, reference), matrix = pose?.transform.matrix;
+          if (pose && !pose.emulatedPosition && finitePoint(pose.transform.position) && matrix?.length === 16 && Array.from(matrix).every(Number.isFinite) && Math.abs(matrix[5]) >= .995) excludedFloorHeights.push(pose.transform.position.y);
+        }
+        continue;
+      }
       const pose = xrFrame.getPose(plane.planeSpace, reference);
       if (!pose || pose.emulatedPosition) continue;
       let track = planeTracks.get(plane);
@@ -323,6 +384,11 @@ export async function startWorldAR({ canvas, overlay, signal, onState, onMeasure
       }
       const next = track.local && planeRectangleToWorld(track.local, pose.transform);
       if (!next) { planeTracks.delete(plane); continue; }
+      if (scanning) {
+        const center = next.corners.reduce((point, corner) => ({ x: point.x + corner.x / 4, y: point.y + corner.y / 4, z: point.z + corner.z / 4 }), { x: 0, y: 0, z: 0 });
+        if (!isPlausibleFloorHit(center, viewerPosition)) { planeTracks.delete(plane); continue; }
+        knownFloorHeight = Math.min(knownFloorHeight ?? Infinity, center.y);
+      }
       seenPlanes.add(plane);
       const stable = track.anchor && track.label === safeLabel && next.corners.every((point, index) => {
         const previous = track!.anchor!.corners[index];
@@ -332,7 +398,7 @@ export async function startWorldAR({ canvas, overlay, signal, onState, onMeasure
       track.current = next; track.label = safeLabel; track.seen = now; track.frames++;
     }
     for (const plane of planeTracks.keys()) if (!seenPlanes.has(plane)) planeTracks.delete(plane);
-    surfaces = [...planeTracks.values()].filter(track => track.frames >= 3 && now - track.since >= 500 && now - track.seen <= 300)
+    surfaces = [...planeTracks.values()].filter(track => track.frames >= 3 && now - track.since >= (scanning ? 1500 : 500) && now - track.seen <= 300 && (!scanning || Math.min(track.current!.width, track.current!.length) >= 1))
       .sort((a, b) => Number(b.label === 'floor') - Number(a.label === 'floor') || b.current!.width * b.current!.length - a.current!.width * a.current!.length).slice(0, 3);
 
     const seenMeshes = new Set<XRMeshLike>();
@@ -375,22 +441,32 @@ export async function startWorldAR({ canvas, overlay, signal, onState, onMeasure
       handle = session.requestAnimationFrame(frame);
       gl.bindFramebuffer(gl.FRAMEBUFFER, layer.framebuffer); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       const pose = xrFrame.getViewerPose(reference);
-      if (!pose || !pose.views.length || pose.emulatedPosition || session.visibilityState !== 'visible') {
-        hit = null; clearDetection(); publish('tracking-lost', 'Tracking paused. Move slowly and point back at the measured surface.', false); return;
+      if (!pose || !pose.views.length || pose.emulatedPosition || session.visibilityState !== 'visible' || scanning && (!Number.isFinite(time) || Math.abs(lastFrameAt - time) > 300 || !finitePoint(pose.views[0].transform.position))) {
+        hit = null; clearDetection(); clearScan(); publish('tracking-lost', scanning ? 'Tracking paused. Move slowly and point back at the floor to scan again.' : 'Tracking paused. Move slowly and point back at the measured surface.', false); return;
       }
-      updateDetection(xrFrame, lastFrameAt);
+      const viewerPosition = pose.views[0].transform.position;
+      updateDetection(xrFrame, lastFrameAt, viewerPosition);
       hit = null;
+      let hitCount = 0;
       for (const result of xrFrame.getHitTestResults(source)) {
+        if (hitCount++ >= 16) break;
         const candidate = result.getPose(reference);
         if (!candidate || candidate.emulatedPosition) continue;
         const matrix = candidate.transform.matrix;
         const point = candidate.transform.position;
         // A hit on a wall cannot provide the horizontal footprint being measured.
         if (!finitePoint(point) || !Number.isFinite(matrix[5]) || Math.abs(matrix[5]) < .94) continue;
+        if (scanning && (matrix.length !== 16 || !Array.from(matrix).every(Number.isFinite) || Math.abs(matrix[5]) < .995 || !isPlausibleFloorHit(point, viewerPosition) || !matchesFloorLevel(point.y))) continue;
         if (points.length && Math.abs(point.y - points[0].y) > MAX_HEIGHT_DIFFERENCE) continue;
-        hit = { x: point.x, y: point.y, z: point.z }; lastHitAt = time; break;
+        hit = { x: point.x, y: point.y, z: point.z }; lastHitAt = time;
+        if (scanning && !measurement) floorScan.add(hit, viewerPosition, lastFrameAt);
+        break;
       }
-      if (measurement) publish('ready', 'Measured rectangle stays anchored as you move.', false);
+      if (measurement) publish('ready', scanning ? 'Scanned floor area stays anchored as you move.' : 'Measured rectangle stays anchored as you move.', false);
+      else if (scanning) {
+        const scan = scanState(lastFrameAt);
+        publish(scan.phase === 'finding-floor' || scan.phase === 'limited' ? 'searching' : 'measuring', scan.message, false);
+      }
       else if (!points.length && surfaces.length) publish('measuring', 'A stable visible surface area is ready. Confirm it or mark your own corners.', !!hit);
       else if (!hit) publish('searching', 'Move slowly over a textured, level surface to find a plane.', false);
       else publish('measuring', ['Aim at the first corner and mark it.', 'Aim along the width edge and mark its end.', 'Aim at the opposite side to set the length.'][points.length]);
@@ -403,8 +479,9 @@ export async function startWorldAR({ canvas, overlay, signal, onState, onMeasure
         if (hit && points.length < 3) graphics.draw(ring(hit, .06), LIME);
         points.forEach(point => graphics!.draw(ring(point, .025), WHITE));
         if (points.length && !measurement) graphics.draw([...points, ...(hit ? [hit] : [])], WHITE);
-        if (!points.length && surfaces[0]?.current) {
-          const corners = surfaces[0].current.corners;
+        const candidate = !points.length && detectedCandidate(lastFrameAt);
+        if (candidate) {
+          const corners = candidate.current.corners;
           graphics.draw(corners, [.835, .961, .502, .08], gl.TRIANGLE_FAN);
           graphics.draw([...corners, corners[0]], LIME);
         }
@@ -445,13 +522,14 @@ export async function startWorldAR({ canvas, overlay, signal, onState, onMeasure
     }
   }
 
-  publish('searching', 'Move slowly over a textured, level surface to find a plane.', false);
+  const startingMessage = scanning ? 'Aim down at a textured floor and move the phone slowly to start mapping.' : 'Move slowly over a textured, level surface to find a plane.';
+  publish('searching', startingMessage, false);
   try {
     handle = session.requestAnimationFrame(frame);
     watchdog = window.setInterval(() => {
       const elapsed = performance.now() - lastFrameAt;
-      if (!ended && (elapsed > 1500 || ((surfaces.length || objects.length) && elapsed > 300))) {
-        hit = null; clearDetection();
+      if (!ended && (elapsed > 1500 || ((surfaces.length || objects.length || scanning && floorScan.snapshot(performance.now()).measurement) && elapsed > 300))) {
+        hit = null; clearDetection(); clearScan();
         publish('tracking-lost', 'No recent tracking update. Wait for the camera to recover.', false);
       }
     }, 500);
@@ -468,18 +546,18 @@ export async function startWorldAR({ canvas, overlay, signal, onState, onMeasure
       if (value) footprint = null;
     },
     useDetectedSurface() {
-      const candidate = surfaces[0];
-      if (ended || measurement || points.length || !candidate?.current || performance.now() - candidate.seen > 300 || session.visibilityState !== 'visible') return false;
+      const candidate = detectedCandidate(performance.now());
+      if (ended || measurement || points.length || !candidate || session.visibilityState !== 'visible') return false;
       const current = candidate.current;
-      measurement = { width: current.width, length: current.length, corners: current.corners.map(point => ({ ...point })) as WorldARMeasurement['corners'] };
+      measurement = { width: current.width, length: current.length, corners: current.corners.map(point => ({ ...point })) as WorldARMeasurement['corners'], ...(scanning ? { source: candidate.source } : {}) };
       points = [measurement.corners[0], measurement.corners[1], measurement.corners[3]].map(point => ({ ...point }));
       hit = null; worldRoomMeshes = null;
       onMeasurement({ ...measurement, corners: measurement.corners.map(point => ({ ...point })) as WorldARMeasurement['corners'] });
-      publish('ready', 'Detected visible surface area stays anchored as you move.', false);
+      publish('ready', scanning ? 'Scanned floor area stays anchored as you move.' : 'Detected visible surface area stays anchored as you move.', false);
       return true;
     },
     selectPoint() {
-      if (ended || !hit || points.length >= 3 || performance.now() - lastHitAt > 300 || session.visibilityState !== 'visible') return false;
+      if (scanning || ended || !hit || points.length >= 3 || performance.now() - lastHitAt > 300 || session.visibilityState !== 'visible') return false;
       if (points.length === 1 && (distance(points[0], hit) < MIN_EXTENT || distance(points[0], hit) > MAX_EXTENT)) { publish('measuring', 'Choose a width edge between 5 cm and 50 m.', true); return false; }
       if (points.length === 2) {
         const next = rectangleFromPoints(points[0], points[1], hit);
@@ -490,7 +568,7 @@ export async function startWorldAR({ canvas, overlay, signal, onState, onMeasure
       points.push({ ...hit }); hit = null;
       publish('searching', points.length === 1 ? 'First corner set. Aim at the end of the width edge.' : 'Width set. Aim at the opposite side.', false); return true;
     },
-    reset() { if (ended) return; clearMeasurement(); publish('searching', 'Move slowly over a textured, level surface to find a plane.', false); },
+    reset() { if (ended) return; clearMeasurement(); publish('searching', startingMessage, false); },
     async end() { await stopSession(); },
   };
 }
