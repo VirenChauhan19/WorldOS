@@ -1,4 +1,4 @@
-﻿# WorldOS judge demo
+# WorldOS judge demo
 
 **One sentence:** WorldOS helps you get your real workspace ready for what you want to do, then remembers the setup you want to return to.
 
@@ -8,12 +8,12 @@
 
 | Moment | Show | Explain |
 | --- | --- | --- |
-| The purpose | Home: “Make room. Get going.” Choose Get ready to focus. | “I want to start studying. Help me prepare the desk I already have.” |
+| The purpose | Home: “Make room. Get going.” Choose Get my space ready; Focus is already selected. | “I want to start studying. Help me prepare the desk I already have.” |
 | The actual space | Take a well-lit desk photo. Let recognition finish. | “Muse interprets the visible scene; SAM locates items. This photograph stays attached to the instructions.” |
 | Personal constraints | Select the monitor as something that stays. Add a practical note. Request the plan. | “The plan works around what matters to me. I can correct a mistaken identity before starting.” |
 | A useful action | Show the first instruction and highlighted item. Open Why this helps. Physically perform one appropriate step, then mark it done. | “One action and a reason. This completion mark is my report; the app does not call it visual proof.” |
 | Evidence | Take a genuine after photograph from the same angle. Read the review. | “The model compares actual photos. It separates visible changes from things it cannot tell, such as comfort or measured clearance.” |
-| A reason to return | Confirm and name the preferred setup. Open Use this routine again. | “Tomorrow starts with today's preferred setup. I can reset toward it, keep my preferences, or adapt the plan.” |
+| A reason to return | Choose Save this setup, then Use this setup again. Naming is optional. | “Tomorrow starts with today's preferred setup. I can reset toward it, keep my preferences, or adapt the plan.” |
 
 Provider latency varies; allow extra time. One final task plan took 23.3 seconds and a separate recognition took 20.3 seconds. Do not promise instant results or disguise prerecorded responses as live. If editing a submission video, make skipped waiting periods clear.
 
@@ -30,7 +30,8 @@ The existing Fit and Room Studio tools are optional deeper demonstrations. Enter
 
 ## Submission evidence
 
-- [Current implementation and verification](V20_USEFUL_WORKSPACE.md)
+- [Simplified experience and verification](V21_EASY_TO_USE.md)
+- [Task architecture and provider evidence](V20_USEFUL_WORKSPACE.md)
 - [Real task-plan record](v20-mission-plan.json): three Muse steps with validated object references and a protected monitor.
 - [Real recognition record](v18-live-recognition.json): 17 detections, 12 displayed; one suggested type was not localized.
 - [Real scene-question record](v19-scene-question.json): captured-image reasoning with object references.

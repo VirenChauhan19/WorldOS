@@ -6,7 +6,6 @@ import type { TemplateSummary } from '../inspect/types';
 import Dialog from '../ui/Dialog';
 import RecordedScene from '../showcase/RecordedScene';
 import MissionLibrary from '../missions/MissionLibrary';
-import { GOALS } from '../missions/types';
 import '../missions/missions.css';
 import '../showcase/showcase.css';
 
@@ -19,9 +18,8 @@ export default function ProductHome({active=true}:{active?:boolean}) {
       <div className="product-hero-copy"><span className="product-label hero-eyebrow"><i/> A SPACE READY FOR WHAT COMES NEXT</span>
         <h1 id="home-title">Make room.<br/><span>Get going.</span><span className="hero-asterisk" aria-hidden="true">✳</span></h1>
         <p>Get your space ready to study, work, or create.<br className="desktop-break"/> Show us what’s there. Get a few clear steps.<br className="desktop-break"/> Keep the setup that works for you.</p>
-        <div className="mission-home-intents" aria-label="What do you want your space ready for?">{GOALS.map(value=><button key={value.id} onClick={()=>navigate('mission',{goal:value.id})}>{value.title}</button>)}</div>
-        <div className="product-hero-actions"><button className="product-primary" onClick={()=>navigate('mission')}><ScanLine size={19}/>Get my space ready<ArrowUpRight size={19}/></button><button className="product-text" onClick={explore}>Explore a real scan<ArrowDown size={15}/></button></div>
-        <div className="mission-value-note">YOUR GOAL → GUIDED STEPS → A ROUTINE TO REUSE</div>
+        <div className="product-hero-actions"><button className="product-primary" onClick={()=>navigate('mission')}><ScanLine size={19}/>Get my space ready<ArrowUpRight size={19}/></button><button className="product-text" onClick={explore}>See an example<ArrowDown size={15}/></button></div>
+        <div className="mission-value-note">TAKE A PHOTO · FOLLOW THE STEPS · KEEP YOUR SETUP</div>
         <div className="product-powered"><span className="meta-loop" aria-hidden="true">∞</span><div><span>BUILT WITH META AI</span><strong>Muse Spark <i>+</i> SAM 3.1</strong></div></div>
       </div>
       <div className="product-hero-visual"><div className="hero-coordinate" aria-hidden="true">THE PHYSICAL WORLD, WITH CONTEXT <span>↘</span></div><RecordedScene/><div className="hero-visual-note"><span><Crosshair size={13}/> Select an object. See what AI sees.</span><button onClick={()=>setHelp(true)}>How it works<ArrowUpRight size={13}/></button></div></div>

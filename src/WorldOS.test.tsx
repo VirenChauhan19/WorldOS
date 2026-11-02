@@ -25,12 +25,11 @@ it('opens the live camera workspace from the main action and preserves its enter
   expect((screen.getByLabelText('Live fit dimensions') as HTMLInputElement).value).toBe('2.5 by 5 metres');
   expect(input.getAttribute('data-active')).toBe('true');
 });
-it('starts a guided task from the primary home action and passes a chosen goal',async()=>{
+it('offers one primary start without repeated goal choices on home',async()=>{
   render(<WorldOS/>);fireEvent.click(screen.getByRole('button',{name:'Get my space ready'}));
   expect(await screen.findByText('Guided workspace task')).toBeTruthy();expect(window.location.hash).toBe('#/mission');
   expect(screen.queryByRole('navigation',{name:'Main navigation'})).toBeNull();
-  act(()=>navigate('home'));fireEvent.click(screen.getByRole('button',{name:'Make room to create'}));
-  expect(window.location.hash).toBe('#/mission?goal=create');
+  act(()=>navigate('home'));expect(screen.queryByRole('button',{name:'Make room to create'})).toBeNull();
 });
 it('keeps the saved-photo workflow available and preserves unfinished photo drafts',async()=>{
   window.history.replaceState(null,'','#/inspect');render(<WorldOS/>);
@@ -48,6 +47,9 @@ it('preserves advanced workspaces and existing record access behind Advanced',as
 it('persists reduced motion and provides an actionable empty My Spaces screen',async()=>{
   render(<WorldOS/>);act(()=>navigate('settings'));fireEvent.click(await screen.findByRole('switch',{name:'Reduce motion'}));
   expect(document.documentElement.dataset.motion).toBe('reduced');expect(localStorage.getItem('worldos.motion')).toBe('reduced');
-  fireEvent.click(screen.getByRole('button',{name:'My Spaces'}));expect(await screen.findByText('A little order starts here.')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:'My Spaces'}));expect(await screen.findByRole('heading',{name:'Your saved setups'})).toBeTruthy();
+  expect(screen.getByRole('button',{name:'Get my space ready'})).toBeTruthy();
+  const comparisons=screen.getByText('Saved photo comparisons');expect(comparisons.closest('details')?.open).toBe(false);fireEvent.click(comparisons);
+  expect(await screen.findByText('A little order starts here.')).toBeTruthy();
   expect(screen.getByRole('button',{name:'Save a new setup'})).toBeTruthy();
 });

@@ -14,11 +14,13 @@ Built for the Meta AI Hackathon with **Muse Spark and SAM 3.1**.
 
 Open **http://127.0.0.1:5173**, sign in if configured, and choose **Get my space ready**.
 
-Read the [judge demo](docs/HACKATHON_DEMO.md), [current implementation and evidence](docs/V20_USEFUL_WORKSPACE.md), [scene-question notes](docs/V19_PRODUCT_EXPERIENCE.md), and [camera reliability notes](docs/V18_CAMERA_RECOGNITION.md).
+The main flow is **Photo → Steps → Check**. Start without typing, follow one visible instruction at a time, and save a preferred setup with one explicit action. Optional goals, notes, explanations, and the full step list stay available when needed.
+
+Read the [simplified experience](docs/V21_EASY_TO_USE.md), [judge demo](docs/HACKATHON_DEMO.md), [current implementation and evidence](docs/V20_USEFUL_WORKSPACE.md), [scene-question notes](docs/V19_PRODUCT_EXPERIENCE.md), and [camera reliability notes](docs/V18_CAMERA_RECOGNITION.md).
 
 ## Validation and status
 
-**345 frontend tests and 370 backend tests pass**, with 2 optional live tests skipped. The production build passes. Chromium checks cover 320, 390, 768, and 1440 pixel layouts, persisted progress, reusable routines, export/restore, portrait overlays, and the existing camera/question flow. Browser checks use explicitly synthetic model output; they are not evidence of recognition accuracy.
+**348 frontend tests and 370 backend tests pass**, with 2 optional live tests skipped. The production build passes. Chromium checks cover 320, 390, 768, and 1440 pixel layouts, persisted progress, reusable routines, export/restore, portrait overlays, and the existing camera/question flow. Browser checks use explicitly synthetic model output; they are not evidence of recognition accuracy.
 
 Separate real-provider checks on one public desk photo returned **17 detections in 20.3 seconds** (12 displayed), a scene answer in **6.1 seconds**, and a three-step task plan in **23.3 seconds**. These are individual integration observations, not benchmarks. See [recognition](docs/v18-live-recognition.json), [question](docs/v19-scene-question.json), and [task-plan evidence](docs/v20-mission-plan.json).
 
