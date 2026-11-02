@@ -4,6 +4,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { StrictMode } from 'react';
 import AppEntry from './AppEntry';
 import { configureBackend } from './backend';
+import { connectRoomDesigner } from './device/context';
+import { roomDraftKey } from './device/roomDraft';
 vi.mock('./device/store',async original=>({...await original<typeof import('./device/store')>(),listDeviceSpaces:vi.fn(async()=>[])}));
 beforeEach(()=>{window.history.replaceState(null,'','/');configureBackend('');vi.spyOn(window,'scrollTo').mockImplementation(()=>{});});
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals();localStorage.clear();});
@@ -34,4 +36,14 @@ it('offers installation instructions from device settings without connecting to 
   fireEvent.click(await screen.findByRole('button',{name:'Add to home screen'}));
   expect(screen.getByRole('dialog',{name:'Add WorldOS to your home screen'})).toBeTruthy();
   expect(fetcher).not.toHaveBeenCalled();
+});
+
+it('connects the room designer without losing the room route or device wish list',async()=>{
+  localStorage.setItem(roomDraftKey,JSON.stringify({roomFields:{width:'',depth:'',height:''},source:'unmeasured',items:[],gap:'0.3',manual:null,goal:'A reading nook by the window'}));
+  const fetcher=vi.fn().mockResolvedValue(new Response('{"required":false,"authenticated":true}'));
+  vi.stubGlobal('fetch',fetcher);render(<AppEntry/>);
+  act(()=>{connectRoomDesigner();});
+  expect(await screen.findByRole('heading',{name:'Room planner'})).toBeTruthy();
+  expect(screen.getByLabelText('What would make this room yours?')).toHaveProperty('value','A reading nook by the window');
+  expect(window.location.hash).toContain('room');
 });

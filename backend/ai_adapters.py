@@ -68,7 +68,7 @@ class MuseSparkReasoning:
         provider = self.http.settings.reasoning_provider
         # Interactive questions should not wait through a slow discovery-provider
         # timeout before reaching Meta. Explicit provider settings still win.
-        interactive = operation in {"ask_scene", "mission_plan", "mission_check", "live_observe"}
+        interactive = operation in {"ask_scene", "mission_plan", "mission_check", "live_observe", "room_survey", "room_design"}
         if interactive and self.http.settings.muse_provider == "auto" and self.http.settings.meta_key:
             provider = "meta"
         try:
@@ -89,6 +89,7 @@ class MuseSparkReasoning:
 
     async def _structured_once(self, provider, operation, instruction, context, schema, image_url):
         provider, model, base_url, key = self.http.settings.reasoning_config(provider)
+        output_tokens = 1200 if operation == "live_observe" else 8192 if operation == "room_design" else 4096
         content = [{"type": "text", "text": json.dumps(context)}]
         if image_url:
             content.append({"type": "image_url", "image_url": {"url": image_url}})
@@ -101,9 +102,9 @@ class MuseSparkReasoning:
                 "The only allowed top-level output fields are: " + ", ".join(output_schema["properties"]) + ". "
                 "Populate the fields with the answer. Never copy schema definitions or schema keywords into the answer. "
                 "JSON Schema for data validation: " + json.dumps(output_schema))
-            options = {"max_tokens": 1200 if operation == "live_observe" else 4096}
+            options = {"max_tokens": output_tokens}
         else:
-            options = {"max_completion_tokens": 1200 if operation == "live_observe" else 4096, "response_format": {"type": "json_schema", "json_schema": {"name": schema.__name__, "schema": schema.model_json_schema()}}}
+            options = {"max_completion_tokens": output_tokens, "response_format": {"type": "json_schema", "json_schema": {"name": schema.__name__, "schema": schema.model_json_schema()}}}
             if operation == "live_observe":
                 options["reasoning_effort"] = "minimal"
         data = await self.http.post(provider=provider, model=model, operation=operation, include_metadata=True,

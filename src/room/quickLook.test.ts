@@ -3,7 +3,7 @@ import { FURNITURE_PRESETS, orientedSize } from './layout';
 import type { FurnitureItem, FurniturePlacement } from './layout';
 import { buildFurnitureUSDZ, buildPreviewArrangement, supportsQuickLook } from './quickLook';
 
-const at = (item: FurnitureItem, rotation: 0 | 90 = 0): FurniturePlacement => ({ itemId: item.id, x: 0, z: 0, rotation });
+const at = (item: FurnitureItem, rotation: 0 | 90 | 180 | 270 = 0): FurniturePlacement => ({ itemId: item.id, x: 0, z: 0, rotation });
 const decode = new TextDecoder();
 async function unpack(blob: Blob) {
   const bytes = new Uint8Array(await blob.arrayBuffer()), view = new DataView(bytes.buffer);
@@ -82,7 +82,7 @@ describe('AR Quick Look USDZ export', () => {
     }
   });
 
-  it.each([0, 90] as const)('preserves dimensions at rotation %i and uses unit normals consistent with triangle winding', async rotation => {
+  it.each([0, 90, 180, 270] as const)('preserves dimensions at rotation %i and uses unit normals consistent with triangle winding', async rotation => {
     const item = FURNITURE_PRESETS[0], size = orientedSize(item, rotation);
     const { source } = await unpack(buildFurnitureUSDZ([item], [{ ...at(item, rotation), x: 17.3, z: -4.8 }]));
     const meshes = geometry(source), points = meshes.flatMap(mesh => mesh.points);

@@ -4,6 +4,7 @@ import { Minus, Plus, RotateCcw } from 'lucide-react';
 import type { FurnitureItem, FurniturePlacement, ReservedZone, RoomSize } from './layout';
 import { boxMeshes, furnitureMeshes, material } from './furnitureGeometry';
 import type { SceneMesh } from './furnitureGeometry';
+import type { RoomFeature } from './design';
 import './room-preview.css';
 
 type Vector = [number,number,number];
@@ -12,6 +13,7 @@ type Label = {id:string;name:string;x:number;y:number;depth:number};
 type Pick = {id:string;left:number;right:number;top:number;bottom:number;depth:number};
 const DEFAULT:Orbit={yaw:.70,pitch:.72,zoom:1};
 const EMPTY_ZONES:readonly ReservedZone[]=[];
+const EMPTY_FEATURES:readonly RoomFeature[]=[];
 const clamp=(value:number,min:number,max:number)=>Math.max(min,Math.min(max,value));
 const normalize=(v:Vector):Vector=>{const l=Math.hypot(...v)||1;return [v[0]/l,v[1]/l,v[2]/l];};
 const cross=(a:Vector,b:Vector):Vector=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
@@ -54,9 +56,9 @@ function createRenderer(canvas:HTMLCanvasElement){
   };
 }
 
-function roomMeshes(room:RoomSize,eye:Vector,showWalls:boolean):SceneMesh[]{
+function roomMeshes(room:RoomSize,eye:Vector,showWalls:boolean,features:readonly RoomFeature[]):SceneMesh[]{
   const {width:w,depth:d}=room,h=room.height??2.7,result:SceneMesh[]=[];
-  // A neutral cutaway shell is conceptual; doors and windows are never invented.
+  // The cutaway shell and feature sizes are illustrative. Only observed features appear.
   result.push(...boxMeshes(-.08,-.10,-.08,w+.16,.10,d+.16,material('#a99a83')));
   const planks=Math.min(90,Math.ceil(w/.20));
   for(let i=0;i<planks;i++)result.push(...boxMeshes(i*w/planks,.001,0,w/planks-.004,.012,d,material(i%3===0?'#cbb899':i%3===1?'#d3c2a6':'#cdbc9e')));
@@ -69,10 +71,21 @@ function roomMeshes(room:RoomSize,eye:Vector,showWalls:boolean):SceneMesh[]{
   result.push(...sideWall,...backWall);
   result.push(...boxMeshes(wallX<0?0:w-.018,0,0,.018,.10,d,material('#f5f4ec')));
   result.push(...boxMeshes(0,0,wallZ<0?0:d-.018,w,.10,.018,material('#f5f4ec')));
+  for(const feature of features){
+    if(!['window','door'].includes(feature.kind)||![feature.x,feature.z].every(n=>Number.isFinite(n)&&n>=0&&n<=1))continue;
+    const edges=[feature.x,1-feature.x,feature.z,1-feature.z],edge=edges.indexOf(Math.min(...edges)),side=edge<2;
+    if(side?(edge===0)!==(wallX<0):(edge===2)!==(wallZ<0))continue;
+    const length=side?d:w,span=Math.min(length*.65,feature.kind==='door'?.85:1.4),start=clamp((side?feature.z:feature.x)*length-span/2,.02,Math.max(.02,length-span-.02));
+    const y=feature.kind==='door'?0:h*.42,fh=feature.kind==='door'?Math.min(2.1,h*.9):h*.32;
+    const panel=(across:number,up:number,width:number,height:number,color:string,thickness=.035)=>result.push(...boxMeshes(side?(wallX<0?.005:w-thickness-.005):across,up,side?across:(wallZ<0?.005:d-thickness-.005),side?thickness:width,height,side?width:thickness,material(color)));
+    panel(start,y,span,fh,'#f7f4e9');
+    panel(start+.045,y+.045,Math.max(.01,span-.09),Math.max(.01,fh-.09),feature.kind==='window'?'#a9c8ce':'#b6a082',.055);
+    if(feature.kind==='window')panel(start+span/2-.025,y,.05,fh,'#f7f4e9',.065);
+  }
   return result;
 }
 
-export default function RoomPreview({room,items,placements,selectedId,onSelect,showWalls=true,reserved=EMPTY_ZONES}:{room:RoomSize;items:readonly FurnitureItem[];placements:readonly FurniturePlacement[];selectedId?:string;onSelect?:(id:string)=>void;showWalls?:boolean;reserved?:readonly ReservedZone[]}){
+export default function RoomPreview({room,items,placements,selectedId,onSelect,showWalls=true,reserved=EMPTY_ZONES,features=EMPTY_FEATURES}:{room:RoomSize;items:readonly FurnitureItem[];placements:readonly FurniturePlacement[];selectedId?:string;onSelect?:(id:string)=>void;showWalls?:boolean;reserved?:readonly ReservedZone[];features?:readonly RoomFeature[]}){
   const canvasRef=useRef<HTMLCanvasElement>(null),graphics=useRef<ReturnType<typeof createRenderer>|null>(null),orbit=useRef<Orbit>({...DEFAULT});
   const frame=useRef(0),drawRef=useRef<()=>void>(()=>{}),picks=useRef<Pick[]>([]);
   const pointers=useRef(new Map<number,{x:number;y:number}>()),gesture=useRef<{x:number;y:number;moved:boolean}|null>(null);
@@ -91,14 +104,14 @@ export default function RoomPreview({room,items,placements,selectedId,onSelect,s
     const distance=cameraDistance(room,target,o,width/height);
     const eye:Vector=[target[0]+Math.sin(o.yaw)*Math.cos(o.pitch)*distance,target[1]+Math.sin(o.pitch)*distance,target[2]+Math.cos(o.yaw)*Math.cos(o.pitch)*distance];
     const projection=perspective(width/height,Math.max(100,distance+Math.hypot(room.width,room.depth,room.height??2.7)*2)),view=lookAt(eye,target);
-    renderer.begin(projection,view);renderer.draw(batch(roomMeshes(room,eye,showWalls)));
+    renderer.begin(projection,view);renderer.draw(batch(roomMeshes(room,eye,showWalls,features)));
     for(const zone of reserved){if([zone.x,zone.z,zone.width,zone.depth].every(Number.isFinite)&&zone.width>0&&zone.depth>0)renderer.draw(boxMeshes(zone.x,.025,zone.z,zone.width,.018,zone.depth,[.67,.40,.23,.6]));}
     // Soft grounding shadows are illustrative, not a light simulation.
-    for(const {item,placement:p} of placed){const w=p.rotation===90?item.depth:item.width,d=p.rotation===90?item.width:item.depth;renderer.draw([{vertices:[p.x-.025,.016,p.z-.025,p.x+w+.025,.016,p.z-.025,p.x+w+.025,.016,p.z+d+.025,p.x-.025,.016,p.z-.025,p.x+w+.025,.016,p.z+d+.025,p.x-.025,.016,p.z+d+.025],color:[.25,.26,.20,.12]}]);}
+    for(const {item,placement:p} of placed){const w=p.rotation%180===90?item.depth:item.width,d=p.rotation%180===90?item.width:item.depth;renderer.draw([{vertices:[p.x-.025,.016,p.z-.025,p.x+w+.025,.016,p.z-.025,p.x+w+.025,.016,p.z+d+.025,p.x-.025,.016,p.z-.025,p.x+w+.025,.016,p.z+d+.025,p.x-.025,.016,p.z+d+.025],color:[.25,.26,.20,.12]}]);}
     renderer.draw(furniture);
     const nextLabels:Label[]=[],nextPicks:Pick[]=[];
     for(const {item,placement:p} of placed){
-      const w=p.rotation===90?item.depth:item.width,d=p.rotation===90?item.width:item.depth;
+      const w=p.rotation%180===90?item.depth:item.width,d=p.rotation%180===90?item.width:item.depth;
       const center=project([p.x+w/2,item.height+.08,p.z+d/2],view,projection);
       if(item.id===selectedId&&center.front&&center.x>.02&&center.x<.98&&center.y>.02&&center.y<.94)nextLabels.push({id:item.id,name:item.label,x:center.x*100,y:center.y*100,depth:center.depth});
       const corners=[0,item.height].flatMap(y=>[[p.x,y,p.z],[p.x+w,y,p.z],[p.x+w,y,p.z+d],[p.x,y,p.z+d]] as Vector[]).map(point=>project(point,view,projection));
@@ -119,7 +132,7 @@ export default function RoomPreview({room,items,placements,selectedId,onSelect,s
     return()=>{cancelAnimationFrame(frame.current);frame.current=0;resize?.disconnect();window.removeEventListener('resize',redraw);canvas.removeEventListener('wheel',wheel);canvas.removeEventListener('webglcontextlost',lost);canvas.removeEventListener('webglcontextrestored',restore);graphics.current?.dispose();graphics.current=null;pointers.current.clear();gesture.current=null;picks.current=[];};
   // The renderer persists as room and furniture data change.
   },[valid]);
-  useEffect(redraw,[furniture,room.width,room.depth,room.height,selectedId,showWalls,reserved]);
+  useEffect(redraw,[furniture,room.width,room.depth,room.height,selectedId,showWalls,reserved,features]);
 
   function reset(top=false){orbit.current=top?{yaw:.001,pitch:1.50,zoom:.95}:{...DEFAULT};setViewMode(top?'top':'perspective');redraw();}
   function pointerDown(event:ReactPointerEvent<HTMLCanvasElement>){if(event.button!==0)return;event.currentTarget.setPointerCapture(event.pointerId);pointers.current.set(event.pointerId,{x:event.clientX,y:event.clientY});if(pointers.current.size===1)gesture.current={x:event.clientX,y:event.clientY,moved:false};else if(gesture.current)gesture.current.moved=true;}
@@ -152,7 +165,7 @@ export default function RoomPreview({room,items,placements,selectedId,onSelect,s
   return <div className="room-preview">
     <div className="room-render-surface">
       <canvas ref={canvasRef} hidden={!available} tabIndex={0} role="img" aria-label={`Interactive 3D room, ${room.width} by ${room.depth} metres, containing ${placed.length} furniture items.`} aria-describedby={description} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={e=>{pointers.current.delete(e.pointerId);gesture.current=null;}} onLostPointerCapture={e=>{pointers.current.delete(e.pointerId);gesture.current=null;}} onKeyDown={keyDown}/>
-      {available?<div className="room-preview-labels">{labels.map(label=><button key={label.id} className={selectedId===label.id?'is-selected':''} style={{left:`${label.x}%`,top:`${label.y}%`}} onClick={()=>onSelect?.(label.id)} aria-label={`Select ${label.name}`}><i/>{label.name}</button>)}</div>:<div className="room-render-fallback"><p>3D graphics are unavailable in this browser. A top-down layout is shown below.</p><svg viewBox={`-.2 -.2 ${room.width+.4} ${room.depth+.4}`} role="img" aria-label="Top-down furniture layout"><rect width={room.width} height={room.depth} fill="#d4c2a4" stroke="#9b927f" strokeWidth=".02"/>{placed.map(({item,placement:p})=><g key={item.id} role="button" tabIndex={0} aria-label={`Select ${item.label}`} onClick={()=>onSelect?.(item.id)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();onSelect?.(item.id);}}}><rect x={p.x} y={p.z} width={p.rotation===90?item.depth:item.width} height={p.rotation===90?item.width:item.depth} fill={/^#[0-9a-f]{6}$/i.test(item.color)?item.color:'#81917a'} stroke={selectedId===item.id?'#ad4d32':'#62625a'} strokeWidth=".025"/><text x={p.x+.05} y={p.z+.16} fontSize=".12" fill="#20291e">{item.label}</text></g>)}</svg></div>}
+      {available?<div className="room-preview-labels">{labels.map(label=><button key={label.id} className={selectedId===label.id?'is-selected':''} style={{left:`${label.x}%`,top:`${label.y}%`}} onClick={()=>onSelect?.(label.id)} aria-label={`Select ${label.name}`}><i/>{label.name}</button>)}</div>:<div className="room-render-fallback"><p>3D graphics are unavailable in this browser. A top-down layout is shown below.</p><svg viewBox={`-.2 -.2 ${room.width+.4} ${room.depth+.4}`} role="img" aria-label="Top-down furniture layout"><rect width={room.width} height={room.depth} fill="#d4c2a4" stroke="#9b927f" strokeWidth=".02"/>{placed.map(({item,placement:p})=><g key={item.id} role="button" tabIndex={0} aria-label={`Select ${item.label}`} onClick={()=>onSelect?.(item.id)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();onSelect?.(item.id);}}}><rect x={p.x} y={p.z} width={p.rotation%180===90?item.depth:item.width} height={p.rotation%180===90?item.width:item.depth} fill={/^#[0-9a-f]{6}$/i.test(item.color)?item.color:'#81917a'} stroke={selectedId===item.id?'#ad4d32':'#62625a'} strokeWidth=".025"/><text x={p.x+.05} y={p.z+.16} fontSize=".12" fill="#20291e">{item.label}</text></g>)}</svg></div>}
       {available&&<><div className="room-camera-angle" role="group" aria-label="3D camera angle"><button aria-pressed={viewMode==='perspective'} onClick={()=>reset()}>Perspective</button><button aria-pressed={viewMode==='top'} onClick={()=>reset(true)}>Top view</button></div><div className="room-zoom-tools"><button aria-label="Zoom in" onClick={()=>{orbit.current.zoom=clamp(orbit.current.zoom*.85,.55,1.8);redraw();}}><Plus size={16}/></button><button aria-label="Zoom out" onClick={()=>{orbit.current.zoom=clamp(orbit.current.zoom*1.15,.55,1.8);redraw();}}><Minus size={16}/></button><button aria-label="Reset room view" onClick={()=>reset()}><RotateCcw size={15}/></button></div></>}
       <p className="room-preview-help" id={description}>{available?<>Drag to orbit · pinch or scroll to zoom<span>Keyboard: arrows, + / −, Home</span></>:'Select a furniture item to inspect its dimensions.'}</p>
     </div>

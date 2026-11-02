@@ -1,9 +1,9 @@
 export interface FloorPoint {x:number;y:number}
-export interface RoomReference {image_url:string;width:number;height:number;corners:FloorPoint[];labels:string[]}
+export interface RoomReference {image_url:string;width:number;height:number;corners:FloorPoint[];labels:string[];survey?:import('./design').RoomSurvey}
 
-/** A convex user-outlined floor quadrilateral; no metric scale is inferred. */
+/** A convex floor quadrilateral. Perspective alone does not establish metric scale. */
 export function validFloorCorners(points:readonly FloorPoint[]):boolean {
-  if(points.length!==4||points.some(p=>![p.x,p.y].every(n=>Number.isFinite(n)&&n>=0&&n<=1)))return false;
+  if(!Array.isArray(points)||points.length!==4||points.some(p=>!p||![p.x,p.y].every(n=>Number.isFinite(n)&&n>=0&&n<=1)))return false;
   const cross=points.map((p,i)=>{const q=points[(i+1)%4],r=points[(i+2)%4];return (q.x-p.x)*(r.y-q.y)-(q.y-p.y)*(r.x-q.x);});
   const area=Math.abs(points.reduce((sum,p,i)=>sum+p.x*points[(i+1)%4].y-p.y*points[(i+1)%4].x,0))/2;
   return area>.015&&(cross.every(n=>n>1e-6)||cross.every(n=>n< -1e-6));

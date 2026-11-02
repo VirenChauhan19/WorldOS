@@ -4,7 +4,7 @@ import type { SceneMesh } from './furnitureGeometry';
 import { FURNITURE_PRESETS, orientedSize } from './layout';
 import type { FurnitureItem, FurniturePlacement } from './layout';
 
-const placement = (item: FurnitureItem, rotation: 0 | 90 = 0): FurniturePlacement => ({ itemId: item.id, x: 3.2, z: -1.7, rotation });
+const placement = (item: FurnitureItem, rotation: 0 | 90 | 180 | 270 = 0): FurniturePlacement => ({ itemId: item.id, x: 3.2, z: -1.7, rotation });
 const points = (meshes: SceneMesh[]) => meshes.flatMap(mesh => {
   const result: number[][] = [];
   for (let i = 0; i < mesh.vertices.length; i += 3) result.push(mesh.vertices.slice(i, i + 3));
@@ -12,11 +12,11 @@ const points = (meshes: SceneMesh[]) => meshes.flatMap(mesh => {
 });
 
 describe('shared furniture geometry', () => {
-  it.each(FURNITURE_PRESETS.map(item => [item.kind, item] as const))('keeps %s at the exact measured bounds in both orientations', (_, preset) => {
+  it.each(FURNITURE_PRESETS.map(item => [item.kind, item] as const))('keeps %s at the exact measured bounds in all four orientations', (_, preset) => {
     // Include extreme aspect ratios so leg thickness cannot escape a shallow footprint.
     for (const [width, depth, height] of [[preset.width, preset.depth, preset.height], [3, .05, .4], [.05, 3, 2.5]]) {
       const item = { ...preset, width, depth, height };
-      for (const rotation of [0, 90] as const) {
+      for (const rotation of [0, 90, 180, 270] as const) {
         const at = placement(item, rotation), size = orientedSize(item, rotation);
         const vertices = points(furnitureMeshes(item, at));
         expect(vertices.length).toBeGreaterThan(0);

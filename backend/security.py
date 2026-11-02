@@ -186,7 +186,7 @@ class SessionAuth:
                 return JSONResponse({"detail": "Sign in to WorldOS to continue."}, 401, headers={"Cache-Control": "no-store", "WWW-Authenticate": "Bearer"})
             if self.required and not exempt:
                 judge_routes = {'/api/auth/logout','/api/health','/api/analyze','/api/plan','/api/verify','/api/replan',
-                                '/api/ai/diagnostics','/api/ai/analyze','/api/ai/reason','/api/ai/ask','/api/ai/verify','/api/verify/reviewed','/api/missions','/app','/inspect'}
+                                '/api/ai/diagnostics','/api/ai/analyze','/api/ai/reason','/api/ai/ask','/api/ai/verify','/api/ai/room/survey','/api/ai/room/design','/api/verify/reviewed','/api/missions','/app','/inspect'}
                 if role == 'judge' and request.url.path not in judge_routes and not request.url.path.startswith(('/api/inspect/','/api/missions/','/app/','/inspect/')):
                     return JSONResponse({'detail':'This action requires owner access.'},403,headers={'Cache-Control':'no-store'})
                 request.state.auth_fingerprint = fingerprint(self.token(request))

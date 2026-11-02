@@ -1,5 +1,7 @@
 # Camera to measured furniture suggestions
 
+Historical V26 workflow. The primary flow is now the [automatic photo room designer](V27_PHOTO_ROOM_DESIGNER.md); manual entry remains optional.
+
 Room Studio now connects a live camera or photo to a measured area, reserved floor rectangles, furniture suggestions, and the same editable placement plan. Device mode opens with an empty furniture selection; the private workspace retains its existing example arrangement.
 
 ## Using the flow

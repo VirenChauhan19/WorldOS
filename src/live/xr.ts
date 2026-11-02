@@ -127,7 +127,7 @@ function prepareRoomMeshes(value: WorldARRoomLayout): SceneMesh[] {
   const meshes: SceneMesh[] = [];
   for (const source of value.placements) {
     const placement = { ...source }, item = items.get(placement.itemId);
-    if (!item || placed.has(placement.itemId) || ![placement.x, placement.z].every(n => Number.isFinite(n) && n >= 0 && n <= MAX_EXTENT) || ![0, 90].includes(placement.rotation)) {
+    if (!item || placed.has(placement.itemId) || ![placement.x, placement.z].every(n => Number.isFinite(n) && n >= 0 && n <= MAX_EXTENT) || ![0, 90, 180, 270].includes(placement.rotation)) {
       throw new Error('Furniture placements need matching unique items, finite room coordinates, and a 0 or 90 degree rotation.');
     }
     placed.add(placement.itemId);

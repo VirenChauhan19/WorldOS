@@ -10,9 +10,10 @@ import './device/device.css';
 /** The device workspace never waits for the private server or starts a session. */
 export default function AppEntry() {
   const [privateWorkspace, setPrivateWorkspace] = useState(false);
+  const [roomConnection,setRoomConnection]=useState(false);
   const [installHelp,setInstallHelp]=useState(false),[installPrompt,setInstallPrompt]=useState<(Event & {prompt:()=>Promise<void>})|null>(null);
   useEffect(() => {
-    const open = () => { navigate('home'); setPrivateWorkspace(true); };
+    const open = (event:Event) => { const room=(event as CustomEvent).detail?.room===true;setRoomConnection(room);navigate(room?'room':'home');setPrivateWorkspace(true); };
     window.addEventListener('worldos:open-private', open);
     return () => window.removeEventListener('worldos:open-private', open);
   }, []);
@@ -30,7 +31,7 @@ export default function AppEntry() {
   }
   return <>
     {privateWorkspace&&<div className="device-bar"><span>Private workspace</span><button onClick={returnToDevice}>Back to device workspace</button></div>}
-    {privateWorkspace ? <MobileShell><WorldOS/></MobileShell> : <DeviceWorkspaceContext.Provider value={true}><WorldOS/></DeviceWorkspaceContext.Provider>}
+    {privateWorkspace ? <MobileShell><DeviceWorkspaceContext.Provider value={roomConnection}><WorldOS/></DeviceWorkspaceContext.Provider></MobileShell> : <DeviceWorkspaceContext.Provider value={true}><WorldOS/></DeviceWorkspaceContext.Provider>}
     <Dialog open={installHelp&&!privateWorkspace} onClose={()=>setInstallHelp(false)} title="Add WorldOS to your home screen"><div className="consumer"><p>On iPhone, open WorldOS in Safari, tap Share, then Add to Home Screen. On Android, choose Install app or Add to Home screen in your browser menu.</p><p>Export your device setups before switching browsers or installing so you have a backup if the installed app uses separate storage.</p>{installPrompt&&<button className="primary" onClick={()=>void installPrompt.prompt().then(()=>{setInstallPrompt(null);setInstallHelp(false);}).catch(()=>setInstallPrompt(null))}>Install WorldOS</button>}</div></Dialog>
   </>;
 }

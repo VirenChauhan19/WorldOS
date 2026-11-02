@@ -5,7 +5,7 @@ import type { FurnitureItem, FurniturePlacement, RoomSize } from './layout';
 const MAX_ITEMS = 12;
 const MAX_DIMENSION = 30;
 const MAX_POSITION = MAX_ITEMS * MAX_DIMENSION * 2;
-const KINDS = new Set(['bed', 'desk', 'table', 'wardrobe', 'chair']);
+const KINDS = new Set(['bed', 'desk', 'table', 'wardrobe', 'chair', 'sofa', 'shelf', 'plant', 'custom']);
 const EPS = 1e-9;
 const encoder = new TextEncoder();
 
@@ -161,8 +161,8 @@ function scene(items: readonly FurnitureItem[], placements: readonly FurniturePl
   let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
   for (const placement of placements) {
     const item = placement && byId.get(placement.itemId);
-    if (!item || placed.has(item.id) || ![placement.x, placement.z].every(value => Number.isFinite(value) && Math.abs(value) <= MAX_POSITION) || ![0, 90].includes(placement.rotation)) {
-      throw new Error('AR placements need unique item IDs, bounded finite coordinates, and 0 or 90 degree rotations.');
+    if (!item || placed.has(item.id) || ![placement.x, placement.z].every(value => Number.isFinite(value) && Math.abs(value) <= MAX_POSITION) || ![0, 90, 180, 270].includes(placement.rotation)) {
+      throw new Error('AR placements need unique item IDs, bounded finite coordinates, and quarter-turn rotations.');
     }
     placed.set(item.id, placement);
     const size = orientedSize(item, placement.rotation);

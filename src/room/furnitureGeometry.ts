@@ -57,13 +57,33 @@ function cylinder(x:number,y:number,z:number,rx:number,rz:number,h:number,color:
   meshes.push(top,bottom);return meshes;
 }
 
+function foliage(x:number,y:number,z:number,rx:number,ry:number,rz:number,color:Color):SceneMesh[] {
+  const meshes:SceneMesh[]=[];
+  const point=(latitude:number,longitude:number):Point=>[x+rx*Math.sin(latitude)*Math.cos(longitude),y+ry*Math.cos(latitude),z+rz*Math.sin(latitude)*Math.sin(longitude)];
+  for(let row=0;row<8;row++)for(let col=0;col<16;col++){
+    const a=row*Math.PI/8,b=(row+1)*Math.PI/8,c=col*Math.PI/8,d=(col+1)*Math.PI/8;
+    const shade=.72+.22*Math.max(0,Math.cos((a+b)/2))+.09*Math.sin((c+d)/2);
+    if(row>0)meshes.push({vertices:[...point(a,c),...point(b,c),...point(a,d)],color:tint(color,shade)});
+    if(row<7)meshes.push({vertices:[...point(a,d),...point(b,c),...point(b,d)],color:tint(color,shade)});
+  }
+  return meshes;
+}
+
 /** Shared by the WebXR and room renderers. The oriented footprint starts at placement.x/z. */
 export function furnitureMeshes(item: FurnitureItem, placement: FurniturePlacement): SceneMesh[] {
-  if(![item.width,item.depth,item.height,placement.x,placement.z].every(Number.isFinite)||Math.min(item.width,item.depth,item.height)<=0||![0,90].includes(placement.rotation))return [];
+  if(![item.width,item.depth,item.height,placement.x,placement.z].every(Number.isFinite)||Math.min(item.width,item.depth,item.height)<=0||![0,90,180,270].includes(placement.rotation))return [];
   const w=item.width,d=item.depth,h=item.height,meshes:SceneMesh[]=[];
   const wood=material('#b69a77'),lightWood=material('#c8ae8a'),dark=material('#414a40'),fabric=material(item.color),cream=material('#eee9dc');
   const box=(x:number,y:number,z:number,width:number,height:number,depth:number,color:Color)=>meshes.push(...boxMeshes(x,y,z,width,height,depth,color));
   const soft=(x:number,y:number,z:number,width:number,height:number,depth:number,r:number,color:Color)=>meshes.push(...rounded(x,y,z,width,height,depth,r,color));
+  const softBack=(x:number,y:number,z:number,width:number,height:number,depth:number,r:number,color:Color)=>{
+    for(const mesh of rounded(x,z,y,width,depth,height,r,color)){
+      const vertices:number[]=[];
+      // Swap the extrusion axis and reverse winding to retain outward faces.
+      for(let i=0;i<mesh.vertices.length;i+=9)for(const offset of [0,6,3])vertices.push(mesh.vertices[i+offset],mesh.vertices[i+offset+2],mesh.vertices[i+offset+1]);
+      meshes.push({vertices,color:mesh.color});
+    }
+  };
   if(item.kind==='bed'){
     // The entire model, including the headboard, stays within its declared dimensions.
     box(w*.035,h*.1,d*.025,w*.93,h*.23,d*.975,wood);
@@ -100,6 +120,24 @@ export function furnitureMeshes(item: FurnitureItem, placement: FurniturePlaceme
     box(w*.5+gap,h*.055,d*.96,w*.475-gap,h*.92,d*.025,tint(fabric,.96));
     box(w*.452,h*.43,d*.985,w*.013,h*.16,d*.015,material('#505343'));
     box(w*.535,h*.43,d*.985,w*.013,h*.16,d*.015,material('#505343'));
+  } else if(item.kind==='sofa'){
+    for(const x of [w*.07,w*.88])for(const z of [d*.12,d*.8])box(x,0,z,w*.05,h*.15,d*.07,wood);
+    soft(0,h*.13,0,w,h*.35,d,Math.min(w,d)*.08,fabric);
+    softBack(w*.01,h*.35,d*.025,w*.98,h*.65,d*.18,Math.min(w,h)*.12,fabric);
+    for(const x of [w*.12,w*.505])softBack(x,h*.57,d*.16,w*.375,h*.39,d*.13,h*.06,tint(fabric,1.08));
+    for(const x of [0,w*.89])soft(x,h*.4,d*.1,w*.11,h*.35,d*.9,d*.05,fabric);
+    for(const x of [w*.12,w*.505])soft(x,h*.48,d*.23,w*.375,h*.12,d*.72,d*.06,tint(fabric,1.1));
+  } else if(item.kind==='shelf'){
+    box(0,0,0,w*.06,h,d,wood);box(w*.94,0,0,w*.06,h,d,wood);
+    box(0,0,0,w,h,d*.06,tint(fabric,.8));
+    for(const y of [0,h*.24,h*.49,h*.74,h*.96])box(0,y,0,w,h*.04,d,fabric);
+  } else if(item.kind==='plant'){
+    meshes.push(...cylinder(w/2,0,d/2,w*.28,d*.28,h*.3,material('#c28e70')));
+    meshes.push(...cylinder(w/2,h*.298,d/2,w*.25,d*.25,h*.009,material('#4d4635')));
+    meshes.push(...cylinder(w/2,h*.3,d/2,w*.025,d*.025,h*.63,wood));
+    for(const [x,y,z,rx,ry,rz] of [[.3,.43,.5,.28,.07,.21],[.65,.5,.4,.3,.07,.2],[.4,.56,.7,.25,.08,.25],[.3,.64,.35,.28,.08,.25],[.7,.7,.5,.28,.08,.22],[.5,.78,.7,.25,.08,.26],[.35,.84,.45,.27,.08,.24],[.55,.92,.4,.25,.08,.25]])meshes.push(...foliage(w*x,h*y,d*z,w*rx,h*ry,d*rz,fabric));
+  } else if(item.kind==='custom'){
+    soft(0,0,0,w,h,d,Math.min(w,d)*.03,fabric);
   } else if(item.kind==='chair'){
     const leg=Math.min(w,d)*.075;
     for(const x of [w*.10,w*.825])for(const z of [d*.12,d*.80])box(x,0,z,leg,h*.45,leg,wood);
@@ -111,6 +149,7 @@ export function furnitureMeshes(item: FurnitureItem, placement: FurniturePlaceme
   return meshes.map(mesh=>({color:mesh.color,vertices:mesh.vertices.map((value,index)=>{
     if(index%3===1)return value;
     const start=index-index%3,x=mesh.vertices[start],z=mesh.vertices[start+2];
-    return index%3===0?placement.x+(placement.rotation===90?d-z:x):placement.z+(placement.rotation===90?x:z);
+    const rotated=placement.rotation===90?[d-z,x]:placement.rotation===180?[w-x,d-z]:placement.rotation===270?[z,w-x]:[x,z];
+    return index%3===0?placement.x+rotated[0]:placement.z+rotated[1];
   })}));
 }

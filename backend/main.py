@@ -15,6 +15,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .adapters import ManualSegmentation
 from .ai_service import AIService
+from .room_design import PhotoRequest, DesignRequest, survey_room, design_room
 from .connection import ConnectionRegistry, ConnectionTester, ConnectionTestRequest, diagnostics
 from .environment import BackendEnvironment
 from .security import SecuritySettings, SessionAuth
@@ -192,6 +193,16 @@ async def ai_reason(request: ReasonRequest, service: AIService = Depends(get_ai_
 @app.post("/api/ai/ask")
 async def ai_ask(request: SceneQuestionRequest, service: AIService = Depends(get_ai_service)):
     return await run_ai(service.ask(request))
+
+
+@app.post("/api/ai/room/survey")
+async def room_survey(request: PhotoRequest, service: AIService = Depends(get_ai_service)):
+    return await run_ai(survey_room(request, service))
+
+
+@app.post("/api/ai/room/design")
+async def room_design(request: DesignRequest, service: AIService = Depends(get_ai_service)):
+    return await run_ai(design_room(request, service))
 
 
 @app.post("/api/ai/verify")

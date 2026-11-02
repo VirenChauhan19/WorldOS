@@ -8,6 +8,8 @@ import type { useLiveCamera as CameraHook } from '../live/useLiveCamera';
 
 interface PreviewProps {room:RoomSize;items:FurnitureItem[];placements:FurniturePlacement[];reserved:ReservedZone[]}
 vi.mock('./RoomPreview',()=>({default:(props:PreviewProps)=><output data-testid="room-preview">{JSON.stringify(props)}</output>}));
+vi.mock('./ProjectedFurniture',()=>({default:()=> <canvas aria-label="Furniture concept projected into your room photo"/>}));
+vi.mock('./design',async original=>({...await original<typeof import('./design')>(),surveyRoom:vi.fn(),designRoom:vi.fn()}));
 vi.mock('../live/useLiveCamera',()=>({useLiveCamera:vi.fn()}));
 vi.mock('../live/xr',()=>({isWorldARSupported:vi.fn(async()=>false),startWorldAR:vi.fn()}));
 vi.mock('../device/store',async original=>({...await original<typeof import('../device/store')>(),loadRoomReference:vi.fn(async()=>undefined),saveRoomReference:vi.fn(async()=>undefined)}));
@@ -17,10 +19,16 @@ import type { WorldARController, WorldAROptions } from '../live/xr';
 import { loadRoomReference, saveRoomReference } from '../device/store';
 import { roomDraftKey } from '../device/roomDraft';
 import RoomStudio from './RoomStudio';
+import { surveyRoom, designRoom } from './design';
+import type { SurveyResponse, RoomDesign } from './design';
 
+const survey:SurveyResponse={status:'ready',summary:'An open room with a window on the left.',room:{width:4,depth:5,width_min:3.2,width_max:4.8,depth_min:4,depth_max:6},floor_corners:[{x:.2,y:.4},{x:.8,y:.4},{x:.95,y:.95},{x:.05,y:.95}],evidence:['Assuming a typical door size.'],uncertainty:'Hidden space is unknown.',confidence:'low',features:[{label:'Left window',kind:'window',x:0,z:.3,observation:'A visible window on the left wall.'}],zones:[{id:'door',label:'Door access',kind:'access',x:3,z:4,width:1,depth:1}],ideas:['Add a reading corner'],image_url:'data:image/jpeg;base64,cGhvdG8=',image_width:1280,image_height:720};
+const design:RoomDesign={title:'A little room to read',summary:'A reading corner beside the window.',items:[{id:'sofa',kind:'sofa',label:'Compact sofa',width:1.8,depth:.85,height:.8,color:'#718b65'}],placements:[{itemId:'sofa',x:0,z:1,rotation:90,reason:'Near the window for reading light.'}],tradeoffs:['Example furniture sizes.']};
 let camera:ReturnType<typeof CameraHook>;
 beforeEach(()=>{
   localStorage.clear();
+  vi.mocked(surveyRoom).mockResolvedValue(structuredClone(survey));
+  vi.mocked(designRoom).mockResolvedValue(structuredClone(design));
   vi.stubGlobal('requestAnimationFrame',vi.fn(()=>1));
   camera={memory:{places:[],items:[],location:null,full:false},forgetMemory:vi.fn(),renamePlace:vi.fn(),trackedObjects:[],latencyMs:null,localStatus:'off',localLatencyMs:null,resultAgeMs:null,status:'idle',error:'',analysis:null,analysisFrame:null,lastScan:null,steady:false,analyzing:false,recognitionStatus:'off',retryInSeconds:0,lastRecognizedAt:null,start:vi.fn(async()=>{}),stop:vi.fn(),retry:vi.fn()};
   vi.mocked(useLiveCamera).mockReturnValue(camera);
@@ -33,7 +41,8 @@ afterEach(()=>{cleanup();localStorage.clear();vi.clearAllMocks();vi.restoreAllMo
 async function open(){const view=render(<DeviceWorkspaceContext.Provider value={true}><RoomStudio/></DeviceWorkspaceContext.Provider>);await waitFor(()=>expect(loadRoomReference).toHaveBeenCalled());return view;}
 function change(name:string,value:string){fireEvent.change(screen.getByLabelText(name),{target:{value}});}
 function enterArea(width='2',length='2'){
-  fireEvent.click(screen.getByRole('button',{name:'Start with measurements'}));
+  fireEvent.click(screen.getByText('Furniture & fine adjustments'));
+  fireEvent.click(screen.getByRole('button',{name:'Enter dimensions (optional)'}));
   change('Room width',width);change('Room length',length);
 }
 function review(){fireEvent.click(screen.getByLabelText('I checked the dimensions and reserved areas'));}
@@ -86,25 +95,81 @@ it('blocks suggestions for invalid reserved areas and resets review whenever mea
   review();expect(screen.queryByRole('button',{name:'Add suggested Compact desk'})).toBeNull();
 });
 
-it('captures fresh device labels, stops the camera, and persists the photo outline before overlaying suggested furniture',async()=>{
-  camera.status='live';camera.trackedObjects=[{id:'chair-1',label:'Chair',box:{x:.2,y:.3,width:.3,height:.3},locked:false}];
+async function capturePhoto(){
+  camera.status='live';
   vi.spyOn(HTMLCanvasElement.prototype,'getContext').mockReturnValue({drawImage:vi.fn()} as unknown as CanvasRenderingContext2D);
   vi.spyOn(HTMLCanvasElement.prototype,'toDataURL').mockReturnValue('data:image/jpeg;base64,cGhvdG8=');
-  await open();enterArea();
-  fireEvent.click(screen.getByRole('button',{name:'Camera'}));
+  const result=await open();
+  fireEvent.click(screen.getByRole('button',{name:'Use camera'}));
   const video=screen.getByLabelText('Room camera preview');
   Object.defineProperties(video,{videoWidth:{value:1280,configurable:true},videoHeight:{value:720,configurable:true}});
   fireEvent.click(screen.getByRole('button',{name:'Capture this area'}));
+  return result;
+}
+
+it('analyzes a capture automatically, reserves visible access, and never asks for measurements or corner marking',async()=>{
+  await capturePhoto();
+  await screen.findByText(survey.summary);
+  expect(surveyRoom).toHaveBeenCalledWith('data:image/jpeg;base64,cGhvdG8=',expect.any(AbortSignal));
   expect(camera.stop).toHaveBeenCalled();
-  expect(screen.getByRole('button',{name:'Reserve space for Chair'})).toBeTruthy();
-  expect(screen.getByAltText('Your captured room with a floor outline and proposed furniture footprints')).toHaveProperty('src','data:image/jpeg;base64,cGhvdG8=');
-  fireEvent.click(screen.getByRole('button',{name:'Set corners with controls'}));
-  await waitFor(()=>expect(saveRoomReference).toHaveBeenLastCalledWith(expect.objectContaining({corners:expect.arrayContaining([{x:.2,y:.2}]),labels:['Chair']})));
-  review();fireEvent.click(screen.getByRole('button',{name:'Add suggested Compact desk'}));
+  expect(screen.queryByLabelText('Room width')).toBeNull();
+  expect(screen.queryByLabelText('I checked the dimensions and reserved areas')).toBeNull();
+  expect(screen.queryByText(/Tap the back left/)).toBeNull();
+  const saved=JSON.parse(localStorage.getItem(roomDraftKey)!);
+  expect(saved.source).toBe('photo');expect(saved.zones).toEqual(survey.zones);expect(saved.roomFields.width).toBe('4');
+  await waitFor(()=>expect(saveRoomReference).toHaveBeenLastCalledWith(expect.objectContaining({corners:survey.floor_corners,survey:expect.objectContaining({status:'ready'})})));
+  fireEvent.click(screen.getByText('Furniture & fine adjustments'));
+  fireEvent.click(screen.getByRole('button',{name:'Add suggested Compact desk'}));
   expect(screen.getByRole('button',{name:'Select Compact desk footprint'})).toBeTruthy();
-  fireEvent.click(screen.getByRole('button',{name:'Undo corner'}));
-  expect(screen.getByLabelText('I checked the dimensions and reserved areas')).toHaveProperty('checked',false);
+  fireEvent.click(screen.getByRole('button',{name:'Original photo'}));
   expect(screen.queryByRole('button',{name:'Select Compact desk footprint'})).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'With furniture plan'}));
+  expect(screen.getByRole('button',{name:'Select Compact desk footprint'})).toBeTruthy();
+});
+
+it('turns a wish list into a checked arrangement with explanations and can undo it',async()=>{
+  await capturePhoto();await screen.findByText(survey.summary);
+  change('What would make this room yours?','A sofa near the window');
+  fireEvent.click(screen.getByRole('button',{name:'More open space'}));
+  fireEvent.click(screen.getByRole('button',{name:'Design my room'}));
+  await screen.findByText(design.title);
+  expect(designRoom).toHaveBeenCalledWith(expect.objectContaining({goal:'A sofa near the window',style:'open',zones:survey.zones,features:survey.features}),expect.any(AbortSignal));
+  expect(screen.getByLabelText('Furniture concept projected into your room photo')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:'3D room'}));
+  expect(preview().items[0].kind).toBe('sofa');expect(preview().placements[0]).toEqual({itemId:'sofa',x:0,z:1,rotation:90});
+  expect(screen.getByText('Near the window for reading light.')).toBeTruthy();
+  expect(screen.queryByText(/All 1 fit the measured/)).toBeNull();
+  const saved=JSON.parse(localStorage.getItem(roomDraftKey)!);expect(saved.design.title).toBe(design.title);
+  fireEvent.click(screen.getByRole('button',{name:'Undo design'}));expect(preview().items).toEqual([]);
+});
+
+it('does not apply an old photo estimate after reset, even if transport ignores abort',async()=>{
+  let resolve!:(value:SurveyResponse)=>void;
+  vi.mocked(surveyRoom).mockReturnValue(new Promise(r=>{resolve=r;}));
+  await capturePhoto();await screen.findByText('Reading your room…');
+  fireEvent.click(screen.getByRole('button',{name:'Start a fresh arrangement'}));
+  await act(async()=>{resolve(survey);});
+  expect(screen.queryByText(survey.summary)).toBeNull();
+  expect(JSON.parse(localStorage.getItem(roomDraftKey)!).source).toBe('unmeasured');
+  expect(screen.queryByRole('button',{name:'Photo plan'})).toBeNull();
+});
+
+it('keeps the current design when a later design fails and supports retry',async()=>{
+  await capturePhoto();await screen.findByText(survey.summary);
+  change('What would make this room yours?','A sofa near the window');
+  fireEvent.click(screen.getByRole('button',{name:'Design my room'}));await screen.findByText(design.title);
+  vi.mocked(designRoom).mockRejectedValueOnce(new Error('Designer temporarily unavailable.'));
+  fireEvent.click(screen.getByRole('button',{name:'Update my room'}));await screen.findByText('Designer temporarily unavailable.');
+  fireEvent.click(screen.getByRole('button',{name:'3D room'}));
+  expect(preview().items[0].id).toBe('sofa');expect(screen.getByRole('button',{name:'Update my room'})).toHaveProperty('disabled',false);
+});
+
+it('asks for a wider photo when the floor is unclear, without inventing dimensions',async()=>{
+  vi.mocked(surveyRoom).mockResolvedValue({...survey,status:'needs_photo',room:null,floor_corners:[],features:[],zones:[],summary:'Take a wider photo with the floor visible.'});
+  await capturePhoto();await screen.findByText('Take a wider photo with the floor visible.');
+  expect(JSON.parse(localStorage.getItem(roomDraftKey)!).roomFields.width).toBe('');
+  expect(screen.queryByLabelText('Room width')).toBeNull();
+  expect(screen.getByRole('button',{name:'Design my room'})).toHaveProperty('disabled',true);
 });
 
 it('starts a fresh arrangement by clearing saved furniture, reference photo, reserved areas and review',async()=>{
@@ -156,7 +221,7 @@ it('clears prior room coordinates and photo review when a new AR scan measures a
 it('explains unavailable device labels while keeping camera capture available',async()=>{
   camera.status='live';camera.localStatus='unavailable';
   await open();fireEvent.click(screen.getByRole('button',{name:'Use camera'}));
-  expect(screen.getByText('Live labels are unavailable in this browser. Capture the area to plan with measurements.')).toBeTruthy();
+  expect(screen.getByText('Live labels are unavailable in this browser. Capture a photo for AI room analysis.')).toBeTruthy();
   expect(screen.getByRole('button',{name:'Capture this area'})).toHaveProperty('disabled',false);
   expect(camera.start).toHaveBeenCalledOnce();
   expect(vi.mocked(useLiveCamera).mock.calls.at(-1)?.[0].mode).toBe('live');

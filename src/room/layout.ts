@@ -2,7 +2,7 @@
 export interface RoomSize { width: number; depth: number; height?: number }
 /** Measured floor rectangles reserved for existing objects or access. */
 export interface ReservedZone { id:string; label:string; kind:'obstacle'|'access'; x:number; z:number; width:number; depth:number }
-export type FurnitureKind = 'bed' | 'desk' | 'table' | 'wardrobe' | 'chair';
+export type FurnitureKind = 'bed' | 'desk' | 'table' | 'wardrobe' | 'chair' | 'sofa' | 'shelf' | 'plant' | 'custom';
 export interface FurnitureItem {
   id: string;
   kind: FurnitureKind;
@@ -13,7 +13,8 @@ export interface FurnitureItem {
   color: string;
 }
 /** x/z locate the minimum corner of the rotated, axis-aligned footprint. */
-export interface FurniturePlacement { itemId: string; x: number; z: number; rotation: 0 | 90 }
+export type FurnitureRotation = 0 | 90 | 180 | 270;
+export interface FurniturePlacement { itemId: string; x: number; z: number; rotation: FurnitureRotation }
 export interface RoomLayoutIssue { type: string; itemIds: string[]; message: string }
 export interface RoomLayout {
   status: 'fits' | 'partial' | 'unknown' | 'conflict';
@@ -41,10 +42,10 @@ const MAX_ITEMS = 12;
 const MAX_SEARCH_NODES = 1800;
 const MAX_CANDIDATE_CHECKS = 60000;
 const EPS = 1e-9; // Floating-point tolerance only; this does not cover measurement error.
-const KINDS: readonly string[] = ['bed', 'desk', 'table', 'wardrobe', 'chair'];
+export const FURNITURE_KINDS: readonly string[] = ['bed', 'desk', 'table', 'wardrobe', 'chair', 'sofa', 'shelf', 'plant', 'custom'];
 
-export function orientedSize(item: FurnitureItem, rotation: 0 | 90): { width: number; depth: number } {
-  return rotation === 90 ? { width: item.depth, depth: item.width } : { width: item.width, depth: item.depth };
+export function orientedSize(item: FurnitureItem, rotation: FurnitureRotation): { width: number; depth: number } {
+  return rotation % 180 === 90 ? { width: item.depth, depth: item.width } : { width: item.width, depth: item.depth };
 }
 
 function dimension(value: unknown): value is number {
@@ -69,7 +70,7 @@ function validate(room: RoomSize | null | undefined, items: readonly FurnitureIt
     }
     if (ids.has(item.id)) issues.push(issue('duplicate-item', [item.id], 'Furniture IDs must be unique.'));
     ids.add(item.id);
-    if (!KINDS.includes(item.kind) || !dimension(item.width) || !dimension(item.depth) || !dimension(item.height)) {
+    if (!FURNITURE_KINDS.includes(item.kind) || !dimension(item.width) || !dimension(item.depth) || !dimension(item.height)) {
       issues.push(issue('invalid-item', [item.id], 'Each item needs a supported kind and positive, finite dimensions of at most 30 m.'));
     }
   }
@@ -152,8 +153,8 @@ export function assessRoomLayout(room: RoomSize | null | undefined, items: reado
   const byId = new Map(items.map(item => [item.id, item]));
   const seen = new Set<string>();
   for (const value of placements) {
-    if (!value || !byId.has(value.itemId) || !Number.isFinite(value.x) || !Number.isFinite(value.z) || ![0, 90].includes(value.rotation)) {
-      errors.push(issue('invalid-placement', value?.itemId ? [value.itemId] : [], 'Every placement must refer to a selected item and have finite coordinates and a 0 or 90 degree rotation.'));
+    if (!value || !byId.has(value.itemId) || !Number.isFinite(value.x) || !Number.isFinite(value.z) || ![0, 90, 180, 270].includes(value.rotation)) {
+      errors.push(issue('invalid-placement', value?.itemId ? [value.itemId] : [], 'Every placement must refer to a selected item and have finite coordinates and a quarter-turn rotation.'));
     } else if (seen.has(value.itemId)) {
       errors.push(issue('duplicate-placement', [value.itemId], 'An item may be placed only once.'));
     }
@@ -190,25 +191,26 @@ function uniqueCoordinates(values: number[], max: number): number[] {
   return [...new Set(values.filter(value => value >= -EPS && value <= max + EPS).map(value => Math.max(0, Math.min(max, value))))].sort((a, b) => a - b);
 }
 
-const furnishingOrder: Record<FurnitureKind, number> = { bed: 0, wardrobe: 1, desk: 2, table: 3, chair: 4 };
+const furnishingOrder: Record<FurnitureKind, number> = { bed: 0, sofa: 1, wardrobe: 2, shelf: 2, custom: 2, desk: 3, table: 4, chair: 5, plant: 6 };
 interface Candidate { placement: FurniturePlacement; footprint: Rect; preference: number[] }
 
 /** Preferences only order the search; every valid orientation and edge remains available.
  * The local back wall is z=0. A quarter turn puts an item's back against the right wall.
  * Beds and tall storage reserve wall space before smaller pieces. Tables favour the
  * open front/centre, without assuming that any doorway or circulation route is clear. */
-function candidates(room: RoomSize, item: FurnitureItem, rectangles: readonly Rect[], beds: readonly Rect[], gap: number): Candidate[] {
+function candidates(room: RoomSize, item: FurnitureItem, rectangles: readonly Rect[], beds: readonly Rect[], gap: number, target?:FurniturePlacement): Candidate[] {
   const result: Candidate[] = [];
-  const rotations: readonly (0 | 90)[] = item.width === item.depth ? [0] : [0, 90];
+  // Preserve opposite-facing preferences even when their footprint is identical.
+  const rotations: readonly FurnitureRotation[] = target ? [target.rotation,((target.rotation+90)%360) as FurnitureRotation] : item.width === item.depth ? [0] : [0, 90];
   for (const rotation of rotations) {
     const size = orientedSize(item, rotation);
     if (size.width > room.width + EPS || size.depth > room.depth + EPS) continue;
     const maxX = room.width - size.width, maxZ = room.depth - size.depth;
-    const xs = uniqueCoordinates([0, maxX, maxX / 2, ...rectangles.flatMap(value => [value.x + value.width + (value.reservedGap??gap), value.x - size.width - (value.reservedGap??gap), value.x, value.x + value.width - size.width])], maxX);
-    const zs = uniqueCoordinates([0, maxZ, maxZ / 2, ...rectangles.flatMap(value => [value.z + value.depth + (value.reservedGap??gap), value.z - size.depth - (value.reservedGap??gap), value.z, value.z + value.depth - size.depth])], maxZ);
+    const xs = uniqueCoordinates([0, maxX, maxX / 2, ...(target?[Math.min(maxX,Math.max(0,target.x))]:[]), ...rectangles.flatMap(value => [value.x + value.width + (value.reservedGap??gap), value.x - size.width - (value.reservedGap??gap), value.x, value.x + value.width - size.width])], maxX);
+    const zs = uniqueCoordinates([0, maxZ, maxZ / 2, ...(target?[Math.min(maxZ,Math.max(0,target.z))]:[]), ...rectangles.flatMap(value => [value.z + value.depth + (value.reservedGap??gap), value.z - size.depth - (value.reservedGap??gap), value.z, value.z + value.depth - size.depth])], maxZ);
     for (const z of zs) for (const x of xs) {
       const placement = { itemId: item.id, x, z, rotation }, footprint = rect(item, placement);
-      const backWall = rotation === 0 ? z / room.depth : (maxX - x) / room.width;
+      const backWall = rotation === 0 ? z / room.depth : rotation===90?(maxX-x)/room.width:rotation===180?(maxZ-z)/room.depth:x/room.width;
       const wall = Math.min(x / room.width, (maxX - x) / room.width, z / room.depth, (maxZ - z) / room.depth);
       const bedDistance = beds.length ? Math.min(...beds.map(bed => relation(footprint, bed).distance)) / Math.max(room.width, room.depth) : 0;
       const turn = rotation === 0 ? 0 : 1;
@@ -217,6 +219,7 @@ function candidates(room: RoomSize, item: FurnitureItem, rectangles: readonly Re
       else if (item.kind === 'wardrobe') preference = [backWall, turn, -bedDistance, -x];
       else if (item.kind === 'desk') preference = [wall, -bedDistance, backWall, turn];
       else preference = [Math.hypot((x - maxX / 2) / room.width, (z - maxZ * .72) / room.depth), turn];
+      if(target)preference.unshift(Math.hypot((x-target.x)/room.width,(z-target.z)/room.depth)+(rotation===target.rotation?0:.15));
       result.push({ placement, footprint, preference });
     }
   }
@@ -233,7 +236,7 @@ function candidates(room: RoomSize, item: FurnitureItem, rectangles: readonly Re
  * Bounded deterministic wall/centre/edge search. Exhaustion is not proof of impossibility.
  * Input order is used only as a stable tie-breaker; returned placements retain item IDs.
  */
-export function planRoom(room: RoomSize | null | undefined, items: readonly FurnitureItem[], gap = .3, reserved:readonly ReservedZone[]=[]): RoomLayout {
+export function planRoom(room: RoomSize | null | undefined, items: readonly FurnitureItem[], gap = .3, reserved:readonly ReservedZone[]=[], preferred:readonly FurniturePlacement[]=[]): RoomLayout {
   const errors = validate(room, items, gap, reserved);
   if (errors.length || !room) return unknown(room, items, errors);
   const proofs = fitProofs(room, items);
@@ -252,7 +255,7 @@ export function planRoom(room: RoomSize | null | undefined, items: readonly Furn
     if (index === eligible.length) { solved = placed.map(value => ({ ...value })); return true; }
     if (++nodes > MAX_SEARCH_NODES || checks >= MAX_CANDIDATE_CHECKS) return false;
     const item = eligible[index];
-    for (const { placement, footprint } of candidates(room!, item, rectangles, rectangles.filter(value => bedIds.has(value.itemId)), gap)) {
+    for (const { placement, footprint } of candidates(room!, item, rectangles, rectangles.filter(value => bedIds.has(value.itemId)), gap,preferred.find(p=>p.itemId===item.id))) {
       if (++checks > MAX_CANDIDATE_CHECKS) return false;
       if (!inBounds(room!, footprint) || !rectangles.every(other => separated(footprint, other, other.reservedGap??gap))) continue;
       placed.push(placement); rectangles.push(footprint);
@@ -269,7 +272,7 @@ export function planRoom(room: RoomSize | null | undefined, items: readonly Furn
   const chosenRects = [...reservedRects(reserved,gap),...chosen.map(value => rect(items.find(item => item.id === value.itemId)!, value))];
   if (!solved) for (const item of [...eligible].reverse()) {
     if (chosen.some(value => value.itemId === item.id)) continue;
-    for (const { placement, footprint } of candidates(room, item, chosenRects, chosenRects.filter(value => bedIds.has(value.itemId)), gap)) {
+    for (const { placement, footprint } of candidates(room, item, chosenRects, chosenRects.filter(value => bedIds.has(value.itemId)), gap,preferred.find(p=>p.itemId===item.id))) {
       if (inBounds(room, footprint) && chosenRects.every(other => separated(footprint, other, other.reservedGap??gap))) {
         chosen.push(placement); chosenRects.push(footprint); break;
       }
