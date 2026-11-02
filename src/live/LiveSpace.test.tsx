@@ -8,6 +8,7 @@ vi.mock('./xr', () => ({ isWorldARSupported: vi.fn(), startWorldAR: vi.fn() }));
 import { useLiveCamera } from './useLiveCamera';
 import { isWorldARSupported, startWorldAR } from './xr';
 import LiveSpace from './LiveSpace';
+import { DeviceWorkspaceContext } from '../device/context';
 
 let camera: ReturnType<typeof useLiveCamera>;
 let controller: WorldARController;
@@ -28,6 +29,20 @@ function enterSpace(width: string, length: string) {
   fireEvent.change(screen.getByLabelText('Space width'), { target: { value: width } });
   fireEvent.change(screen.getByLabelText('Space length'), { target: { value: length } });
 }
+
+it('offers a clearly labeled interactive sample without camera permission and lets users select and hide objects',async()=>{
+  render(<DeviceWorkspaceContext.Provider value={true}><LiveSpace/></DeviceWorkspaceContext.Provider>);
+  fireEvent.click(await screen.findByRole('button',{name:'Try an interactive example'}));
+  expect(camera.start).not.toHaveBeenCalled();expect(screen.getByAltText('Recorded desk example')).toBeTruthy();
+  const rail=screen.getByRole('group',{name:'Quick object selection'});
+  fireEvent.click(within(rail).getByRole('button',{name:'smartphone'}));
+  expect(within(rail).getByRole('button',{name:'smartphone'}).getAttribute('aria-pressed')).toBe('true');
+  fireEvent.click(screen.getByRole('button',{name:'Hide labels'}));expect(screen.queryByRole('button',{name:'Highlight smartphone in camera'})).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'Show labels'}));expect(screen.getByRole('button',{name:'Highlight smartphone in camera'})).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:'Check fit'}));expect(screen.getByLabelText('Item name')).toHaveProperty('value','smartphone');
+  expect(screen.getByLabelText('Item width')).toHaveProperty('value','');
+  fireEvent.click(screen.getByRole('button',{name:'Close example'}));expect(screen.queryByAltText('Recorded desk example')).toBeNull();
+});
 
 it('shows a searched last-known spot beside fresh detections, and hides it when the view is lost',async()=>{
   const keys={id:'keys',label:'Keys',locked:false,box:{x:.2,y:.3,width:.2,height:.2}};

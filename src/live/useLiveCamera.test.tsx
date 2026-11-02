@@ -9,6 +9,8 @@ import { analyzeAI, observeLive } from '../api';
 vi.mock('./localDetector',async original=>({...await original<typeof import('./localDetector')>(),LocalDetector:vi.fn()}));
 import { LocalDetector } from './localDetector';
 import type { LocalResult } from './localDetector';
+import { DeviceWorkspaceContext } from '../device/context';
+import type { ReactNode } from 'react';
 
 const response: AIAnalysis = { objects: [{ id: 'cup', label: 'Cup', box: { x: .2, y: .3, width: .1, height: .1 }, locked: false }], concepts: ['cup'], summary: '', message: '', warnings: [], provider: 'fixture', model: 'fixture', live_request: false };
 let level = 40;
@@ -46,6 +48,16 @@ function enableLocalDetection(){
   vi.mocked(LocalDetector).mockImplementation(function(onStatus){onStatus('ready');return detector as unknown as LocalDetector;});
   return detector;
 }
+
+it('keeps device camera recognition and memory working without uploading frames to either cloud API',async()=>{
+  const detector=enableLocalDetection();
+  detector.detect.mockResolvedValue({latencyMs:40,detections:[{boundingBox:{originX:100,originY:80,width:100,height:100},categories:[{categoryName:'cup',score:.8}]}]});
+  getUserMedia.mockResolvedValue(camera().stream);const ref=videoRef();
+  const {result}=renderHook(()=>useLiveCamera({active:true,autoAnalyze:true,videoRef:ref,mode:'live'}),{wrapper:({children}:{children:ReactNode})=><DeviceWorkspaceContext.Provider value={true}>{children}</DeviceWorkspaceContext.Provider>});
+  await act(async()=>result.current.start());await advance(4500);
+  expect(result.current.trackedObjects[0].label).toBe('Cup');expect(result.current.memory.items.length).toBeGreaterThan(0);
+  expect(observeLive).not.toHaveBeenCalled();expect(analyzeAI).not.toHaveBeenCalled();
+});
 
 it('prepares the local model before camera access and shows fresh labels without a cloud result',async()=>{
   const detector=enableLocalDetection();

@@ -1,0 +1,98 @@
+/* The device camera puts everyday actions beside the preview. */
+.consumer-live{background:#f5f6ef;color:#283d29;min-height:calc(100svh - 80px);padding-bottom:18px}
+.consumer-live .live-header{max-width:none;padding:14px 24px;min-height:70px;background:#1c2c20;border-color:#354936}
+.consumer-live .live-wordmark>strong{color:#edf4e6}.consumer-live .live-wordmark>strong>span{color:#d6e3c9}
+.consumer-live .live-layout{grid-template-columns:minmax(0,1fr) 380px;max-width:1510px}
+.consumer-live .live-viewer{margin:24px;min-height:590px;height:calc(100svh - 190px);max-height:850px;border-radius:20px;background:#1a2b20;border-color:#40533e}
+.consumer-live .live-panel{padding:28px 26px 34px;background:#f5f6ef;min-height:0;border-left:1px solid #dce1d3;color:#2a3e2a}
+.consumer-live .camera-welcome{padding:32px 25px 72px;background:radial-gradient(ellipse at 50% 30%,#2e4630aa,transparent 70%)}
+.consumer-live .camera-aperture{width:78px;height:78px;margin-bottom:22px;border-radius:23px;background:#2f4530;border-color:#627552;box-shadow:0 12px 35px #101c1350}
+.consumer-live .camera-aperture>svg{width:34px}
+.consumer-live .camera-welcome>.live-kicker{font-family:inherit;font-size:10px;letter-spacing:1.2px;color:#c3d0b2}
+.consumer-live .camera-welcome h1{font-size:clamp(30px,3.8vw,48px);letter-spacing:-1.6px;margin:18px 0 14px}
+.consumer-live .camera-welcome>p{max-width:43ch;font-size:15px;color:#ccd7c4;line-height:1.75}
+.consumer-live .camera-start-actions{gap:5px;width:min(100%,310px)}
+.consumer-live .camera-start-actions .live-primary{width:100%;min-height:54px;border-radius:12px}
+.consumer-live .camera-start-actions .live-link{min-height:46px;font-size:13px;color:#d1e3b9;text-decoration:underline;text-underline-offset:4px}
+.consumer-live .camera-welcome .camera-permission-note{font-size:12px;line-height:1.7;color:#aebda3;max-width:38ch;margin-top:15px}
+.consumer-live .live-viewer-label>span{font-family:inherit;font-size:11px;line-height:1.4;background:#1b2e22e8;border-color:#66805866;border-radius:20px;padding:8px 11px;color:#e5efd9;letter-spacing:0}
+.consumer-live .live-viewer-label>span:last-child{font-size:10px}
+.consumer-live .live-camera-hint{bottom:143px;border-radius:12px;font-size:12px;background:#18291de8;color:#e3eed8;border-color:#75896555;text-align:left;max-width:calc(100% - 24px);padding:9px 12px}
+.consumer-live.camera-active:not(.is-xr) .live-viewer{padding-bottom:132px}
+.consumer-live .live-action-dock{display:block;min-height:124px;padding:11px 14px 8px;background:#1b2d21f5;border-color:#42563d}
+.consumer-live .live-camera-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.consumer-live .live-camera-actions>button{justify-content:center;flex-direction:column;gap:5px;min-height:58px;padding:9px 5px;border-radius:10px;border-color:#607853;color:#e2edd7;background:#2c412d;font-size:12px;line-height:1.3;white-space:nowrap}
+.consumer-live .live-camera-actions>button[aria-pressed=true]{background:#d4e4b7;color:#2a3f26;border-color:#d4e4b7}
+.consumer-live .live-camera-actions>.live-save-action{background:#d5f580;border-color:#d5f580;color:#293d23;font-weight:600}
+.consumer-live .live-camera-utilities{display:flex;align-items:center;gap:7px;margin-top:6px}
+.consumer-live .live-camera-utilities>span{display:flex;align-items:center;gap:6px;margin-right:auto;font-size:11px;color:#b8c7ad;line-height:1.4}
+.consumer-live .live-camera-utilities>span svg{flex-shrink:0}
+.consumer-live .live-camera-utilities>button{display:grid;place-items:center;min-width:38px;min-height:38px;padding:8px;background:transparent;border-color:transparent}
+.consumer-live .live-ready-card>.live-kicker,.consumer-live .live-scene-next>.live-kicker{font-family:inherit;color:#74866b;font-size:10px;font-weight:600;letter-spacing:1px}
+.consumer-live .live-ready-card>h2{color:#2a4029;font-size:28px;font-weight:500;line-height:1.25;letter-spacing:-.8px;margin:14px 0 23px}
+.consumer-live .live-ready-card ol{padding:0;margin:0 0 23px;list-style:none;display:grid;gap:20px}
+.consumer-live .live-ready-card li{display:flex;align-items:flex-start;gap:12px}
+.consumer-live .live-ready-card li>span{display:grid;place-items:center;flex-shrink:0;background:#e3ead7;color:#506746;border-radius:50%;width:29px;height:29px;font-size:12px}
+.consumer-live .live-ready-card strong{font-size:14px;font-weight:600;line-height:1.5}
+.consumer-live .live-ready-card li p{font-size:13px;line-height:1.75;color:#6c7a61;margin:4px 0 0}
+.consumer-live .live-ready-room{width:100%;display:flex;align-items:center;gap:12px;text-align:left;border:1px solid #c7d2b8;border-radius:13px;background:#e9efdf;padding:16px;color:#355330}
+.consumer-live .live-ready-room>span{flex:1}
+.consumer-live .live-ready-room small{display:block;margin-top:4px;color:#6d7f60;font-size:12px;line-height:1.6}
+.consumer-live .live-ready-card>.live-link{font-size:12px;color:#536e42;margin-top:7px;text-align:left}
+.consumer-live .live-interaction{padding:18px;margin-bottom:20px;border-radius:16px;border-color:#cbd6bb;background:#edf2e2;box-shadow:0 5px 18px #344b2810}
+.consumer-live .live-interaction-heading .live-kicker{font-family:inherit;letter-spacing:.9px;font-size:10px;color:#61794f}
+.consumer-live .live-interaction-heading>span:last-child{font-size:12px;color:#708060}
+.consumer-live .live-object-rail{margin-bottom:3px;padding:14px 0 12px;gap:7px}
+.consumer-live .live-object-rail:empty{display:none}
+.consumer-live .live-object-rail button{font-size:13px;min-height:44px;padding:10px 15px;border-color:#bdcca9;background:#fbfdf6}
+.consumer-live .live-object-focus{padding:4px 0 17px}
+.consumer-live .live-object-focus strong{font-size:26px;letter-spacing:-.5px}
+.consumer-live .live-object-focus small{font-size:12px;color:#728260;line-height:1.5}
+.consumer-live .live-explore-actions>button{min-height:48px;font-size:13px;border-radius:10px}
+.consumer-live .live-interaction>p{font-size:13px;line-height:1.7;color:#4d663f;padding:11px 12px;border-radius:9px;background:#e0eacb}
+.consumer-live .live-interaction>.live-link{color:#4c6c3b;font-size:13px;justify-content:space-between;width:100%;background:#fcfef5;padding:12px;border-radius:9px;margin-top:10px;border:1px solid #c7d7af}
+.consumer-live .live-panel-tabs{margin:0 0 22px;padding:4px;background:#e5eadb;border:1px solid #d1d9c6;border-radius:12px;gap:2px}
+.consumer-live .live-panel-tabs button{min-height:45px;justify-content:center;padding:10px 8px;color:#6c7f5e;font-size:12px;border-radius:8px;gap:5px}
+.consumer-live .live-panel-tabs button[aria-pressed=true]{background:#344e2b;color:#f0f5e5}
+.consumer-live .live-panel-tabs button>span{background:#4e693c;color:#e8f5d5}
+.consumer-live .live-scene-next{margin-bottom:20px}
+.consumer-live .live-scene-next h2{font-size:25px;letter-spacing:-.7px;line-height:1.3;font-weight:500;margin:10px 0;color:#30482b}
+.consumer-live .live-scene-next p{font-size:14px;line-height:1.8;color:#708065;margin:0}
+.consumer-live .live-analysis-details,.consumer-live .live-camera-settings{border-top:1px solid #d5deca;padding:15px 0;margin-top:18px}
+.consumer-live .live-analysis-details>summary,.consumer-live .live-camera-settings>summary{font-size:13px;color:#5c734e;cursor:pointer;min-height:36px;line-height:1.7;list-style-position:inside}
+.consumer-live .live-analysis-details .scene-understanding{margin:12px 0 0;border-radius:12px}
+.consumer-live .recognition-settings{margin-top:12px;padding-top:16px;border-color:#c5cfb8}
+.consumer-live .recognition-settings label{color:#3e5734;font-size:13px}
+.consumer-live .recognition-settings p{color:#738466;font-size:12px;line-height:1.8}
+.consumer-live .saved-photo-link{font-size:13px;color:#597348;min-height:48px;line-height:1.6;margin-top:12px}
+.consumer-live .live-error{font-size:13px;line-height:1.7;border-radius:12px;background:#f4e7d7;border-color:#d5b48d;color:#865b34;padding:15px}
+.consumer-live .live-error button{min-height:44px;border-radius:8px;color:#79502b;border-color:#bd9367;background:#fff8ec;font-size:13px}
+.consumer-live .live-fit-panel .live-panel-title h2{color:#304a2b}
+.consumer-live .live-fit-panel .live-kicker,.consumer-live .live-panel-intro,.consumer-live .live-fit-panel>.live-small{color:#728267}
+.consumer-live .live-fit-panel .item-picker button{color:#647c53;border-color:#bdcbae;font-size:12px;min-height:44px}
+.consumer-live .live-fit-panel .item-picker button[aria-pressed=true]{color:#f3f8ea;background:#3d5a32;border-color:#3d5a32}
+.consumer-live .live-fit-panel .item-size-header strong,.consumer-live .live-fit-panel .item-size-header input,.consumer-live .live-dimensions label>span,.consumer-live .live-check,.consumer-live .clearance-control label{color:#4d6541}
+.consumer-live .live-fit-panel input:not([type=checkbox]),.consumer-live .live-fit-panel select{background:#fcfdf8;color:#354c2d;border-color:#bfcbb0;font-size:16px;border-radius:8px;min-height:44px}
+.consumer-live .live-dimensions>label>div>span,.consumer-live .clearance-control>div>span{color:#708161}
+.consumer-live .live-fit-panel .measurement-actions .live-link{color:#53733e}
+.consumer-live .live-fit-panel .live-section-title{color:#5c744d}
+.consumer-live .space-measurement{border-color:#cbd5bd}
+.consumer-live .fit-result{border-radius:13px}
+.consumer-live .live-fit-panel .live-small{color:#728267;font-size:12px;line-height:1.8}
+.consumer-live .live-check{font-size:12px;line-height:1.7}
+.consumer-live .live-fit-panel .room-entry-link{border-radius:12px;font-size:13px}
+.consumer-live.is-focused .live-viewer{height:calc(100svh - 170px);min-height:350px}
+@media(max-width:1040px){.consumer-live .live-layout{grid-template-columns:minmax(0,1fr) 340px}.consumer-live .live-viewer{margin:16px;min-height:560px}.consumer-live .live-panel{padding:24px 20px}.consumer-live .camera-welcome>p{font-size:14px}.consumer-live .live-desktop-break{display:none}}
+@media(max-width:760px){
+ .consumer-live .live-layout{display:flex;flex-direction:column}.consumer-live .live-header{min-height:64px;padding:11px 16px;gap:12px}.consumer-live .live-session-status{font-size:10px;max-width:13ch;line-height:1.5}.consumer-live .live-close{display:none}
+ .consumer-live .live-viewer{position:relative;top:0;margin:12px;width:calc(100% - 24px);min-height:495px;height:calc(100svh - 185px);max-height:650px;border-radius:17px}
+ .consumer-live.camera-active:not(.is-xr) .live-viewer{position:relative;top:0;margin:12px 12px 0;width:calc(100% - 24px);height:calc(48svh + 115px);min-height:390px;max-height:560px;border:1px solid #40533e;border-radius:17px;padding-bottom:130px}
+ .consumer-live .camera-welcome{padding:24px 20px 65px}.consumer-live .camera-aperture{height:65px;width:65px;margin-bottom:18px;border-radius:19px}.consumer-live .camera-welcome h1{font-size:33px;letter-spacing:-1px;margin:15px 0 13px}.consumer-live .camera-welcome>p{font-size:14px;line-height:1.75;margin-bottom:19px}.consumer-live .camera-welcome>.live-kicker{font-size:8px}
+ .consumer-live .camera-start-actions .live-primary{font-size:13px;min-height:52px}.consumer-live .camera-welcome .camera-permission-note{font-size:11px;line-height:1.7;max-width:32ch;margin-top:10px}.consumer-live .live-panel{width:100%;border-left:0;padding:20px 20px 30px}.consumer-live .live-ready-card>h2{font-size:27px}.consumer-live .live-ready-card ol{gap:17px}
+ .consumer-live .live-viewer-label{top:12px;left:12px;right:12px;gap:6px}.consumer-live .live-viewer-label>span{font-size:9px;padding:6px 9px}.consumer-live .live-viewer-label>span:last-child{font-size:9px}.consumer-live .live-camera-hint{bottom:139px;font-size:11px;line-height:1.6;max-width:calc(100% - 22px);padding:8px 10px}
+ .consumer-live .live-action-dock{padding:9px 10px 6px;min-height:124px}.consumer-live .live-camera-actions{gap:7px}.consumer-live .live-camera-actions>button{min-height:57px;font-size:11px}.consumer-live .live-camera-utilities>span{font-size:10px}.consumer-live .live-camera-utilities>button{min-width:38px;min-height:38px}.consumer-live .live-interaction{padding:16px;margin-bottom:17px}.consumer-live .live-object-rail{padding-top:12px}.consumer-live .live-object-focus strong{font-size:24px}
+ .consumer-live .live-panel-tabs{margin-bottom:20px}.consumer-live .live-panel-tabs button{min-height:44px;font-size:12px}.consumer-live .live-scene-next h2{font-size:24px}.consumer-live .live-scene-next p{font-size:14px}
+ .consumer-live.is-focused .live-viewer{height:calc(100svh - 150px);max-height:none;min-height:390px;margin:0;width:100%;border-radius:0}
+}
+@media(max-width:360px){.consumer-live .live-panel{padding-inline:16px}.consumer-live .camera-welcome h1{font-size:29px}.consumer-live .live-viewer-label>span:last-child{display:none}.consumer-live .live-camera-utilities>span{font-size:9px}.consumer-live .live-ready-card>h2{font-size:25px}.consumer-live .live-camera-actions>button{font-size:10px}}
+@media(prefers-reduced-motion:reduce){.consumer-live *{scroll-behavior:auto!important}}

@@ -12,25 +12,31 @@ Built for the Meta AI Hackathon with **Muse Spark and SAM 3.1**.
 - **Check and reuse:** compare before/after photos, review uncertainty, and save a named setup to guide the next reset. Export and restore routines when needed.
 - **Go deeper:** live camera questions, measured fit, Room Studio, and the advanced geometry editor remain available.
 
-Open **http://127.0.0.1:5173**, sign in if configured, and choose **Get my space ready**.
+Open **http://127.0.0.1:5173** and choose **Open live camera**. The app opens immediately without a login. Tap an object to hold and explore the view, try the recorded example, or save photos, notes, checklists, and room layouts on your device. **Open private workspace** is optional for server-backed AI guidance and inspections. Read [device storage and interactive camera behavior](docs/V25_DEVICE_WORKSPACE.md).
 
-The main flow is **Photo → Steps → Check**. Start without typing, follow one visible instruction at a time, and save a preferred setup with one explicit action. Optional goals, notes, explanations, and the full step list stay available when needed.
+Home offers camera, room, and setup actions with navigation available throughout the device app. Camera controls stay beside the preview, room planning guides the next step, and setup changes save automatically. Read [the consumer experience and checks](docs/V27_CONSUMER_EXPERIENCE.md). Read [the visual design system](docs/V28_VISUAL_DESIGN.md) for the shared palette, navigation, typography, and screen treatments.
+
+In the private workspace, the guided flow is **Photo → Steps → Check**. Start without typing, follow one visible instruction at a time, and save a preferred setup with one explicit action. Optional goals, notes, explanations, and the full step list stay available when needed.
 
 Read the [simplified experience](docs/V21_EASY_TO_USE.md), [judge demo](docs/HACKATHON_DEMO.md), [current implementation and evidence](docs/V20_USEFUL_WORKSPACE.md), [scene-question notes](docs/V19_PRODUCT_EXPERIENCE.md), and [camera reliability notes](docs/V18_CAMERA_RECOGNITION.md).
 
 ## Live camera mode
 
-Choose **Open live camera** on Home for fast on-device labels over the camera preview. Common objects can be recognized before the API responds; the API adds details in the background. The real local-model browser check measured 76–97 ms per inference after preparation. First camera labels took 410 ms in that controlled test; physical-phone performance remains unverified. Tap labels for details or use **Expand** for the camera workspace. **Detailed** retains the steady SAM scan. See [local recognition and evidence](docs/V24_LOCAL_RECOGNITION.md) and the [cloud camera path](docs/V22_CONTINUOUS_CAMERA.md). This is 2D image augmentation, not headset-grade 3D anchoring.
+Choose **Open live camera** on Home for fast on-device labels over the camera preview. Common-object recognition runs locally in the device workspace. The optional private workspace adds API details in the background. The real local-model browser check measured 76–97 ms per inference after preparation. First camera labels took 410 ms in that controlled test; physical-phone performance remains unverified. Tap labels for details or use **Expand** for the camera workspace. **Detailed** in the private workspace retains the steady SAM scan. See [local recognition and evidence](docs/V24_LOCAL_RECOGNITION.md) and the [cloud camera path](docs/V22_CONTINUOUS_CAMERA.md). This is 2D image augmentation, not headset-grade 3D anchoring.
 
 **Memory** remembers seen areas and items while you look around. Name an area, search for an item, and return toward its last-seen photo to recover remembered spots locally. **Help me with this area** starts a guided task from that photo. Memory lasts for this page session and has bounded capacity; this is visual view recognition, not a 3D room map. See [memory behavior and evidence](docs/V23_SCENE_MEMORY.md).
 
+## Plan the room in front of you
+
+Open **Room planner > Use camera**, capture an area or choose a room photo, and enter its measured width and length. Outline that rectangle in **Photo plan**, reserve occupied areas and access paths, then review **What can go here?**. Add a suggested piece to see its footprint on your photo and the same placement in Floor plan and 3D. Suggestions update around existing placements and reservations. Device plans and reference photos survive reloads. Ordinary camera images do not establish metric scale; supported AR can supply an observed floor measurement. See [room-planning behavior and validation](docs/V26_ROOM_PLANNING.md).
+
 ## Validation and status
 
-**374 frontend tests and 378 backend tests pass**, with 2 optional live tests skipped. The production build passes. Chromium checks cover 320, 390, 768, and 1440 pixel layouts, persisted progress, reusable routines, export/restore, portrait overlays, and the camera/question flow. Camera memory checks cover looking away and returning, finding an earlier item, and clearing memory at 390 and 1440 pixels. Most browser checks use synthetic model output. The separate local-detector check runs the real bundled model on a synthetic camera feed with cloud inference blocked; it is not a physical-phone or general-accuracy benchmark.
+**421 frontend tests pass** after the visual design update; the previous backend baseline is **378 passing tests**, with 2 optional live tests skipped. The production build passes. Chromium checks cover 320, 390, 768, and 1440 pixel layouts, persisted progress, reusable routines, export/restore, portrait overlays, and the camera/question flow. Camera memory checks cover looking away and returning, finding an earlier item, and clearing memory at 390 and 1440 pixels. Most browser checks use synthetic model output. The separate local-detector check runs the real bundled model on a synthetic camera feed with cloud inference blocked; it is not a physical-phone or general-accuracy benchmark.
 
 Separate real-provider checks on one public desk photo returned **17 detections in 20.3 seconds** (12 displayed), a scene answer in **6.1 seconds**, and a three-step task plan in **23.3 seconds**. These are individual integration observations, not benchmarks. See [recognition](docs/v18-live-recognition.json), [question](docs/v19-scene-question.json), and [task-plan evidence](docs/v20-mission-plan.json).
 
-The current implementation is **local, not yet redeployed to Render**. Actual phone camera/AR behavior and physical before/after task assessment still need rehearsal. Image reasoning does not establish dimensions or physical clearance. The configured free hosting uses ephemeral storage; export routines from My Spaces and restore those backups after a reset. [Deployment instructions](docs/V08_DEPLOYMENT.md) and [historical releases](docs/RELEASE_HISTORY.md) remain available.
+The current implementation is **local, not yet redeployed to Render**. Actual phone camera/AR behavior and physical before/after task assessment still need rehearsal. Image reasoning does not establish dimensions or physical clearance. The private workspace on free hosting uses ephemeral storage; export routines from its My Spaces view and restore those backups after a reset. Device setups and room drafts are saved in your browser, independently of the server. [Deployment instructions](docs/V08_DEPLOYMENT.md) and [historical releases](docs/RELEASE_HISTORY.md) remain available.
 
 ## Run on Windows PowerShell
 
@@ -66,7 +72,7 @@ npm run build
 .\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
 ```
 
-Open **http://127.0.0.1:8000**. FastAPI serves `dist/` when it exists at startup. Local loopback mode may run without a login; public deployment requires authentication and HTTPS. SQLite persists saved templates and inspections. See the V0.8 runbook for production setup.
+Open **http://127.0.0.1:8000**. FastAPI serves `dist/` when it exists at startup. The device app opens without a login. Private server access may run without a login on loopback; public API deployment requires authentication and HTTPS. SQLite persists saved templates and inspections. See the V0.8 runbook for production setup.
 
 ## Advanced Spatial Studio workflow
 
@@ -194,6 +200,6 @@ backend/tests/          Planner and API tests
 
 V0.2 implements the async provider interfaces in `backend/ai_adapters.py`, authenticated transport and usage logging in `backend/providers.py`, orchestration in `backend/ai_service.py`, and explicit review controls in `src/AIPanel.tsx`. `backend/planner.py` remains unchanged. Reviewed constraints are resolved into protected locks outside the planner. See [the integration guide](docs/AI_INTEGRATION.md) for the verified API contracts and the Baseten blocker.
 
-Environment variables load from root `.env`; see `.env.example`. No credentials are required for manual mode. AI credentials belong exclusively on the backend. Never use the `VITE_` prefix for secrets because Vite embeds those values into browser bundles. Images are processed in memory and returned to the browser; no uploads or annotations are persisted. Refreshing clears the current session. Export a report before refreshing if you need a record. Explicit AI actions send the photo and/or goal to the configured provider. No external telemetry is configured; sanitized usage events are written to backend logs.
+Environment variables load from root `.env`; see `.env.example`. No credentials are required for manual mode. AI credentials belong exclusively on the backend. Never use the `VITE_` prefix for secrets because Vite embeds those values into browser bundles. Device photo setups persist in browser storage after Save; Room Studio saves its device draft automatically. Private missions and inspections use server storage. Unsaved Advanced Spatial Studio annotations remain in memory; export a report before refreshing that editor if you need a record. Explicit AI actions send the photo and/or goal to the configured provider. No external telemetry is configured; sanitized usage events are written to backend logs.
 
 The project uses [Vite](https://vite.dev/guide/) and FastAPI’s [multipart upload handling](https://fastapi.tiangolo.com/tutorial/request-files/). Python dependencies have compatible version ranges; `package-lock.json` locks frontend dependency resolution.

@@ -6,28 +6,32 @@ import type { TemplateSummary } from '../inspect/types';
 import Dialog from '../ui/Dialog';
 import RecordedScene from '../showcase/RecordedScene';
 import MissionLibrary from '../missions/MissionLibrary';
+import { useDeviceWorkspace } from '../device/context';
+import DeviceHome from './DeviceHome';
 import '../missions/missions.css';
 import '../showcase/showcase.css';
 
 export default function ProductHome({active=true}:{active?:boolean}) {
+  const device=useDeviceWorkspace();
   const [help,setHelp]=useState(false),[spaces,setSpaces]=useState<TemplateSummary[]>([]);
-  useEffect(()=>{if(!active)return;let live=true;void listTemplates().then(value=>{if(live)setSpaces(value.templates.slice(0,3));}).catch(()=>{});return()=>{live=false;};},[active]);
+  useEffect(()=>{if(!active||device)return;let live=true;void listTemplates().then(value=>{if(live)setSpaces(value.templates.slice(0,3));}).catch(()=>{});return()=>{live=false;};},[active,device]);
   function explore(){const scene=document.getElementById('recorded-scan');const reduced=document.documentElement.dataset.motion==='reduced'||window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;scene?.scrollIntoView({behavior:reduced?'instant':'smooth',block:'center'});scene?.focus({preventScroll:true});}
+  if(device)return <DeviceHome active={active}/>;
   return <div className="product-home">
     <section className="product-hero" aria-labelledby="home-title">
       <div className="product-hero-copy"><span className="product-label hero-eyebrow"><i/> A SPACE READY FOR WHAT COMES NEXT</span>
         <h1 id="home-title">Make room.<br/><span>Get going.</span><span className="hero-asterisk" aria-hidden="true">✳</span></h1>
-        <p>Get your space ready to study, work, or create.<br className="desktop-break"/> Show us what’s there. Get a few clear steps.<br className="desktop-break"/> Keep the setup that works for you.</p>
-        <div className="product-hero-actions"><button className="product-primary" onClick={()=>navigate('mission')}><ScanLine size={19}/>Get my space ready<ArrowUpRight size={19}/></button><button className="product-text" onClick={()=>navigate('live')}><Camera size={17}/>Open live camera<ArrowUpRight size={15}/></button><button className="product-text" onClick={explore}>See an example<ArrowDown size={15}/></button></div>
+        <p>{device?<>Point your camera. Tap what you see.<br className="desktop-break"/> Try a room layout. Keep a setup you love.<br className="desktop-break"/> Start exploring — no account needed.</>:<>Get your space ready to study, work, or create.<br className="desktop-break"/> Show us what’s there. Get a few clear steps.<br className="desktop-break"/> Keep the setup that works for you.</>}</p>
+        <div className="product-hero-actions"><button className="product-primary" onClick={()=>navigate(device?'live':'mission')}>{device?<Camera size={19}/>:<ScanLine size={19}/>} {device?'Open live camera':'Get my space ready'}<ArrowUpRight size={19}/></button><button className="product-text" onClick={()=>navigate(device?'mission':'live')}>{device?<ScanLine size={17}/>:<Camera size={17}/>} {device?'Get my space ready':'Open live camera'}<ArrowUpRight size={15}/></button><button className="product-text" onClick={explore}>See an example<ArrowDown size={15}/></button></div>
         <div className="mission-value-note">TAKE A PHOTO · FOLLOW THE STEPS · KEEP YOUR SETUP</div>
         <div className="product-powered"><span className="meta-loop" aria-hidden="true">∞</span><div><span>BUILT WITH META AI</span><strong>Muse Spark <i>+</i> SAM 3.1</strong></div></div>
       </div>
       <div className="product-hero-visual"><div className="hero-coordinate" aria-hidden="true">THE PHYSICAL WORLD, WITH CONTEXT <span>↘</span></div><RecordedScene/><div className="hero-visual-note"><span><Crosshair size={13}/> Select an object. See what AI sees.</span><button onClick={()=>setHelp(true)}>How it works<ArrowUpRight size={13}/></button></div></div>
     </section>
     <MissionLibrary active={active} compact/>
-    <section className="product-manifesto" aria-label="From seeing to doing"><span className="product-label">YOU HAVE SOMETHING YOU WANT TO DO</span><div><h2>Start with your space.<br/>Leave with <em>a next step.</em></h2><p>Choose what stays. Follow one suggestion at a time. Check a new photo and save the setup you like, so tomorrow starts a little easier.</p></div><span className="manifesto-mark" aria-hidden="true">↗</span></section>
+    <section className="product-manifesto" aria-label="From seeing to doing"><span className="product-label">YOU HAVE SOMETHING YOU WANT TO DO</span><div><h2>Start with your space.<br/>Leave with <em>a next step.</em></h2><p>{device?'Recognize common objects with your camera, play with furniture layouts, and keep photos and checklists in My Spaces.':'Choose what stays. Follow one suggestion at a time. Check a new photo and save the setup you like, so tomorrow starts a little easier.'}</p></div><span className="manifesto-mark" aria-hidden="true">↗</span></section>
     <section className="product-paths" aria-label="Choose what to do with your space">
-      <button className="product-path path-see" onClick={()=>navigate('live')}><div className="path-heading"><span className="product-label">LOOK CLOSER</span><ArrowUpRight size={20}/></div><div className="path-art perception-art" aria-hidden="true"><span/><span/><i/><div><Crosshair size={21}/></div><b>OBJECT IN CONTEXT</b></div><h3>Something caught your eye?</h3><p>Open the live camera, identify items, and ask a question about what is in view.</p><span className="path-action">Check my space<ArrowRight size={15}/></span></button>
+      <button className="product-path path-see" onClick={()=>navigate('live')}><div className="path-heading"><span className="product-label">LOOK CLOSER</span><ArrowUpRight size={20}/></div><div className="path-art perception-art" aria-hidden="true"><span/><span/><i/><div><Crosshair size={21}/></div><b>OBJECT IN CONTEXT</b></div><h3>Something caught your eye?</h3><p>Open the live camera, tap items to explore them, and save a view worth remembering.</p><span className="path-action">Check my space<ArrowRight size={15}/></span></button>
       <button className="product-path path-room" onClick={()=>navigate('room')}><div className="path-heading"><span className="product-label">02 / IMAGINE</span><ArrowUpRight size={20}/></div><div className="path-art room-art" aria-hidden="true"><div className="mini-room"><i className="mini-bed"/><i className="mini-desk"/><i className="mini-wardrobe"/><span className="mini-dimension"/></div><b>SPACE FOR YOUR NEXT IDEA</b></div><h3>Try the room you imagine.</h3><p>Arrange furniture together in 3D. Preview it in AR on supported devices.</p><span className="path-action">Furnish a room<ArrowRight size={15}/></span></button>
       <button className="product-path path-remember" onClick={()=>navigate('inspect')}><div className="path-heading"><span className="product-label">03 / REMEMBER</span><ArrowUpRight size={20}/></div><div className="path-art memory-art" aria-hidden="true"><div><span/><i/><b/></div><div><span/><i/><b/></div><Check size={20}/></div><h3>A place worth coming back to.</h3><p>Save a setup, compare a new photo, and find your way back to how it was.</p><span className="path-action">Save a reference<ArrowRight size={15}/></span></button>
     </section>

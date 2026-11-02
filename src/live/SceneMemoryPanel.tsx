@@ -3,11 +3,14 @@ import { ArrowRight, Crosshair, LoaderCircle, MapPin, Search, Trash2 } from 'luc
 import { createMission } from '../missions/api';
 import { navigate } from '../navigation';
 import type { MemorySnapshot } from './sceneMemory';
+import { useDeviceWorkspace } from '../device/context';
+import { saveDeviceSpace } from '../device/store';
 
 export default function SceneMemoryPanel({memory,findingId,onFind,onRename,onClear,onLeave,active}:{
   memory:MemorySnapshot;findingId:string|null;onFind:(id:string|null)=>void;
   onRename:(id:string,name:string)=>void;onClear:()=>void;onLeave:()=>void;active:boolean;
 }) {
+  const device=useDeviceWorkspace();
   const [query,setQuery]=useState(''),[selectedPlace,setSelectedPlace]=useState<string|null>(null);
   const [goal,setGoal]=useState('Help me tidy this area using what is already here.');
   const [busy,setBusy]=useState(false),[error,setError]=useState('');
@@ -22,6 +25,12 @@ export default function SceneMemoryPanel({memory,findingId,onFind,onRename,onCle
     if(!frame||!goal.trim()||pending.current||!active)return;
     const controller=new AbortController();pending.current=controller;setBusy(true);setError('');
     try{
+      if(device){
+        const id=creationId.current;
+        await saveDeviceSpace({id,name:(place?.name??'My camera view').slice(0,120),notes:goal.trim(),photo:frame.image_url,after:'',steps:[],updatedAt:new Date().toISOString()});
+        if(!controller.signal.aborted){onLeave();navigate('mission',{device:id});}
+        return;
+      }
       const task=await createMission({id:creationId.current,goal:goal.trim(),constraints:'',image_url:frame.image_url},controller.signal);
       if(controller.signal.aborted)return;
       onLeave();navigate('mission',{id:task.id,observe:'1'});
@@ -43,8 +52,8 @@ export default function SceneMemoryPanel({memory,findingId,onFind,onRename,onCle
         {target&&<p role="status">{memory.location?.placeId===target.placeId?'This view is recognized. Check the remembered spot; the item may have moved.':'Point the camera back toward this view. I will highlight the last known spot when the view matches.'}</p>}
         <label>What would you like help with?<textarea aria-label="Goal for this remembered area" value={goal} onFocus={()=>{if(place)setSelectedPlace(place.id);}} disabled={busy} maxLength={600} onChange={event=>setGoal(event.target.value)}/></label>
         <div className="memory-goals"><button disabled={busy} onClick={()=>setGoal('Help me tidy this area using what is already here.')}>Tidy up</button><button disabled={busy} onClick={()=>setGoal('Help me prepare this space for focused work using what I already have.')}>Get ready to work</button></div>
-        <button className="live-primary" disabled={busy||!goal.trim()||!active} onClick={()=>void help()}>{busy?<LoaderCircle size={17} className="spin"/>:<ArrowRight size={17}/>}Help me with this area</button>
-        <small>Uses the captured view above to start a guided task. You can update the photo as you work.</small>
+        <button className="live-primary" disabled={busy||!goal.trim()||!active} onClick={()=>void help()}>{busy?<LoaderCircle size={17} className="spin"/>:<ArrowRight size={17}/>} {device?'Save this area on my device':'Help me with this area'}</button>
+        <small>{device?'Keeps this photo and your goal in My Spaces, where you can add your own steps.':'Uses the captured view above to start a guided task. You can update the photo as you work.'}</small>
         {error&&<p role="alert">{error}</p>}
       </div>}
       <button className="memory-clear" disabled={busy} onClick={()=>{onFind(null);setSelectedPlace(null);onClear();}}><Trash2 size={15}/>Clear memory & start a new scan</button>

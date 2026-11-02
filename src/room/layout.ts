@@ -1,5 +1,7 @@
 /** All dimensions and positions use metres. The room is a clear rectangular floor. */
 export interface RoomSize { width: number; depth: number; height?: number }
+/** Measured floor rectangles reserved for existing objects or access. */
+export interface ReservedZone { id:string; label:string; kind:'obstacle'|'access'; x:number; z:number; width:number; depth:number }
 export type FurnitureKind = 'bed' | 'desk' | 'table' | 'wardrobe' | 'chair';
 export interface FurnitureItem {
   id: string;
@@ -53,11 +55,12 @@ function validRoom(room: RoomSize | null | undefined): room is RoomSize {
 }
 function issue(type: string, itemIds: string[], message: string): RoomLayoutIssue { return { type, itemIds, message }; }
 
-function validate(room: RoomSize | null | undefined, items: readonly FurnitureItem[], gap: number): RoomLayoutIssue[] {
+function validate(room: RoomSize | null | undefined, items: readonly FurnitureItem[], gap: number, reserved:readonly ReservedZone[]=[]): RoomLayoutIssue[] {
   const issues: RoomLayoutIssue[] = [];
   if (!validRoom(room)) issues.push(issue('invalid-room', [], 'Enter positive, finite room dimensions of at most 30 m.'));
   if (!Number.isFinite(gap) || gap < 0 || gap > MAX_DIMENSION) issues.push(issue('invalid-gap', [], 'Enter a finite furniture gap from 0 to 30 m.'));
   if (items.length > MAX_ITEMS) issues.push(issue('item-limit', [], 'Arrange at most 12 furniture items at a time.'));
+  if(reserved.length>12||new Set(reserved.map(v=>v?.id)).size!==reserved.length||reserved.some(v=>!v||typeof v.id!=='string'||!v.id||typeof v.label!=='string'||!['obstacle','access'].includes(v.kind)||![v.x,v.z].every(n=>Number.isFinite(n)&&n>=0)||![v.width,v.depth].every(dimension)||!room||v.x+v.width>room.width+EPS||v.z+v.depth>room.depth+EPS))issues.push(issue('invalid-reserved',[],'Check reserved areas: use distinct IDs and positive rectangles entirely inside the measured area.'));
   const ids = new Set<string>();
   for (const item of items) {
     if (!item || typeof item.id !== 'string' || !item.id.trim()) {
@@ -81,7 +84,8 @@ function unknown(room: RoomSize | null | undefined, items: readonly FurnitureIte
   };
 }
 
-interface Rect { itemId: string; x: number; z: number; width: number; depth: number }
+interface Rect { itemId: string; x: number; z: number; width: number; depth: number; reservedGap?:number }
+const reservedRects=(zones:readonly ReservedZone[],gap:number):Rect[]=>zones.map(z=>({itemId:z.id,x:z.x,z:z.z,width:z.width,depth:z.depth,reservedGap:z.kind==='access'?0:gap}));
 function rect(item: FurnitureItem, placement: FurniturePlacement): Rect {
   return { itemId: item.id, x: placement.x, z: placement.z, ...orientedSize(item, placement.rotation) };
 }
@@ -142,8 +146,8 @@ function fitProofs(room: RoomSize, items: readonly FurnitureItem[]): RoomLayoutI
  * between two rectangles; walls have no mandatory margin. No door, route, or access
  * geometry is inferred. Missing room height remains explicitly unchecked.
  */
-export function assessRoomLayout(room: RoomSize | null | undefined, items: readonly FurnitureItem[], placements: readonly FurniturePlacement[], gap = .3): RoomLayout {
-  const errors = validate(room, items, gap);
+export function assessRoomLayout(room: RoomSize | null | undefined, items: readonly FurnitureItem[], placements: readonly FurniturePlacement[], gap = .3, reserved:readonly ReservedZone[]=[]): RoomLayout {
+  const errors = validate(room, items, gap, reserved);
   if (errors.length || !room) return unknown(room, items, errors);
   const byId = new Map(items.map(item => [item.id, item]));
   const seen = new Set<string>();
@@ -161,6 +165,9 @@ export function assessRoomLayout(room: RoomSize | null | undefined, items: reado
   const issues = fitProofs(room, items);
   for (const value of values) {
     if (!inBounds(room, value)) issues.push(issue('bounds', [value.itemId], `${byId.get(value.itemId)!.label} extends outside the room.`));
+    for(const zone of reserved){
+      if(!separated(value,{itemId:zone.id,...zone},zone.kind==='access'?0:gap))issues.push(issue('reserved-overlap',[value.itemId],`${byId.get(value.itemId)!.label} overlaps or is too close to ${zone.label}.`));
+    }
   }
   for (let i = 0; i < values.length; i++) for (let j = i + 1; j < values.length; j++) {
     const a = values[i], b = values[j], result = relation(a, b);
@@ -172,8 +179,8 @@ export function assessRoomLayout(room: RoomSize | null | undefined, items: reado
   if (unplacedIds.length) issues.push(issue('unplaced', unplacedIds, 'Some selected furniture has not been positioned.'));
   const scope = room.height === undefined ? ' Height is not checked.' : ' Entered furniture heights were compared; overhead margin is not included.';
   return {
-    status, placements: placements.map(value => ({ ...value })), unplacedIds, issues, ...area(room, values),
-    reason: status === 'fits' ? 'All selected footprints fit with the requested gaps. Doorways and access paths are not checked.' + scope
+    status, placements: placements.map(value => ({ ...value })), unplacedIds, issues, ...area(room, [...values,...reservedRects(reserved,gap)]),
+    reason: status === 'fits' ? (reserved.length?'All selected footprints fit around your reserved areas with the requested gaps. Unmarked obstacles and access are not checked.':'All selected footprints fit with the requested gaps. Doorways and access paths are not checked.') + scope
       : status === 'partial' ? 'Position the remaining items before assessing the whole arrangement.' + scope
       : 'This arrangement has dimensional or placement conflicts. Review the highlighted items.' + scope,
   };
@@ -197,8 +204,8 @@ function candidates(room: RoomSize, item: FurnitureItem, rectangles: readonly Re
     const size = orientedSize(item, rotation);
     if (size.width > room.width + EPS || size.depth > room.depth + EPS) continue;
     const maxX = room.width - size.width, maxZ = room.depth - size.depth;
-    const xs = uniqueCoordinates([0, maxX, maxX / 2, ...rectangles.flatMap(value => [value.x + value.width + gap, value.x - size.width - gap, value.x, value.x + value.width - size.width])], maxX);
-    const zs = uniqueCoordinates([0, maxZ, maxZ / 2, ...rectangles.flatMap(value => [value.z + value.depth + gap, value.z - size.depth - gap, value.z, value.z + value.depth - size.depth])], maxZ);
+    const xs = uniqueCoordinates([0, maxX, maxX / 2, ...rectangles.flatMap(value => [value.x + value.width + (value.reservedGap??gap), value.x - size.width - (value.reservedGap??gap), value.x, value.x + value.width - size.width])], maxX);
+    const zs = uniqueCoordinates([0, maxZ, maxZ / 2, ...rectangles.flatMap(value => [value.z + value.depth + (value.reservedGap??gap), value.z - size.depth - (value.reservedGap??gap), value.z, value.z + value.depth - size.depth])], maxZ);
     for (const z of zs) for (const x of xs) {
       const placement = { itemId: item.id, x, z, rotation }, footprint = rect(item, placement);
       const backWall = rotation === 0 ? z / room.depth : (maxX - x) / room.width;
@@ -226,8 +233,8 @@ function candidates(room: RoomSize, item: FurnitureItem, rectangles: readonly Re
  * Bounded deterministic wall/centre/edge search. Exhaustion is not proof of impossibility.
  * Input order is used only as a stable tie-breaker; returned placements retain item IDs.
  */
-export function planRoom(room: RoomSize | null | undefined, items: readonly FurnitureItem[], gap = .3): RoomLayout {
-  const errors = validate(room, items, gap);
+export function planRoom(room: RoomSize | null | undefined, items: readonly FurnitureItem[], gap = .3, reserved:readonly ReservedZone[]=[]): RoomLayout {
+  const errors = validate(room, items, gap, reserved);
   if (errors.length || !room) return unknown(room, items, errors);
   const proofs = fitProofs(room, items);
   const individuallyBlocked = new Set(proofs.filter(value => value.type === 'oversized-item' || value.type === 'height').flatMap(value => value.itemIds));
@@ -238,7 +245,7 @@ export function planRoom(room: RoomSize | null | undefined, items: readonly Furn
   let nodes = 0, checks = 0;
   let best: FurniturePlacement[] = [];
   let solved: FurniturePlacement[] | null = null;
-  const placed: FurniturePlacement[] = [], rectangles: Rect[] = [];
+  const placed: FurniturePlacement[] = [], rectangles: Rect[] = reservedRects(reserved,gap);
 
   function search(index: number): boolean {
     if (placed.length > best.length) best = placed.map(value => ({ ...value }));
@@ -247,7 +254,7 @@ export function planRoom(room: RoomSize | null | undefined, items: readonly Furn
     const item = eligible[index];
     for (const { placement, footprint } of candidates(room!, item, rectangles, rectangles.filter(value => bedIds.has(value.itemId)), gap)) {
       if (++checks > MAX_CANDIDATE_CHECKS) return false;
-      if (!inBounds(room!, footprint) || !rectangles.every(other => separated(footprint, other, gap))) continue;
+      if (!inBounds(room!, footprint) || !rectangles.every(other => separated(footprint, other, other.reservedGap??gap))) continue;
       placed.push(placement); rectangles.push(footprint);
       if (search(index + 1)) return true;
       placed.pop(); rectangles.pop();
@@ -259,16 +266,16 @@ export function planRoom(room: RoomSize | null | undefined, items: readonly Furn
 
   // Fill any remaining small items into the best partial result without moving it.
   const chosen: FurniturePlacement[] = solved ?? best;
-  const chosenRects = chosen.map(value => rect(items.find(item => item.id === value.itemId)!, value));
+  const chosenRects = [...reservedRects(reserved,gap),...chosen.map(value => rect(items.find(item => item.id === value.itemId)!, value))];
   if (!solved) for (const item of [...eligible].reverse()) {
     if (chosen.some(value => value.itemId === item.id)) continue;
     for (const { placement, footprint } of candidates(room, item, chosenRects, chosenRects.filter(value => bedIds.has(value.itemId)), gap)) {
-      if (inBounds(room, footprint) && chosenRects.every(other => separated(footprint, other, gap))) {
+      if (inBounds(room, footprint) && chosenRects.every(other => separated(footprint, other, other.reservedGap??gap))) {
         chosen.push(placement); chosenRects.push(footprint); break;
       }
     }
   }
-  const result = assessRoomLayout(room, items, chosen, gap);
+  const result = assessRoomLayout(room, items, chosen, gap, reserved);
   if (result.status === 'fits') return result;
   if (proofs.length) return { ...result, status: 'conflict', reason: 'The selected furniture cannot all fit these entered dimensions: at least one item or the combined footprint exceeds the room. Doorways and access are not assessed.' };
   return {
@@ -276,4 +283,11 @@ export function planRoom(room: RoomSize | null | undefined, items: readonly Furn
     issues: [...result.issues, issue('search-incomplete', result.unplacedIds, 'No complete arrangement was found by the bounded corner search. A different manual arrangement may still fit.')],
     reason: 'No complete arrangement was found within the bounded search. This does not prove the furniture cannot fit; adjust the arrangement, dimensions, or requested gap.',
   };
+}
+
+/** Find one more piece without moving anything already placed. */
+export function additionalPlacement(room:RoomSize|null,items:readonly FurnitureItem[],placements:readonly FurniturePlacement[],item:FurnitureItem,gap:number,reserved:readonly ReservedZone[]):FurniturePlacement|null {
+  if(!room||items.length>=MAX_ITEMS||validate(room,[...items,item],gap,reserved).length||assessRoomLayout(room,items,placements,gap,reserved).status!=='fits'||fitProofs(room,[item]).length)return null;
+  const occupied=[...reservedRects(reserved,gap),...placements.map(p=>rect(items.find(i=>i.id===p.itemId)!,p))];
+  return candidates(room,item,occupied,[],gap).find(c=>occupied.every(other=>separated(c.footprint,other,other.reservedGap??gap)))?.placement??null;
 }

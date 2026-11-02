@@ -1,0 +1,26 @@
+import { useMemo } from 'react';
+import { Plus, Ruler, Trash2 } from 'lucide-react';
+import { recommendFurniture } from './recommendations';
+import type { RoomSuggestion } from './recommendations';
+import type { FurnitureItem, FurniturePlacement, ReservedZone, RoomSize } from './layout';
+
+export default function RoomOptions({room,items,placements,gap,zones,onZones,reviewed,onReviewed,onMeasure,onAdd,layoutValid,photoReady=true}:{room:RoomSize|null;items:readonly FurnitureItem[];placements:readonly FurniturePlacement[];gap:number;zones:ReservedZone[];onZones:(value:ReservedZone[])=>void;reviewed:boolean;onReviewed:(value:boolean)=>void;onMeasure:()=>void;onAdd:(value:RoomSuggestion)=>void;layoutValid:boolean;photoReady?:boolean}){
+  const options=useMemo(()=>reviewed&&layoutValid&&photoReady?recommendFurniture(room,items,placements,gap,zones):[],[room,items,placements,gap,zones,reviewed,layoutValid,photoReady]);
+  function edit(id:string,change:Partial<ReservedZone>){onZones(zones.map(z=>z.id===id?{...z,...change}:z));}
+  return <section className="room-options" aria-label="Find furniture for your available space">
+    <div className="room-section-heading"><h2>What can go here?</h2><span>Measured fit</span></div>
+    {!room?<><p>Measure the rectangle you want to furnish. Camera labels help you spot existing objects; dimensions give the suggestions their scale.</p><button className="room-primary" onClick={onMeasure}><Ruler size={16}/>Enter area dimensions</button></>:<>
+      <p>{room.width} × {room.depth} m. Reserve the floor used by existing furniture, doors, or a path before adding new pieces.</p>
+      <div className="room-reserved-list">{zones.map((zone,index)=><details open key={zone.id}><summary>{zone.label||`Reserved area ${index+1}`}</summary><label>Name<input aria-label={`Reserved area ${index+1} name`} value={zone.label} maxLength={80} onChange={e=>edit(zone.id,{label:e.target.value})}/></label><label>Keep clear for<select aria-label={`Reserved area ${index+1} type`} value={zone.kind} onChange={e=>edit(zone.id,{kind:e.target.value as ReservedZone['kind']})}><option value="obstacle">Existing object</option><option value="access">Door or access path</option></select></label><div className="room-zone-fields">{([{key:'x',label:'From left'},{key:'z',label:'From back'},{key:'width',label:'Width'},{key:'depth',label:'Length'}] as const).map(({key,label})=><label key={key}>{label} (m)<input type="number" min={key==='x'||key==='z'?0:.05} max="30" step=".05" aria-label={`Reserved area ${index+1} ${label.toLowerCase()}`} value={Number.isFinite(zone[key])?zone[key]:''} onChange={e=>edit(zone.id,{[key]:e.target.value===''?NaN:Number(e.target.value)})}/></label>)}</div><button className="room-secondary" onClick={()=>onZones(zones.filter(z=>z.id!==zone.id))}><Trash2 size={14}/>Remove reserved area</button></details>)}</div>
+      <button className="room-secondary" disabled={zones.length>=12} onClick={()=>onZones([...zones,{id:crypto.randomUUID(),label:'Keep clear',kind:'access',x:0,z:0,width:Math.min(room.width,.8),depth:room.depth}])}><Plus size={16}/>Reserve a door or occupied area</button>
+      <p className="room-fine-print">Positions use the top-left of the floor plan. Drag reserved areas on the plan, or edit their measurements here. Include the full door swing or walking area yourself.</p>
+      <label className="room-review"><input type="checkbox" checked={reviewed} aria-label="I checked the dimensions and reserved areas" onChange={e=>onReviewed(e.target.checked)}/><span>I checked the dimensions, photo outline if used, and areas that must stay clear.</span></label>
+      {!photoReady?<p role="status">Outline the four corners of your measured area in Photo plan before reviewing its fit.</p>:!reviewed?<p>Review your usable area to see furniture suggestions.</p>:!layoutValid?<p role="status">Resolve the measurements or placement conflicts listed in Room plan issues. Suggestions will update when your current arrangement fits.</p>:<>
+        <div className="room-option-list">{options.filter(o=>o.placement).map(option=><button key={option.item.id} onClick={()=>onAdd(option)} aria-label={`Add suggested ${option.item.label}`}><span><strong>{option.item.label}</strong><small>{option.item.width} × {option.item.depth} m · {option.item.height} m high</small><small>{option.placement?.rotation===90?'Fits turned sideways':'Fits in the remaining space'}</small></span><Plus size={18}/></button>)}</div>
+        {!options.some(o=>o.placement)&&<p role="status">{items.length>=12?'This plan has reached its 12-piece limit.':'No catalogue example fits the remaining space with this gap. Try smaller furniture, adjust the measured area, or remove a planned piece.'}</p>}
+        {!!options.some(o=>!o.placement)&&<details><summary>Examples without a placement</summary><p>{options.filter(o=>!o.placement).map(o=>o.item.label).join(', ')}. These exceed a dimension, need more clearance, or have no placement around the areas you reserved.</p></details>}
+        <p className="room-fine-print">Each suggestion is an alternative using editable example sizes. Adding one keeps your placed pieces in position and recalculates what else fits. Check actual product dimensions before buying.</p>
+      </>}
+    </>}
+  </section>;
+}

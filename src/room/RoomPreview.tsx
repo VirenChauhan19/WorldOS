@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { Minus, Plus, RotateCcw } from 'lucide-react';
-import type { FurnitureItem, FurniturePlacement, RoomSize } from './layout';
+import type { FurnitureItem, FurniturePlacement, ReservedZone, RoomSize } from './layout';
 import { boxMeshes, furnitureMeshes, material } from './furnitureGeometry';
 import type { SceneMesh } from './furnitureGeometry';
 import './room-preview.css';
@@ -11,6 +11,7 @@ type Orbit = {yaw:number;pitch:number;zoom:number};
 type Label = {id:string;name:string;x:number;y:number;depth:number};
 type Pick = {id:string;left:number;right:number;top:number;bottom:number;depth:number};
 const DEFAULT:Orbit={yaw:.70,pitch:.72,zoom:1};
+const EMPTY_ZONES:readonly ReservedZone[]=[];
 const clamp=(value:number,min:number,max:number)=>Math.max(min,Math.min(max,value));
 const normalize=(v:Vector):Vector=>{const l=Math.hypot(...v)||1;return [v[0]/l,v[1]/l,v[2]/l];};
 const cross=(a:Vector,b:Vector):Vector=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
@@ -47,7 +48,7 @@ function createRenderer(canvas:HTMLCanvasElement){
   const buffer=gl.createBuffer();if(!buffer){gl.deleteProgram(program);throw new Error('3D buffer unavailable');}
   const position=gl.getAttribLocation(program,'position'),projection=gl.getUniformLocation(program,'projection'),view=gl.getUniformLocation(program,'view'),color=gl.getUniformLocation(program,'color');
   return {
-    begin(p:Float32Array,v:Float32Array){gl.viewport(0,0,canvas.width,canvas.height);gl.clearColor(.91,.92,.885,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.enable(gl.DEPTH_TEST);gl.disable(gl.CULL_FACE);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.useProgram(program);gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.enableVertexAttribArray(position);gl.vertexAttribPointer(position,3,gl.FLOAT,false,0,0);gl.uniformMatrix4fv(projection,false,p);gl.uniformMatrix4fv(view,false,v);},
+    begin(p:Float32Array,v:Float32Array){gl.viewport(0,0,canvas.width,canvas.height);gl.clearColor(.933,.925,.902,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.enable(gl.DEPTH_TEST);gl.disable(gl.CULL_FACE);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.useProgram(program);gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.enableVertexAttribArray(position);gl.vertexAttribPointer(position,3,gl.FLOAT,false,0,0);gl.uniformMatrix4fv(projection,false,p);gl.uniformMatrix4fv(view,false,v);},
     draw(meshes:SceneMesh[],lines=false){for(const mesh of meshes){gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(mesh.vertices),gl.DYNAMIC_DRAW);gl.uniform4fv(color,mesh.color);gl.drawArrays(lines?gl.LINES:gl.TRIANGLES,0,mesh.vertices.length/3);}},
     dispose(){gl.deleteBuffer(buffer);gl.deleteProgram(program);},
   };
@@ -61,17 +62,17 @@ function roomMeshes(room:RoomSize,eye:Vector,showWalls:boolean):SceneMesh[]{
   for(let i=0;i<planks;i++)result.push(...boxMeshes(i*w/planks,.001,0,w/planks-.004,.012,d,material(i%3===0?'#cbb899':i%3===1?'#d3c2a6':'#cdbc9e')));
   if(!showWalls)return result;
   const wallX=eye[0]>w/2?-.07:w,wallZ=eye[2]>d/2?-.07:d;
-  const sideWall=boxMeshes(wallX,0,0,.07,h,d,material('#e1e3d9'));
-  const backWall=boxMeshes(0,0,wallZ,w,h,.07,material('#eaece4'));
-  sideWall[wallX<0?2:3].color=material('#d5dacf');
-  backWall[wallZ<0?1:4].color=material('#e2e5db');
+  const sideWall=boxMeshes(wallX,0,0,.07,h,d,material('#e1dfd9'));
+  const backWall=boxMeshes(0,0,wallZ,w,h,.07,material('#ece9e2'));
+  sideWall[wallX<0?2:3].color=material('#d6d2c9');
+  backWall[wallZ<0?1:4].color=material('#e4e0d7');
   result.push(...sideWall,...backWall);
   result.push(...boxMeshes(wallX<0?0:w-.018,0,0,.018,.10,d,material('#f5f4ec')));
   result.push(...boxMeshes(0,0,wallZ<0?0:d-.018,w,.10,.018,material('#f5f4ec')));
   return result;
 }
 
-export default function RoomPreview({room,items,placements,selectedId,onSelect,showWalls=true}:{room:RoomSize;items:readonly FurnitureItem[];placements:readonly FurniturePlacement[];selectedId?:string;onSelect?:(id:string)=>void;showWalls?:boolean}){
+export default function RoomPreview({room,items,placements,selectedId,onSelect,showWalls=true,reserved=EMPTY_ZONES}:{room:RoomSize;items:readonly FurnitureItem[];placements:readonly FurniturePlacement[];selectedId?:string;onSelect?:(id:string)=>void;showWalls?:boolean;reserved?:readonly ReservedZone[]}){
   const canvasRef=useRef<HTMLCanvasElement>(null),graphics=useRef<ReturnType<typeof createRenderer>|null>(null),orbit=useRef<Orbit>({...DEFAULT});
   const frame=useRef(0),drawRef=useRef<()=>void>(()=>{}),picks=useRef<Pick[]>([]);
   const pointers=useRef(new Map<number,{x:number;y:number}>()),gesture=useRef<{x:number;y:number;moved:boolean}|null>(null);
@@ -91,6 +92,7 @@ export default function RoomPreview({room,items,placements,selectedId,onSelect,s
     const eye:Vector=[target[0]+Math.sin(o.yaw)*Math.cos(o.pitch)*distance,target[1]+Math.sin(o.pitch)*distance,target[2]+Math.cos(o.yaw)*Math.cos(o.pitch)*distance];
     const projection=perspective(width/height,Math.max(100,distance+Math.hypot(room.width,room.depth,room.height??2.7)*2)),view=lookAt(eye,target);
     renderer.begin(projection,view);renderer.draw(batch(roomMeshes(room,eye,showWalls)));
+    for(const zone of reserved){if([zone.x,zone.z,zone.width,zone.depth].every(Number.isFinite)&&zone.width>0&&zone.depth>0)renderer.draw(boxMeshes(zone.x,.025,zone.z,zone.width,.018,zone.depth,[.67,.40,.23,.6]));}
     // Soft grounding shadows are illustrative, not a light simulation.
     for(const {item,placement:p} of placed){const w=p.rotation===90?item.depth:item.width,d=p.rotation===90?item.width:item.depth;renderer.draw([{vertices:[p.x-.025,.016,p.z-.025,p.x+w+.025,.016,p.z-.025,p.x+w+.025,.016,p.z+d+.025,p.x-.025,.016,p.z-.025,p.x+w+.025,.016,p.z+d+.025,p.x-.025,.016,p.z+d+.025],color:[.25,.26,.20,.12]}]);}
     renderer.draw(furniture);
@@ -101,7 +103,7 @@ export default function RoomPreview({room,items,placements,selectedId,onSelect,s
       if(item.id===selectedId&&center.front&&center.x>.02&&center.x<.98&&center.y>.02&&center.y<.94)nextLabels.push({id:item.id,name:item.label,x:center.x*100,y:center.y*100,depth:center.depth});
       const corners=[0,item.height].flatMap(y=>[[p.x,y,p.z],[p.x+w,y,p.z],[p.x+w,y,p.z+d],[p.x,y,p.z+d]] as Vector[]).map(point=>project(point,view,projection));
       if(corners.every(point=>point.front))nextPicks.push({id:item.id,left:Math.min(...corners.map(p=>p.x))*rect.width,right:Math.max(...corners.map(p=>p.x))*rect.width,top:Math.min(...corners.map(p=>p.y))*rect.height,bottom:Math.max(...corners.map(p=>p.y))*rect.height,depth:center.depth});
-      if(item.id===selectedId){const x=p.x-.025,z=p.z-.025,W=w+.05,D=d+.05;renderer.draw([{vertices:[x,.025,z,x+W,.025,z,x+W,.025,z,x+W,.025,z+D,x+W,.025,z+D,x,.025,z+D,x,.025,z+D,x,.025,z],color:[.32,.46,.20,1]}],true);}
+      if(item.id===selectedId){const x=p.x-.025,z=p.z-.025,W=w+.05,D=d+.05;renderer.draw([{vertices:[x,.025,z,x+W,.025,z,x+W,.025,z,x+W,.025,z+D,x+W,.025,z+D,x,.025,z+D,x,.025,z+D,x,.025,z],color:[.68,.30,.20,1]}],true);}
     }
     picks.current=nextPicks;setLabels(nextLabels.sort((a,b)=>b.depth-a.depth));
   };
@@ -117,7 +119,7 @@ export default function RoomPreview({room,items,placements,selectedId,onSelect,s
     return()=>{cancelAnimationFrame(frame.current);frame.current=0;resize?.disconnect();window.removeEventListener('resize',redraw);canvas.removeEventListener('wheel',wheel);canvas.removeEventListener('webglcontextlost',lost);canvas.removeEventListener('webglcontextrestored',restore);graphics.current?.dispose();graphics.current=null;pointers.current.clear();gesture.current=null;picks.current=[];};
   // The renderer persists as room and furniture data change.
   },[valid]);
-  useEffect(redraw,[furniture,room.width,room.depth,room.height,selectedId,showWalls]);
+  useEffect(redraw,[furniture,room.width,room.depth,room.height,selectedId,showWalls,reserved]);
 
   function reset(top=false){orbit.current=top?{yaw:.001,pitch:1.50,zoom:.95}:{...DEFAULT};setViewMode(top?'top':'perspective');redraw();}
   function pointerDown(event:ReactPointerEvent<HTMLCanvasElement>){if(event.button!==0)return;event.currentTarget.setPointerCapture(event.pointerId);pointers.current.set(event.pointerId,{x:event.clientX,y:event.clientY});if(pointers.current.size===1)gesture.current={x:event.clientX,y:event.clientY,moved:false};else if(gesture.current)gesture.current.moved=true;}
@@ -150,7 +152,7 @@ export default function RoomPreview({room,items,placements,selectedId,onSelect,s
   return <div className="room-preview">
     <div className="room-render-surface">
       <canvas ref={canvasRef} hidden={!available} tabIndex={0} role="img" aria-label={`Interactive 3D room, ${room.width} by ${room.depth} metres, containing ${placed.length} furniture items.`} aria-describedby={description} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={e=>{pointers.current.delete(e.pointerId);gesture.current=null;}} onLostPointerCapture={e=>{pointers.current.delete(e.pointerId);gesture.current=null;}} onKeyDown={keyDown}/>
-      {available?<div className="room-preview-labels">{labels.map(label=><button key={label.id} className={selectedId===label.id?'is-selected':''} style={{left:`${label.x}%`,top:`${label.y}%`}} onClick={()=>onSelect?.(label.id)} aria-label={`Select ${label.name}`}><i/>{label.name}</button>)}</div>:<div className="room-render-fallback"><p>3D graphics are unavailable in this browser. A top-down layout is shown below.</p><svg viewBox={`-.2 -.2 ${room.width+.4} ${room.depth+.4}`} role="img" aria-label="Top-down furniture layout"><rect width={room.width} height={room.depth} fill="#d4c2a4" stroke="#9b927f" strokeWidth=".02"/>{placed.map(({item,placement:p})=><g key={item.id} role="button" tabIndex={0} aria-label={`Select ${item.label}`} onClick={()=>onSelect?.(item.id)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();onSelect?.(item.id);}}}><rect x={p.x} y={p.z} width={p.rotation===90?item.depth:item.width} height={p.rotation===90?item.width:item.depth} fill={/^#[0-9a-f]{6}$/i.test(item.color)?item.color:'#81917a'} stroke={selectedId===item.id?'#294b20':'#57614d'} strokeWidth=".025"/><text x={p.x+.05} y={p.z+.16} fontSize=".12" fill="#20291e">{item.label}</text></g>)}</svg></div>}
+      {available?<div className="room-preview-labels">{labels.map(label=><button key={label.id} className={selectedId===label.id?'is-selected':''} style={{left:`${label.x}%`,top:`${label.y}%`}} onClick={()=>onSelect?.(label.id)} aria-label={`Select ${label.name}`}><i/>{label.name}</button>)}</div>:<div className="room-render-fallback"><p>3D graphics are unavailable in this browser. A top-down layout is shown below.</p><svg viewBox={`-.2 -.2 ${room.width+.4} ${room.depth+.4}`} role="img" aria-label="Top-down furniture layout"><rect width={room.width} height={room.depth} fill="#d4c2a4" stroke="#9b927f" strokeWidth=".02"/>{placed.map(({item,placement:p})=><g key={item.id} role="button" tabIndex={0} aria-label={`Select ${item.label}`} onClick={()=>onSelect?.(item.id)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();onSelect?.(item.id);}}}><rect x={p.x} y={p.z} width={p.rotation===90?item.depth:item.width} height={p.rotation===90?item.width:item.depth} fill={/^#[0-9a-f]{6}$/i.test(item.color)?item.color:'#81917a'} stroke={selectedId===item.id?'#ad4d32':'#62625a'} strokeWidth=".025"/><text x={p.x+.05} y={p.z+.16} fontSize=".12" fill="#20291e">{item.label}</text></g>)}</svg></div>}
       {available&&<><div className="room-camera-angle" role="group" aria-label="3D camera angle"><button aria-pressed={viewMode==='perspective'} onClick={()=>reset()}>Perspective</button><button aria-pressed={viewMode==='top'} onClick={()=>reset(true)}>Top view</button></div><div className="room-zoom-tools"><button aria-label="Zoom in" onClick={()=>{orbit.current.zoom=clamp(orbit.current.zoom*.85,.55,1.8);redraw();}}><Plus size={16}/></button><button aria-label="Zoom out" onClick={()=>{orbit.current.zoom=clamp(orbit.current.zoom*1.15,.55,1.8);redraw();}}><Minus size={16}/></button><button aria-label="Reset room view" onClick={()=>reset()}><RotateCcw size={15}/></button></div></>}
       <p className="room-preview-help" id={description}>{available?<>Drag to orbit · pinch or scroll to zoom<span>Keyboard: arrows, + / −, Home</span></>:'Select a furniture item to inspect its dimensions.'}</p>
     </div>

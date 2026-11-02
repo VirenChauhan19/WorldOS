@@ -7,6 +7,7 @@ import { SceneMemory } from './sceneMemory';
 import type { MemorySnapshot } from './sceneMemory';
 import { LocalDetector, localObjects, mergeLiveObjects, overlap } from './localDetector';
 import type { LocalDetectorStatus } from './localDetector';
+import { useDeviceWorkspace } from '../device/context';
 
 export type CameraStatus = 'idle' | 'starting' | 'live' | 'error';
 export type RecognitionStatus = 'off' | 'waiting' | 'stabilizing' | 'analyzing' | 'ready' | 'retrying' | 'error';
@@ -67,6 +68,8 @@ export function useLiveCamera({ active, autoAnalyze, videoRef, mode = 'detailed'
   pauseRecognition?: boolean;
   findingId?: string|null;
 }) {
+  const device=useDeviceWorkspace();
+  const cloudEnabled=useRef(!device);cloudEnabled.current=!device;
   const [status, setStatus] = useState<CameraStatus>('idle');
   const [error, setError] = useState('');
   const [analysis, setAnalysis] = useState<AIAnalysis | null>(null);
@@ -307,7 +310,7 @@ export function useLiveCamera({ active, autoAnalyze, videoRef, mode = 'detailed'
               const match=remote.find(old=>old.label.toLowerCase()===object.label.toLowerCase()&&overlap(old,object)>.5);
               return match&&remoteDetails[match.id]?[[object.id,remoteDetails[match.id]]]:[];
             }));
-            let observed:AIAnalysis={objects:mergeLiveObjects(objects,remote),details:{...remoteDetails,...details},concepts:objects.map(object=>object.label),summary:'Common objects recognized on this device. AI adds details in the background.',message:'',warnings:[],provider:'on_device',model:'EfficientDet Lite0',live_request:false};
+            let observed:AIAnalysis={objects:mergeLiveObjects(objects,remote),details:{...remoteDetails,...details},concepts:objects.map(object=>object.label),summary:cloudEnabled.current?'Common objects recognized on this device. AI adds details in the background.':'Common objects recognized on this device. Tap a label to explore your view.',message:'',warnings:[],provider:'on_device',model:'EfficientDet Lite0',live_request:false};
             // Remember at most once a second, while fresh labels update faster.
             if(now-lastLocalMemory.current>=1000){
               lastLocalMemory.current=now;
@@ -339,7 +342,7 @@ export function useLiveCamera({ active, autoAnalyze, videoRef, mode = 'detailed'
         // The camera and local tracking run independently. At most one API
         // frame is in flight; sample the newest frame only when capacity frees.
         // 3.5s also stays below the default 20 requests/minute production budget.
-        if (!autoRef.current || pausedRef.current || failedRecognition.current || request.current || (!fast && completedScene.current === scene.current) || now < retryAt.current || now - lastRequest.current < (fast ? 3500 : MIN_REQUEST_GAP_MS)) return;
+        if (!cloudEnabled.current || !autoRef.current || pausedRef.current || failedRecognition.current || request.current || (!fast && completedScene.current === scene.current) || now < retryAt.current || now - lastRequest.current < (fast ? 3500 : MIN_REQUEST_GAP_MS)) return;
         const scale = Math.min(1, (fast ? 768 : 1280) / Math.max(video.videoWidth, video.videoHeight));
         frameCanvas.width = Math.max(1, Math.round(video.videoWidth * scale));
         frameCanvas.height = Math.max(1, Math.round(video.videoHeight * scale));
