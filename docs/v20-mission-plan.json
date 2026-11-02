@@ -1,0 +1,76 @@
+{
+  "checked_at": "2026-11-02T05:19:17.400362+00:00",
+  "scope": "One live Muse task plan from a public photograph and previously recorded SAM IDs. No physical task execution, after-photo assessment, accuracy benchmark, or hosted deployment check.",
+  "public_source": "https://unsplash.com/photos/ElFBCgOfoIM",
+  "goal": "Help me prepare this desk for a focused study or work session using what I already have.",
+  "constraints": "Keep my monitor in place and all cables connected.",
+  "protected_ids": [
+    "sam-2-0"
+  ],
+  "status": "success",
+  "result": {
+    "title": "Tidy desk center for focused study",
+    "outcome": "Desk center is clear with keyboard and mouse ready in front of the monitor, phone and tablet parked aside, and all cables still connected for a distraction-light session.",
+    "steps": [
+      {
+        "title": "Move phone out of the work center",
+        "instruction": "Check for a clear stable spot on the desk away from the keyboard, not at the desk edge, then slide the smartphone there and lay it face-down. Do not unplug anything while moving it.",
+        "why": "A face-down phone outside the immediate typing area reduces visual interruptions during study.",
+        "success_check": "Phone lies flat face-down away from keyboard and mouse with screen not visible.",
+        "object_ids": [
+          "sam-4-0",
+          "sam-0-0"
+        ],
+        "move_ids": [
+          "sam-4-0"
+        ],
+        "id": "c2bbc110d2604c29baeb68381f5707cf"
+      },
+      {
+        "title": "Shift tablet to free the main area",
+        "instruction": "Check for a clear stable spot to one side, not at the desk edge, then shift the tablet there so it stays fully on the desk and the space in front of the keyboard stays open.",
+        "why": "Keeping the tablet aside preserves desk space for writing and mousing while keeping it available.",
+        "success_check": "Tablet rests fully on the desk to the side and the area in front of the keyboard is open.",
+        "object_ids": [
+          "sam-6-0",
+          "sam-0-0"
+        ],
+        "move_ids": [
+          "sam-6-0"
+        ],
+        "id": "dbae8db4717049e0af228aa2c8d420d9"
+      },
+      {
+        "title": "Confirm keyboard, mouse and cables ready",
+        "instruction": "Without moving the monitor, visually confirm the keyboard is in front of it, the mouse has clear space, and all cables remain connected.",
+        "why": "A quick check ensures you can start working without snags or loose connections.",
+        "success_check": "Keyboard sits in front of monitor, mouse has clear space, cables are connected and nothing overlaps keys.",
+        "object_ids": [
+          "sam-3-0",
+          "sam-5-1",
+          "sam-2-0",
+          "sam-8-1"
+        ],
+        "move_ids": [],
+        "id": "1f65795b98024d339d53433c10c52c12"
+      }
+    ],
+    "limitation": "Top-down photo only shows layout, not cable slack, lighting, or items outside view. Fit and clearance for any placement were not verified.",
+    "provider": "meta",
+    "model": "muse-spark-1.3",
+    "operation": "mission_plan",
+    "inference_latency_ms": 23266,
+    "inferred_at": "2026-11-02T05:19:40.675502+00:00",
+    "usage": {
+      "prompt_tokens": 4055,
+      "completion_tokens": 3806,
+      "total_tokens": 7861
+    },
+    "live_request": true,
+    "inference_cache": {
+      "status": "miss",
+      "age_ms": 0
+    }
+  },
+  "duration_ms": 23275
+}

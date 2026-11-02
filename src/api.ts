@@ -16,7 +16,7 @@ export class APIError extends Error {
   }
 }
 
-function request<T>(path: string, options?: RequestInit, timeoutMs = 60000): Promise<T> {
+export function request<T>(path: string, options?: RequestInit, timeoutMs = 60000): Promise<T> {
   // Share identical in-flight AI actions only. Never persist image bodies/results in browser storage.
   // A caller-owned cancellation signal must never cancel another caller's request.
   if (options?.signal || !['ai/analyze', 'ai/reason', 'ai/verify'].includes(path)) return sendRequest<T>(path, options, timeoutMs);

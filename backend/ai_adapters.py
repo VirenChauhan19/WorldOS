@@ -68,14 +68,15 @@ class MuseSparkReasoning:
         provider = self.http.settings.reasoning_provider
         # Interactive questions should not wait through a slow discovery-provider
         # timeout before reaching Meta. Explicit provider settings still win.
-        if operation == "ask_scene" and self.http.settings.muse_provider == "auto" and self.http.settings.meta_key:
+        interactive = operation in {"ask_scene", "mission_plan", "mission_check"}
+        if interactive and self.http.settings.muse_provider == "auto" and self.http.settings.meta_key:
             provider = "meta"
         try:
             return await self._structured_once(provider, operation, instruction, context, schema, image_url)
         except ProviderError as error:
             fallback_codes = {"missing_credentials", "invalid_credentials", "insufficient_credits", "unsupported_model_access", "rate_limited", "timeout", "network_error", "provider_error"}
             fallback = ("meta" if provider == "baseten" and self.http.settings.meta_key else
-                        "baseten" if operation == "ask_scene" and self.http.settings.muse_provider == "auto" and self.http.settings.baseten_key else None)
+                        "baseten" if interactive and self.http.settings.muse_provider == "auto" and self.http.settings.baseten_key else None)
             if not fallback or error.code not in fallback_codes:
                 raise
             result = await self._structured_once(fallback, operation, instruction, context, schema, image_url)

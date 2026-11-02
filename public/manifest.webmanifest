@@ -2,7 +2,7 @@
   "id": "/",
   "name": "WorldOS",
   "short_name": "WorldOS",
-  "description": "Your world. Understood. See your space, ask about it, and decide what comes next.",
+  "description": "Make room. Get going. Prepare your space with guided steps and save a setup to return to.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

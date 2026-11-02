@@ -1,34 +1,39 @@
-# WorldOS judge demo
+﻿# WorldOS judge demo
 
-**One sentence:** WorldOS turns the things in front of your camera into context you can ask about and act on.
+**One sentence:** WorldOS helps you get your real workspace ready for what you want to do, then remembers the setup you want to return to.
 
-**Submission description:** WorldOS brings AI into everyday spaces. Muse Spark interprets a captured scene and discovers visible object types; SAM 3.1 locates them. A user can select an object, ask a practical question about the image, and follow a suggested next step into dimension checking, room planning, or saving a reference setup. The interface keeps answers attached to their source photograph and separates image recognition from physical measurement.
+**Submission description:** A camera can identify a desk without helping someone start their work. WorldOS connects that understanding to a complete task. Choose a goal, show the workspace, and protect the items that should stay. Muse Spark and SAM 3.1 turn the captured view into a short plan with object-linked steps, explanations, and visible checks. After making changes, compare actual before/after photos, review what the model can and cannot tell, and explicitly save a preferred setup. Next time, a fresh photo and that reference guide the reset. Progress, revisions, corrections, and routine backups make the workflow usable beyond a one-off camera answer.
 
-## A 90-second presentation
+## A two-to-three-minute presentation
 
-| Time | Show | Say |
+| Moment | Show | Explain |
 | --- | --- | --- |
-| 0–12 s | Home: “Your world. Understood.” | “Our spaces are full of decisions: where something belongs, what could work better, and whether there is room for an idea. WorldOS starts with what is in front of you.” |
-| 12–28 s | Select Phone or Laptop in the recorded scan. Toggle Understanding. | “This is recorded output from a real Muse Spark and SAM run. Muse describes the scene; SAM locates the objects. Every selection stays connected to the photograph.” |
-| 28–55 s | Choose Check my space, open the camera, and hold a well-lit desk steady. | “Now this is the live camera. A steady view triggers recognition automatically. It keeps the completed photograph if I move, so old outlines do not float over a different scene.” |
-| 55–75 s | Open Ask and select “How can I make room?” Tap an object referenced in the response. | “I can ask about my actual space. The answer refers back to detected objects I can select. It uses the captured image you see here.” |
-| 75–90 s | Use the suggested next action, or open Fit and enter previously measured dimensions. | “Understanding becomes a next step. Fit uses measurements, Room Studio explores layouts, and a reference setup helps me return things to how they were.” |
+| The purpose | Home: “Make room. Get going.” Choose Get ready to focus. | “I want to start studying. Help me prepare the desk I already have.” |
+| The actual space | Take a well-lit desk photo. Let recognition finish. | “Muse interprets the visible scene; SAM locates items. This photograph stays attached to the instructions.” |
+| Personal constraints | Select the monitor as something that stays. Add a practical note. Request the plan. | “The plan works around what matters to me. I can correct a mistaken identity before starting.” |
+| A useful action | Show the first instruction and highlighted item. Open Why this helps. Physically perform one appropriate step, then mark it done. | “One action and a reason. This completion mark is my report; the app does not call it visual proof.” |
+| Evidence | Take a genuine after photograph from the same angle. Read the review. | “The model compares actual photos. It separates visible changes from things it cannot tell, such as comfort or measured clearance.” |
+| A reason to return | Confirm and name the preferred setup. Open Use this routine again. | “Tomorrow starts with today's preferred setup. I can reset toward it, keep my preferences, or adapt the plan.” |
 
-Provider latency varies. Rehearse on the presentation network and allow extra time for live recognition. The final recorded chain took 20.3 seconds and one question took 6.1 seconds; these are observations, not guarantees. If a result takes longer, explain the Muse-to-SAM chain while it runs. Keep any edited waiting periods clear in a submitted recording.
+Provider latency varies; allow extra time. One final task plan took 23.3 seconds and a separate recognition took 20.3 seconds. Do not promise instant results or disguise prerecorded responses as live. If editing a submission video, make skipped waiting periods clear.
 
-## Prepare the actual demonstration
+## Prepare the demonstration
 
-1. Run or deploy the current checkout. The public hosted version has not been updated by this implementation. Use the existing login and confirm the configured providers work.
-2. On the actual presentation phone, use HTTPS, allow camera access, and scan a well-lit desk with a few distinct objects. Recognition runs on steady snapshots; keep the camera still while the first result returns.
-3. Rehearse one question and object selection. Record provider errors as errors, and use the labelled recorded example if the connection fails.
-4. Measure the clear area and an actual item before the Fit demonstration. The preset examples are not verified dimensions of the camera's detected objects. Supported AR is optional and requires its own device rehearsal.
-5. End or navigate away from the camera and confirm the device's camera indicator turns off. Export saved work you need to keep before using the ephemeral free hosting option.
+1. Deploy the current checkout or use the local preview. The public Render service has automatic deployment off and has not been updated by this implementation. Use its existing login and provider configuration.
+2. Rehearse on the actual phone over HTTPS. The task flow supports a native camera photo or library upload. The separate live-camera view recognizes steady captures automatically.
+3. Use a manageable desk with a genuine reason to prepare it. Test one goal, a protected item, a correction, and a useful physical change. Check each suggestion yourself before following it.
+4. Capture the after photograph from the same angle. If the review is uncertain or wrong, show that honestly and use a clearer view or human judgment. Do not invent a result for the presentation.
+5. Save a routine, reload, and reuse it. Export it from My Spaces; restore the exported routine if free hosting resets its storage. A routine export restores the preferred reference; a task export is an archival record.
+6. Keep the explicitly labelled recorded recognition example as a fallback for explaining Muse/SAM integration. It demonstrates recorded object recognition, not a completed physical task.
 
-## Evidence to include with the submission
+The existing Fit and Room Studio tools are optional deeper demonstrations. Enter actual measurements for fit decisions; test supported native AR separately on the intended device.
 
-- [Current implementation, architecture, and validation](V19_PRODUCT_EXPERIENCE.md)
-- [Real recognition record](v18-live-recognition.json): 17 detections, 12 displayed across types; one suggested type was not localized.
-- [Real scene-question record](v19-scene-question.json): Muse Spark answer with detected-object references and a measurement handoff.
+## Submission evidence
+
+- [Current implementation and verification](V20_USEFUL_WORKSPACE.md)
+- [Real task-plan record](v20-mission-plan.json): three Muse steps with validated object references and a protected monitor.
+- [Real recognition record](v18-live-recognition.json): 17 detections, 12 displayed; one suggested type was not localized.
+- [Real scene-question record](v19-scene-question.json): captured-image reasoning with object references.
 - [Camera reliability and device limitations](V18_CAMERA_RECOGNITION.md)
 
-The software tests use controlled inputs. Recognition accuracy across real rooms, physical fit, and device AR accuracy have not been established. Present the working integration and its visible evidence; keep physical-measurement claims tied to the measurements actually demonstrated.
+Application tests use controlled inputs. Physical task success, real-room recognition accuracy, before/after assessment accuracy, repeat-use demand, and AR accuracy have not been established. Demonstrate what works and what the evidence supports.

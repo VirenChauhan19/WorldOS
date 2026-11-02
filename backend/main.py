@@ -24,6 +24,7 @@ from .backups import backup_loop, scheduled_backup
 from .imaging import prepare_image
 from .inspect_routes import build_inspect_router
 from .consumer_routes import build_consumer_router
+from .missions import build_mission_router
 from .models import AIAnalysisRequest, PlanRequest, PlanResponse, ReasonRequest, VerifyRequest, SceneQuestionRequest
 from .planner import generate_plan, verify_positions
 from .providers import AISettings, ProviderError, ProviderHTTP, capabilities, logger
@@ -264,6 +265,7 @@ def verify(request: VerifyRequest):
 
 app.include_router(build_inspect_router(get_ai_service, run_ai))
 app.include_router(build_consumer_router())
+app.include_router(build_mission_router(get_ai_service, run_ai))
 
 
 @app.middleware("http")

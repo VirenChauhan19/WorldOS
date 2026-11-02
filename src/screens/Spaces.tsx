@@ -5,6 +5,8 @@ import type { TemplateSummary } from '../inspect/types';
 import type { DraftSummary } from '../simple/types';
 import { navigate } from '../navigation';
 import Dialog from '../ui/Dialog';
+import MissionLibrary from '../missions/MissionLibrary';
+import '../missions/missions.css';
 
 export default function Spaces({active=true}:{active?:boolean}){
   const [spaces,setSpaces]=useState<TemplateSummary[]>([]),[drafts,setDrafts]=useState<DraftSummary[]>([]),[selected,setSelected]=useState(''),[checks,setChecks]=useState<{id:string;created_at:string}[]>([]);
@@ -12,6 +14,7 @@ export default function Spaces({active=true}:{active?:boolean}){
   useEffect(()=>{if(!active)return;let live=true;setBusy(true);setError('');void Promise.all([api.listTemplates(),api.listDrafts()]).then(([s,d])=>{if(live){setSpaces(s.templates);setDrafts(d.drafts);}}).catch(()=>{if(live)setError('Your saved spaces couldn’t be loaded. Check your connection and try again.');}).finally(()=>{if(live)setBusy(false);});return()=>{live=false;};},[active,revision]);
   async function history(id:string){setSelected(id);setBusy(true);setError('');setChecks([]);try{setChecks((await api.templateHistory(id)).inspections);}catch{setError('Previous checks couldn’t be loaded. Try again.');}finally{setBusy(false);}}
   return <div className="consumer spaces-simple"><header><span className="eyebrow">READY WHEN YOU ARE</span><h1>My Spaces</h1><p>Your saved setups and unfinished checks.</p></header>
+    <MissionLibrary active={active}/>
     {busy&&<p role="status">Opening your spaces…</p>}{error&&<div className="simple-alert" role="alert">{error}<button className="secondary" onClick={()=>setRevision(n=>n+1)}>Try again</button></div>}
     {!busy&&!error&&!spaces.length&&!drafts.length&&<div className="simple-empty"><FolderHeart size={38}/><h2>A little order starts here.</h2><p>Save a photo of your desk, shelf, or workspace. Next time, you’ll have something to compare it with.</p></div>}
     {!!drafts.length&&<section className="simple-list"><h2>Continue a check</h2>{drafts.map(d=><div className="space-with-action" key={d.id}><button className="space-row" onClick={()=>navigate('inspect',{draft:d.id})}><span>{d.name}<small>{d.step==='result'?'See saved result':'Continue where you left off'}</small></span><ArrowRight size={20}/></button><button className="text-button" aria-label={`Remove draft ${d.name}`} onClick={()=>setRemove(d)}>Remove draft</button></div>)}</section>}

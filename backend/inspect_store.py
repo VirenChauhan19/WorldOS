@@ -23,7 +23,7 @@ class InspectionStore:
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version > 4:
+            if version > 5:
                 raise StoreConflict("This Inspect database requires a newer WorldOS version.")
             if version < 1:
                 db.execute("CREATE TABLE IF NOT EXISTS templates (id TEXT PRIMARY KEY, revision INTEGER NOT NULL, name TEXT NOT NULL, data TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)")
@@ -39,6 +39,10 @@ class InspectionStore:
             if version < 4:
                 db.execute("CREATE TABLE IF NOT EXISTS wizard_drafts (id TEXT PRIMARY KEY, revision INTEGER NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL)")
                 db.execute("PRAGMA user_version = 4")
+            if version < 5:
+                db.execute('CREATE TABLE IF NOT EXISTS missions (id TEXT PRIMARY KEY, revision INTEGER NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL)')
+                db.execute('CREATE TABLE IF NOT EXISTS mission_routines (id TEXT PRIMARY KEY, data TEXT NOT NULL, created_at TEXT NOT NULL)')
+                db.execute('PRAGMA user_version = 5')
 
     @contextmanager
     def connect(self):

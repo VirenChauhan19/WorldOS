@@ -19,7 +19,7 @@ def test_v11_database_migration_preserves_saved_setup_and_inspection(client):
     assert upgraded.template(template['id']) == template
     assert upgraded.inspection(recorded['id']) == recorded
     with upgraded.connect() as db:
-        assert db.execute('PRAGMA user_version').fetchone()[0] == 4
+        assert db.execute('PRAGMA user_version').fetchone()[0] == 5
         assert db.execute('SELECT COUNT(*) FROM wizard_drafts').fetchone()[0] == 0
 
 
@@ -97,7 +97,7 @@ def test_private_draft_survives_reload_conflicts_and_validates_photos(client):
     assert browser.put(f'/api/inspect/drafts/{identity}',json={'revision':1,'state':invalid}).status_code==422
     with InspectionStore(store.path).connect() as db:
         assert db.execute('SELECT COUNT(*) FROM wizard_drafts').fetchone()[0]==1
-        assert db.execute('PRAGMA user_version').fetchone()[0]==4
+        assert db.execute('PRAGMA user_version').fetchone()[0]==5
     assert browser.delete(f'/api/inspect/drafts/{identity}').status_code==200
     assert browser.get(f'/api/inspect/drafts/{identity}').status_code==404
 

@@ -1,27 +1,28 @@
 # WorldOS
 
-**Your world. Understood.**
+**Make room. Get going.**
 
-Point your camera at a workspace. WorldOS recognizes visible objects, answers questions about the captured view, and helps you decide what to do next: compare dimensions, arrange a room, or save a setup to return to.
+Get your space ready to study, work, or create. WorldOS turns a photo and a goal into a short, practical sequence, then helps you check the result and remember the setup that worked for you.
 
 Built for the Meta AI Hackathon with **Muse Spark and SAM 3.1**.
 
-- **See:** automatic recognition after the camera settles, selectable object outlines, and a scene summary.
-- **Ask:** questions grounded in the captured image and detected objects, with tappable references and a suggested next step.
-- **Act:** measured fit comparisons, Room Studio's combined furniture layout, and saved-photo inspection.
-- **Explore:** a responsive home screen with an interactive, explicitly recorded scan from a real provider run.
+- **Start with a purpose:** focus, make room to create, reset, or write your own goal.
+- **Use your actual space:** recognize visible items, choose what stays, and get steps linked to the captured photograph.
+- **Learn as you go:** one instruction at a time, an explanation, and a concrete check. Progress survives reloads; a fresh photo helps adapt the remaining work.
+- **Check and reuse:** compare before/after photos, review uncertainty, and save a named setup to guide the next reset. Export and restore routines when needed.
+- **Go deeper:** live camera questions, measured fit, Room Studio, and the advanced geometry editor remain available.
 
-The full experience runs locally at **http://127.0.0.1:5173**. Sign in with the existing WorldOS login if configured, then choose **Check my space**.
+Open **http://127.0.0.1:5173**, sign in if configured, and choose **Get my space ready**.
 
-Read the [90-second judge demo](docs/HACKATHON_DEMO.md), [current implementation and evidence](docs/V19_PRODUCT_EXPERIENCE.md), and [camera reliability notes](docs/V18_CAMERA_RECOGNITION.md).
+Read the [judge demo](docs/HACKATHON_DEMO.md), [current implementation and evidence](docs/V20_USEFUL_WORKSPACE.md), [scene-question notes](docs/V19_PRODUCT_EXPERIENCE.md), and [camera reliability notes](docs/V18_CAMERA_RECOGNITION.md).
 
 ## Validation and status
 
-**339 frontend tests and 357 backend tests passed**, with 2 optional live tests skipped. The production build and authenticated HTTP smoke checks pass. Chromium checks cover 320, 390, 768, and 1440 pixel layouts, camera lifecycle, question-to-object selection, and the measurement handoff using a synthetic camera.
+**345 frontend tests and 370 backend tests pass**, with 2 optional live tests skipped. The production build passes. Chromium checks cover 320, 390, 768, and 1440 pixel layouts, persisted progress, reusable routines, export/restore, portrait overlays, and the existing camera/question flow. Browser checks use explicitly synthetic model output; they are not evidence of recognition accuracy.
 
-Separate real provider checks on one public desk photo returned **17 detections in 20.3 seconds** (12 displayed across types), followed by a scene question answered in **6.1 seconds**. These are recorded integration observations, not an accuracy benchmark or a latency guarantee. See [recognition evidence](docs/v18-live-recognition.json) and [question evidence](docs/v19-scene-question.json).
+Separate real-provider checks on one public desk photo returned **17 detections in 20.3 seconds** (12 displayed), a scene answer in **6.1 seconds**, and a three-step task plan in **23.3 seconds**. These are individual integration observations, not benchmarks. See [recognition](docs/v18-live-recognition.json), [question](docs/v19-scene-question.json), and [task-plan evidence](docs/v20-mission-plan.json).
 
-This checkout is **local, not redeployed**. Physical camera and AR behavior on the actual demo phone still need checking. Image recognition does not establish physical dimensions or obstacle-free placement; fit comparisons require entered measurements or supported tracked AR. The configured free hosting option has ephemeral storage; export work you want to keep. [Deployment instructions](docs/V08_DEPLOYMENT.md) and [historical release notes](docs/RELEASE_HISTORY.md) remain available.
+The current implementation is **local, not yet redeployed to Render**. Actual phone camera/AR behavior and physical before/after task assessment still need rehearsal. Image reasoning does not establish dimensions or physical clearance. The configured free hosting uses ephemeral storage; export routines from My Spaces and restore those backups after a reset. [Deployment instructions](docs/V08_DEPLOYMENT.md) and [historical releases](docs/RELEASE_HISTORY.md) remain available.
 
 ## Run on Windows PowerShell
 
@@ -110,6 +111,14 @@ For reproducible upload/comparison QA without taking photos, run `.\.venv\Script
 | `POST /api/replan` | Reviewed current scene + original/current requests | Preserve goal/locks and generate revised deterministic movements |
 | `POST /api/ai/reason` | Objects, goal, target, optional inline image | Muse Spark structured constraints for review |
 | `POST /api/ai/ask` | Captured image, question, detected objects | Grounded scene answer, existing object references, and a suggested next action |
+| `GET /api/missions` | ? | List scoped resumable tasks and reusable routines |
+| `POST /api/missions` | Client UUID, goal, constraints, image, optional routine | Save a task capture before inference |
+| `POST /api/missions/{id}/observe` | Revision, optional new image | Recognize the current capture; preserve history when adapting |
+| `POST /api/missions/{id}/plan` | Revision, protected IDs, feedback | Structured Muse steps with validated object references |
+| `POST /api/missions/{id}/progress` | Revision, step ID, boolean | Save user-reported progress |
+| `POST /api/missions/{id}/check` | Revision, fresh after image | Compare actual photos against current steps |
+| `POST /api/missions/{id}/routine` | Revision, name, explicit confirmation | Save the user's preferred setup |
+| `POST /api/missions/routines/import` | Validated routine export fields | Restore a reference with a new ID; no inference |
 | `POST /api/plan` | `PlanRequest` | Validate scene, apply locks, search for sequentially feasible placements |
 | `POST /api/verify` | `{plan_request, observed_objects, tolerance?}` | Recompute the deterministic plan and compare observed geometry |
 
@@ -151,6 +160,7 @@ Verification compares maximum left/top/right/bottom edge error, with a 2.5% tole
 src/WorldOS.tsx          Product navigation and screen lifecycle
 src/screens/ProductHome.tsx  Product home and saved-space entry points
 src/showcase/            Interactive recorded scan and product styling
+src/missions/           Persistent guided tasks, photo reviews, and reusable routines
 src/live/               Camera lifecycle, recognition, scene questions, and measured fit
 src/room/               Combined furniture planning and supported native AR
 src/App.tsx              Advanced Spatial Studio workflow and application state
@@ -160,6 +170,8 @@ src/api.ts               Upload, plan, and verify API client
 src/styles.css           Responsive dark interface and Tailwind import
 public/sample-desk.svg   Original, clearly labeled sample illustration
 backend/main.py         FastAPI routes, Pillow image processing, local static serving
+backend/missions.py     Goal planning, task persistence, photo assessment, routine restore
+backend/mission_models.py  Strict task, step, and review contracts
 backend/models.py       Pydantic request/response contracts
 backend/planner.py      Geometry, bounded search, verification
 backend/adapters.py     Manual/rule implementations and async provider interfaces

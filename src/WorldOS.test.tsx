@@ -4,6 +4,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 vi.mock('./App',()=>({default:()=> <input aria-label="Desk session" defaultValue="Desk"/>}));
 vi.mock('./simple/Wizard',()=>({default:()=> <input aria-label="Photo check draft" defaultValue=""/>}));
 vi.mock('./live/LiveSpace',()=>({default:({active}:{active:boolean})=> <input aria-label="Live fit dimensions" defaultValue="" data-active={active}/>}));
+vi.mock('./missions/Mission',()=>({default:()=> <div>Guided workspace task</div>}));
+vi.mock('./missions/api',()=>({listMissions:vi.fn(async()=>({missions:[],routines:[]}))}));
 vi.mock('./inspect/Inspect',()=>({default:({initialInspectionId}:{initialInspectionId?:string})=> <><input aria-label="Inspect session" defaultValue="Inspect"/><span>{initialInspectionId}</span></>}));
 vi.mock('./ConnectionStatus',()=>({default:()=> <div>Technical diagnostics</div>}));
 vi.mock('./inspect/api',()=>({listTemplates:vi.fn(async()=>({templates:[]})),listDrafts:vi.fn(async()=>({drafts:[]})),templateHistory:vi.fn(async()=>({inspections:[]}))}));
@@ -12,9 +14,9 @@ import { navigate } from './navigation';
 beforeEach(()=>{window.history.replaceState(null,'','/');localStorage.clear();vi.spyOn(window,'scrollTo').mockImplementation(()=>{});});
 afterEach(()=>{cleanup();vi.restoreAllMocks();delete document.documentElement.dataset.motion;});
 it('opens the live camera workspace from the main action and preserves its entered dimensions',async()=>{
-  render(<WorldOS/>);expect(screen.getByRole('heading',{name:/Your world.*Understood/})).toBeTruthy();
+  render(<WorldOS/>);expect(screen.getByRole('heading',{name:/Make room.*Get going/})).toBeTruthy();
   const navigation=screen.getByRole('navigation',{name:'Main navigation'});expect(navigation.querySelectorAll('button').length).toBe(3);
-  expect(screen.queryByText('Technical diagnostics')).toBeNull();fireEvent.click(screen.getByRole('button',{name:'Check my space'}));
+  expect(screen.queryByText('Technical diagnostics')).toBeNull();fireEvent.click(screen.getByRole('button',{name:/Check my space/}));
   const input=await screen.findByLabelText('Live fit dimensions');fireEvent.change(input,{target:{value:'2.5 by 5 metres'}});
   expect(screen.queryByRole('navigation',{name:'Main navigation'})).toBeNull();
   expect(window.location.hash).toBe('#/live');
@@ -22,6 +24,13 @@ it('opens the live camera workspace from the main action and preserves its enter
   act(()=>window.history.back());await waitFor(()=>expect(window.location.hash).toBe('#/live'));
   expect((screen.getByLabelText('Live fit dimensions') as HTMLInputElement).value).toBe('2.5 by 5 metres');
   expect(input.getAttribute('data-active')).toBe('true');
+});
+it('starts a guided task from the primary home action and passes a chosen goal',async()=>{
+  render(<WorldOS/>);fireEvent.click(screen.getByRole('button',{name:'Get my space ready'}));
+  expect(await screen.findByText('Guided workspace task')).toBeTruthy();expect(window.location.hash).toBe('#/mission');
+  expect(screen.queryByRole('navigation',{name:'Main navigation'})).toBeNull();
+  act(()=>navigate('home'));fireEvent.click(screen.getByRole('button',{name:'Make room to create'}));
+  expect(window.location.hash).toBe('#/mission?goal=create');
 });
 it('keeps the saved-photo workflow available and preserves unfinished photo drafts',async()=>{
   window.history.replaceState(null,'','#/inspect');render(<WorldOS/>);

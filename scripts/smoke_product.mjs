@@ -20,6 +20,7 @@ try{
     await page.route('**/api/**',async route=>{
       const endpoint=new URL(route.request().url()).pathname;
       if(endpoint.endsWith('/auth/status'))return route.fulfill({json:{required:false,authenticated:true,access:'owner'}});
+      if(endpoint.endsWith('/missions'))return route.fulfill({json:{missions:[],routines:[]}});
       if(endpoint.endsWith('/ai/analyze'))return route.fulfill({json:fixture});
       if(endpoint.endsWith('/ai/ask')){
         const body=route.request().postDataJSON();assert.ok(body.image_url.startsWith('data:image/jpeg'));assert.equal(body.question,'How can I make room?');assert.ok(body.objects.some(object=>object.id===phone.id));questions++;
@@ -32,7 +33,7 @@ try{
       navigator.mediaDevices.getUserMedia=async()=>{const canvas=document.createElement('canvas');canvas.width=1280;canvas.height=854;const ctx=canvas.getContext('2d');const photo=new Image();photo.src='/desk-preview.webp';await photo.decode();ctx.drawImage(photo,0,0,1280,854);const stream=canvas.captureStream(5);window.__streams.push(stream);const frames=setInterval(()=>{if(stream.active)ctx.drawImage(photo,0,0,1280,854);else clearInterval(frames);},200);return stream;};
     });
     await page.goto('http://127.0.0.1:5173/#/home');
-    await page.getByRole('heading',{name:/Your world.*Understood/}).waitFor();
+    await page.getByRole('heading',{name:/Make room.*Get going/}).waitFor();
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
     await page.screenshot({path:path.join(output,`home-${width}.png`),fullPage:true});
     const layers=page.getByRole('group',{name:'Explore scan layers'});
@@ -41,7 +42,7 @@ try{
     await layers.getByRole('button',{name:/Objects/}).click();
     await page.getByRole('group',{name:'Recorded object types'}).getByRole('button',{name:'Laptop',exact:true}).click();
     assert.equal(await page.getByRole('button',{name:'Explore Laptop',exact:true}).getAttribute('aria-pressed'),'true');
-    await page.getByRole('button',{name:'Check my space',exact:true}).click();
+    await page.getByRole('button',{name:/Check my space/}).click();
     await page.getByRole('button',{name:'Open camera & recognize'}).click();
     try{await page.getByRole('heading',{name:'12 items located'}).waitFor();}catch(error){
       await page.screenshot({path:path.join(output,`failure-${width}.png`),fullPage:true});
