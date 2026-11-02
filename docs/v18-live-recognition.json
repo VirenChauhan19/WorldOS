@@ -1,0 +1,210 @@
+{
+  "checked_at": "2026-11-02T02:56:55.474012+00:00",
+  "scope": "One automatic recognition chain on the bundled public Unsplash photograph, compressed to match live camera capture. Not a hardware or physical accuracy test.",
+  "public_source": "https://unsplash.com/photos/ElFBCgOfoIM",
+  "image_sha256": "a5cf5781bdbe4f93eb1b7a1e567af24c7c7c57f66c082e9ac3aa98df6a4e3e3e",
+  "image_dimensions": {
+    "width": 1280,
+    "height": 854
+  },
+  "concepts_supplied": [],
+  "purpose": "live",
+  "physical_camera_tested": false,
+  "public_deployment_verified": false,
+  "status": "success",
+  "discovery_model": "meta-models/muse-spark-open-1026",
+  "discovery_latency_ms": 14625,
+  "concept_latency_ms": {
+    "desk": 1311,
+    "keyboard": 1309,
+    "monitor": 1793,
+    "laptop": 2045,
+    "tablet": 838,
+    "smartphone": 1834,
+    "mouse": 1613,
+    "cable": 934,
+    "power adapter": 701,
+    "potted plant": 1431
+  },
+  "localization_model": "sam-3.1",
+  "live_request": true,
+  "concepts": [
+    "desk",
+    "laptop",
+    "monitor",
+    "keyboard",
+    "smartphone",
+    "mouse",
+    "tablet",
+    "potted plant",
+    "cable",
+    "power adapter"
+  ],
+  "summary": "Top-down view of a white desk setup with a silver laptop on the left, a large monitor at the top center, a white external keyboard and black mouse in the center, a smartphone below the keyboard, a black tablet on the right, and a small potted plant on the right edge, with cables and power adapters visible at the edges. Some small items may be partially cropped or obscured and inventory should be reviewed.",
+  "object_count": 12,
+  "total_objects": 17,
+  "unmatched_concepts": [
+    "power adapter"
+  ],
+  "truncated": true,
+  "objects": [
+    {
+      "id": "sam-3-1",
+      "label": "keyboard",
+      "box": {
+        "x": 0.00625,
+        "y": 0.3395784543325527,
+        "width": 0.3109375,
+        "height": 0.446135831381733
+      },
+      "locked": false,
+      "source": "sam_3_1",
+      "confidence": 0.9843749403953552
+    },
+    {
+      "id": "sam-3-0",
+      "label": "keyboard",
+      "box": {
+        "x": 0.5359375,
+        "y": 0.45433255269320844,
+        "width": 0.40390625,
+        "height": 0.16627634660421545
+      },
+      "locked": false,
+      "source": "sam_3_1",
+      "confidence": 0.9804878830909729
+    },
+    {
+      "id": "sam-1-0",
+      "label": "laptop",
+      "box": {
+        "x": 0.0,
+        "y": 0.09250585480093677,
+        "width": 0.425,
+        "height": 0.8477751756440282
+      },
+      "locked": false,
+      "source": "sam_3_1",
+      "confidence": 0.96875
+    },
+    {
+      "id": "sam-5-1",
+      "label": "mouse",
+      "box": {
+        "x": 0.5546875,
+        "y": 0.7400468384074942,
+        "width": 0.0828125,
+        "height": 0.17447306791569087
+      },
+      "locked": false,
+      "source": "sam_3_1",
+      "confidence": 0.96875
+    },
+    {
+      "id": "sam-4-0",
+      "label": "smartphone",
+      "box": {
+        "x": 0.4375,
+        "y": 0.6487119437939111,
+        "width": 0.06875,
+        "height": 0.2107728337236534
+      },
+      "locked": false,
+      "source": "sam_3_1",
+      "confidence": 0.9532163739204407
+    },
+    {
+      "id": "sam-0-0",
+      "label": "desk",
+      "box": {
+        "x": 0.0,
+        "y": 0.03044496487119438,
+        "width": 1.0,
+        "height": 0.9695550351288056
+      },
+      "locked": false,
+      "source": "sam_3_1",
+      "confidence": 0.9452055096626282
+    },
+    {
+      "id": "sam-5-0",
+      "label": "mouse",
+      "box": {
+        "x": 0.98046875,
+        "y": 0.5433255269320844,
+        "width": 0.01953125,
+        "height": 0.08548009367681499
+      },
+      "locked": false,
+      "source": "sam_3_1",
+      "confidence": 0.8324607610702515
+    },
+    {
+      "id": "sam-7-0",
+      "label": "potted plant",
+      "box": {
+        "x": 0.94296875,
+        "y": 0.3700234192037471,
+        "width": 0.05703125,
+        "height": 0.16042154566744732
+      },
+      "locked": false,
+      "source": "sam_3_1",
+      "confidence": 0.7968254089355469
+    },
+    {
+      "id": "sam-8-1",
+      "label": "cable",
+      "box": {
+        "x": 0.0,
+        "y": 0.8313817330210773,
+        "width": 0.115625,
+        "height": 0.16042154566744732
+      },
+      "locked": false,
+      "source": "sam_3_1",
+      "confidence": 0.7887788414955139
+    },
+    {
+      "id": "sam-8-6",
+      "label": "cable",
+      "box": {
+        "x": 0.2109375,
+        "y": 0.026932084309133488,
+        "width": 0.0765625,
+        "height": 0.1885245901639344
+      },
+      "locked": false,
+      "source": "sam_3_1",
+      "confidence": 0.7575758099555969
+    },
+    {
+      "id": "sam-6-0",
+      "label": "tablet",
+      "box": {
+        "x": 0.88359375,
+        "y": 0.6826697892271663,
+        "width": 0.11640625,
+        "height": 0.31733021077283374
+      },
+      "locked": false,
+      "source": "sam_3_1",
+      "confidence": 0.7229437232017517
+    },
+    {
+      "id": "sam-2-0",
+      "label": "monitor",
+      "box": {
+        "x": 0.2078125,
+        "y": 0.04566744730679157,
+        "width": 0.7921875,
+        "height": 0.24941451990632318
+      },
+      "locked": false,
+      "source": "sam_3_1",
+      "confidence": 0.675126850605011
+    }
+  ],
+  "duration_ms": 20267,
+  "external_request_count": 11
+}

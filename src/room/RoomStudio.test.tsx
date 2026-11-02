@@ -23,7 +23,7 @@ const measured: WorldARMeasurement = {
 };
 
 beforeEach(() => {
-  camera = { status: 'idle', error: '', analysis: null, analysisFrame: null, steady: false, analyzing: false, start: vi.fn(async () => {}), stop: vi.fn(), retry: vi.fn() };
+  camera = { status: 'idle', error: '', analysis: null, analysisFrame: null, lastScan: null, steady: false, analyzing: false, recognitionStatus: 'off', retryInSeconds: 0, lastRecognizedAt: null, start: vi.fn(async () => {}), stop: vi.fn(), retry: vi.fn() };
   controller = { setFootprint: vi.fn(), setRoomLayout: vi.fn(), selectPoint: vi.fn(() => true), useDetectedSurface: vi.fn(() => true), reset: vi.fn(), end: vi.fn(async () => {}) };
   vi.mocked(useLiveCamera).mockReturnValue(camera);
   vi.mocked(isWorldARSupported).mockResolvedValue(false);
@@ -253,6 +253,23 @@ describe('room furnishing controls', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(camera.retry).toHaveBeenCalledOnce();
     expect(camera.start).not.toHaveBeenCalled();
+  });
+
+  it('shows automatic retry progress without presenting a successful scan', async () => {
+    camera.status = 'live'; camera.recognitionStatus = 'retrying'; camera.retryInSeconds = 4;
+    await renderStudio();
+    fireEvent.click(screen.getByRole('button', { name: 'Camera' }));
+    expect(screen.getByText('Recognition reconnecting · retrying in 4s')).toBeTruthy();
+    expect(screen.queryByText(/objects located in this view/)).toBeNull();
+  });
+
+  it('distinguishes an empty recognition result from objects located', async () => {
+    camera.status = 'live'; camera.steady = true; camera.recognitionStatus = 'ready';
+    camera.analysis = { objects: [], concepts: [], summary: 'An empty room.', message: 'No objects.', warnings: [], provider: 'meta', model: 'sam-3.1', live_request: false };
+    await renderStudio();
+    fireEvent.click(screen.getByRole('button', { name: 'Camera' }));
+    expect(screen.getByText('No objects located · try a brighter, closer view')).toBeTruthy();
+    expectNoPositiveVerdict();
   });
 });
 

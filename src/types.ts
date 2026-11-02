@@ -7,8 +7,9 @@ export interface Plan { status: 'ready' | 'already_clear' | 'impossible' | 'sear
 export interface SceneImage { image_url: string; width: number; height: number; name: string }
 export interface Analysis extends SceneImage { annotation_source: string; message: string }
 export interface InferenceMetadata { inferred_at?: string; inference_cache?: { status: 'hit' | 'miss' | 'shared'; age_ms: number } | null; inference_latency_ms?:number; usage?:Record<string,number>; live_request?:boolean; fallback?:{from_provider:string;reason:string} }
-export interface AIAnalysis extends InferenceMetadata { objects: SceneObject[]; concepts: string[]; summary: string; message: string; warnings: string[]; provider: string; model: string }
+export interface AIAnalysis extends InferenceMetadata { objects: SceneObject[]; concepts: string[]; summary: string; message: string; warnings: string[]; provider: string; model: string; concept_discovery?: InferenceMetadata & {provider?:string;model?:string}; unmatched_concepts?: string[]; total_objects?: number; truncated?: boolean }
 export interface Reasoning extends InferenceMetadata { constraints: PlanningConstraints; provider: string; model: string; confidence: null; message: string }
+export interface SceneAnswer extends InferenceMetadata { answer:string; observations:string[]; object_ids:string[]; next_action:'measure'|'room'|'inspect'|'none'; limitation:string; provider:string; model:string; source:'captured_view' }
 export interface AICapabilities { live_tested: boolean; sam: { provider: string; status: string; message: string; model: string | null }; muse: { provider: string; model: string; status: string; message: string } }
 export type AIIntegration = 'muse' | 'sam';
 export interface ConnectionTestState { status: string; message: string; last_attempt_at: string | null; last_success_at: string | null; live_request_succeeded: boolean; ever_live_request_succeeded: boolean; test_in_progress: boolean; provider_http_status: number | null; inference_latency_ms?:number|null; usage?:Record<string,number> }

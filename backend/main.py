@@ -24,7 +24,7 @@ from .backups import backup_loop, scheduled_backup
 from .imaging import prepare_image
 from .inspect_routes import build_inspect_router
 from .consumer_routes import build_consumer_router
-from .models import AIAnalysisRequest, PlanRequest, PlanResponse, ReasonRequest, VerifyRequest
+from .models import AIAnalysisRequest, PlanRequest, PlanResponse, ReasonRequest, VerifyRequest, SceneQuestionRequest
 from .planner import generate_plan, verify_positions
 from .providers import AISettings, ProviderError, ProviderHTTP, capabilities, logger
 from .visual_verification import ReviewedStateRequest, VisualVerifyRequest, adaptive_replan, automatic_verify, verify_reviewed
@@ -55,7 +55,7 @@ app.add_middleware(RequestLimitsMiddleware, production=security_settings.deploym
                    max_concurrent_writes=int(os.getenv('WORLDOS_MAX_CONCURRENT_WRITES','2')))
 app.middleware("http")(session_auth.middleware)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(security_settings.hosts))
-app.add_middleware(CORSMiddleware, allow_origins=list(security_settings.origins), allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"])
+app.add_middleware(CORSMiddleware, allow_origins=list(security_settings.origins), allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"], expose_headers=["X-WorldOS-Error-Code", "Retry-After"])
 app.include_router(session_auth.router())
 
 
@@ -166,11 +166,11 @@ async def run_ai(operation):
             return result
     except ProviderError as error:
         logger.info('{"event":"ai_result","outcome":"rejected","status":%s}', error.status)
-        raise HTTPException(error.status, str(error)) from None
+        raise HTTPException(error.status, str(error), headers={"X-WorldOS-Error-Code": error.code}) from None
     except ValueError as error:
         raise HTTPException(422, str(error)) from None
     except TimeoutError:
-        raise HTTPException(504, "AI analysis reached its total two-minute time limit. No result was applied; use fewer concepts or manual mode.") from None
+        raise HTTPException(504, "AI analysis reached its total two-minute time limit. No result was applied; use fewer concepts or manual mode.", headers={"X-WorldOS-Error-Code": "timeout"}) from None
 
 
 @app.post("/api/ai/analyze")
@@ -181,6 +181,11 @@ async def ai_analyze(request: AIAnalysisRequest, service: AIService = Depends(ge
 @app.post("/api/ai/reason")
 async def ai_reason(request: ReasonRequest, service: AIService = Depends(get_ai_service)):
     return await run_ai(service.reason(request))
+
+
+@app.post("/api/ai/ask")
+async def ai_ask(request: SceneQuestionRequest, service: AIService = Depends(get_ai_service)):
+    return await run_ai(service.ask(request))
 
 
 @app.post("/api/ai/verify")

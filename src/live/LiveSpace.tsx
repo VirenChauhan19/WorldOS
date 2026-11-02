@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Box, Camera, Check, ChevronDown, Crosshair, Eye, LoaderCircle, Maximize, Pause, RotateCcw, Ruler, ScanLine, ShieldCheck, VideoOff, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Box, Camera, Check, ChevronDown, Crosshair, Eye, LoaderCircle, Maximize, MessageCircle, Pause, RotateCcw, Ruler, ScanLine, ShieldCheck, VideoOff, X } from 'lucide-react';
 import { navigate } from '../navigation';
 import { assessFit, ITEM_PRESETS, suggestFits } from './fit';
 import type { ItemDimensions, SpaceDimensions } from './fit';
 import { isWorldARSupported, startWorldAR } from './xr';
 import type { WorldARController, WorldARMeasurement, WorldARState } from './xr';
 import { useLiveCamera } from './useLiveCamera';
+import SceneUnderstanding from './SceneUnderstanding';
+import AskScene from './AskScene';
 import './live.css';
 
 type Fields={width:string;length:string;height:string};
@@ -35,7 +37,7 @@ function FootprintPlan({space,item,rotation,clearance}:{space:SpaceDimensions;it
 }
 
 export default function LiveSpace({active=true}:{active?:boolean}) {
-  const videoRef=useRef<HTMLVideoElement>(null),canvasRef=useRef<HTMLCanvasElement>(null),overlayRef=useRef<HTMLDivElement>(null);
+  const videoRef=useRef<HTMLVideoElement>(null),canvasRef=useRef<HTMLCanvasElement>(null),overlayRef=useRef<HTMLDivElement>(null),viewerRef=useRef<HTMLElement>(null);
   const controller=useRef<WorldARController|null>(null),xrAbort=useRef<AbortController|null>(null),epoch=useRef(0),activeRef=useRef(active);
   activeRef.current=active;
   const [autoAnalyze,setAutoAnalyze]=useState(true),[xrSupported,setXrSupported]=useState<boolean|null>(null),[xrRunning,setXrRunning]=useState(false),[xrStarting,setXrStarting]=useState(false);
@@ -44,6 +46,9 @@ export default function LiveSpace({active=true}:{active?:boolean}) {
   const [unit,setUnit]=useState<Unit>('cm'),[selected,setSelected]=useState(ITEM_PRESETS[0].id),[label,setLabel]=useState(ITEM_PRESETS[0].label);
   const [itemFields,setItemFields]=useState<Fields>(()=>fields(ITEM_PRESETS[0],'cm')),[spaceFields,setSpaceFields]=useState<Fields>({width:'',length:'',height:''}),[margin,setMargin]=useState('5');
   const [source,setSource]=useState<'ar'|'manual'|null>(null),[actualSize,setActualSize]=useState(false),[measuring,setMeasuring]=useState(false),[aspect,setAspect]=useState(4/3);
+  const [selectedObject,setSelectedObject]=useState<string|null>(null);
+  const [cameraWidth,setCameraWidth]=useState<number>();
+  const [panel,setPanel]=useState<'scene'|'ask'|'fit'>('scene');
   const item:ItemDimensions={id:selected,label,...dimensions(itemFields,unit)};
   const clearance=number(margin,unit);
   const trackingLost=xrRunning&&xrState?.phase==='tracking-lost';
@@ -51,8 +56,20 @@ export default function LiveSpace({active=true}:{active?:boolean}) {
   const assessment=assessFit(space,item,clearance);
   const candidates=useMemo(()=>suggestFits(space,ITEM_PRESETS,clearance),[space?.width,space?.length,space?.height,clearance]);
   const recognized=camera.analysis?.objects??[];
+  const displayedAnalysis=camera.analysis??camera.lastScan?.analysis??null;
+  const testResponse=camera.analysis?.live_request===false&&!camera.analysis.concept_discovery?.live_request;
   const cameraLive=camera.status==='live';
+  useEffect(()=>{if(cameraLive)setPanel('scene');},[cameraLive]);
   const car=/car|vehicle/i.test(`${selected} ${label}`);
+  useEffect(()=>setSelectedObject(null),[displayedAnalysis]);
+  useEffect(()=>{
+    const viewer=viewerRef.current;if(!viewer)return;
+    const measure=()=>{if(viewer.clientWidth&&viewer.clientHeight)setCameraWidth(Math.min(viewer.clientWidth,Math.max(1,viewer.clientHeight-62)*aspect));};
+    measure();
+    const observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(measure);
+    observer?.observe(viewer);window.addEventListener('resize',measure);
+    return()=>{observer?.disconnect();window.removeEventListener('resize',measure);};
+  },[aspect,cameraLive]);
 
   useEffect(()=>{let mounted=true;void isWorldARSupported().then(value=>{if(mounted)setXrSupported(value);}).catch(()=>{if(mounted)setXrSupported(false);});return()=>{mounted=false;};},[]);
   useEffect(()=>{
@@ -72,7 +89,7 @@ export default function LiveSpace({active=true}:{active?:boolean}) {
     if(!canvasRef.current||!overlayRef.current||xrStarting||xrRunning)return;
     const request=++epoch.current;xrAbort.current?.abort();xrAbort.current=new AbortController();camera.stop();setXrError('');setXrStarting(true);setMeasurement(null);setSource('ar');
     try{
-      const value=await startWorldAR({canvas:canvasRef.current,overlay:overlayRef.current,signal:xrAbort.current.signal,onState:state=>{if(request!==epoch.current)return;setXrState(state);if(state.phase==='ended'){controller.current=null;setXrRunning(false);setXrStarting(false);}},onMeasurement:value=>{if(request===epoch.current){setMeasurement(value);if(value)setMeasuring(false);}}});
+      const value=await startWorldAR({canvas:canvasRef.current,overlay:overlayRef.current,signal:xrAbort.current.signal,onState:state=>{if(request!==epoch.current)return;setXrState(state);if(state.phase==='ended'){epoch.current++;controller.current=null;setXrRunning(false);setXrStarting(false);setMeasurement(null);setSource(old=>old==='ar'?null:old);}},onMeasurement:value=>{if(request===epoch.current){setMeasurement(value);if(value)setMeasuring(false);}}});
       if(request!==epoch.current||!activeRef.current){await value.end();return;}
       controller.current=value;setXrRunning(true);setXrStarting(false);setMeasuring(true);
     }catch(error){if(request!==epoch.current)return;setXrStarting(false);setXrRunning(false);setSource(null);setXrError(error instanceof Error?error.message:'Spatial AR could not start. You can still use your camera and enter measurements.');}
@@ -83,26 +100,26 @@ export default function LiveSpace({active=true}:{active?:boolean}) {
   function changeUnit(next:Unit){if(next===unit)return;const convert=(value:Fields):Fields=>Object.fromEntries(Object.entries(value).map(([key,val])=>[key,val.trim()&&Number.isFinite(Number(val))?display(Number(val)*factor(unit),next):val])) as Fields;setItemFields(convert);setSpaceFields(convert);if(margin.trim()&&Number.isFinite(Number(margin)))setMargin(display(Number(margin)*factor(unit),next));setUnit(next);}
   function useManual(){void endAR();setSource('manual');setMeasuring(true);}
   const resultTitle=assessment.verdict==='unknown'?'Measure first. Then know.':assessment.verdict==='fits'?(actualSize?'Footprint fits':'Example footprint fits'):assessment.verdict==='too-tight'?'Fits without your margin':'Needs more room';
-  const statusText=xrStarting?'Starting spatial AR':xrRunning?(trackingLost?'Tracking paused':'Spatial AR'):cameraLive?(camera.analyzing?'Recognizing this view':camera.steady?'Camera steady':'Move, then hold still'):'Camera is off';
+  const statusText=xrStarting?'Starting spatial AR':xrRunning?(trackingLost?'Tracking paused':'Spatial AR'):cameraLive?(camera.analyzing?'Recognizing this view':camera.recognitionStatus==='retrying'?'Retrying recognition':!autoAnalyze?'Preview only':camera.analysis?`${recognized.length} items located`:camera.steady?'Camera steady':'Move, then hold still'):'Camera is off';
 
   return <div ref={overlayRef} className={`live-app ${xrRunning?'is-xr':''} ${cameraLive?'camera-active':''} ${xrState?.points===3?'xr-measured':''}`}>
     <header className="live-header"><button className="live-back" onClick={leave} aria-label="Back to home"><ArrowLeft size={18}/></button><div className="live-wordmark"><ScanLine size={22}/><strong>world<span>os</span></strong><span className="live-header-divider"/><span>LIVE SPACE</span></div><span className="live-session-status"><i className={cameraLive||xrRunning?'on':''}/>{statusText}</span><button className="live-close" onClick={leave} aria-label="Close live space"><X size={19}/></button></header>
     <div className="live-layout">
-      <section className="live-viewer" aria-label="Live camera and spatial view">
+      <section ref={viewerRef} className="live-viewer" aria-label="Live camera and spatial view">
         <canvas ref={canvasRef} className="xr-canvas" aria-label="World-anchored AR outlines"/>
-        <div className="live-video-wrap" style={{aspectRatio:aspect}}>
+        <div className="live-video-wrap" style={{aspectRatio:aspect,maxWidth:cameraWidth}}>
           <video ref={videoRef} autoPlay playsInline muted aria-label="Live camera preview" onLoadedMetadata={e=>{const video=e.currentTarget;if(video.videoWidth&&video.videoHeight)setAspect(video.videoWidth/video.videoHeight);}}/>
-          {cameraLive&&camera.analysis&&camera.steady&&<div className="camera-annotations" aria-label="Items in the last steady camera view">{recognized.map(object=><div className="camera-object" key={object.id} style={{left:`${object.box.x*100}%`,top:`${object.box.y*100}%`,width:`${object.box.width*100}%`,height:`${object.box.height*100}%`}}><span style={object.box.y<.12?{top:4,bottom:'auto'}:undefined}>{object.label}</span></div>)}</div>}
+          {cameraLive&&camera.analysis&&camera.steady&&<div className="camera-annotations" aria-label="Items in the last steady camera view">{recognized.map((object,index)=><button type="button" aria-label={`Highlight ${object.label} in camera`} aria-pressed={selectedObject===object.id} onClick={()=>setSelectedObject(object.id)} className={`camera-object ${selectedObject===object.id?'is-selected':''}`} key={object.id} style={{left:`${object.box.x*100}%`,top:`${object.box.y*100}%`,width:`${object.box.width*100}%`,height:`${object.box.height*100}%`}}><span style={{...(object.box.y<.12?{top:4,bottom:'auto'}:{}),...(object.box.x+object.box.width>.8?{left:'auto',right:0}:{})}}>{index+1} · {object.label}</span></button>)}</div>}
         </div>
-        {!cameraLive&&!xrRunning&&<div className="camera-welcome"><div className="camera-aperture"><ScanLine size={45} strokeWidth={1}/><i/><i/></div><span className="live-kicker">YOUR WORLD, WITH A LITTLE CONTEXT</span><h1>What could fit here?</h1><p>Look through your camera.<br/>Give your next idea a little room.</p>
+        {!cameraLive&&!xrRunning&&<div className="camera-welcome"><div className="camera-aperture"><ScanLine size={45} strokeWidth={1}/><i/><i/></div><span className="live-kicker">SEE. UNDERSTAND. ACT.</span><h1>Your space.<br/>A new perspective.</h1><p>Point your camera. Discover what is there.<br/>Ask what could come next.</p>
           <div className="camera-start-actions"><button className="live-primary" disabled={camera.status==='starting'||xrStarting} onClick={()=>void camera.start()}>{camera.status==='starting'||xrStarting?<LoaderCircle size={19} className="spin"/>:<Camera size={19}/>} {xrStarting?'Starting AR…':camera.status==='starting'?'Opening camera…':autoAnalyze?'Open camera & recognize':'Open camera'} <ArrowRight size={17}/></button>{xrSupported&&<button className="live-link" disabled={xrStarting} onClick={()=>void startAR()}>Measure a space in AR</button>}</div>
           <p className="camera-permission-note">{autoAnalyze?'Objects are recognized automatically. Steady frames go to your configured AI service.':'Camera preview stays on your device.'}</p>
         </div>}
         {cameraLive&&<>
-          <div className="live-viewer-label"><span><i/> LIVE CAMERA</span><span>{camera.analysis?.live_request===false?'Test response':camera.analysis?`${recognized.length} items in last steady view`:autoAnalyze?'Automatic recognition':'Preview only'}</span></div>
+          <div className="live-viewer-label"><span><i/> LIVE CAMERA</span><span>{testResponse?'Test response':camera.analysis?`${recognized.length} items in last steady view`:autoAnalyze?'Automatic recognition':'Preview only'}</span></div>
           <div className="camera-reticle" aria-hidden="true"><i/><i/><i/><i/></div>
           {assessment.verdict!=='unknown'&&space&&<div className={`camera-fit-summary fit-${assessment.verdict}`}><span>{assessment.verdict==='fits'?<Check size={19}/>:<Maximize size={19}/>}</span><div><strong>{resultTitle}</strong><small>{label} · {meters(space.width)} × {meters(space.length)} space</small><small>Entered dimensions · {car?'parked footprint only':'obstacles not assessed'}</small></div></div>}
-          <div className="live-camera-hint" role="status">{camera.analyzing?<><LoaderCircle size={15} className="spin"/>Finding the things in view…</>:!autoAnalyze?<><Eye size={16}/>Camera preview · recognition off</>:camera.error?<><VideoOff size={16}/>Recognition paused</>:!camera.steady?<><ScanLine size={16}/>Hold still to refresh the outlines</>:camera.analysis?<><Check size={16}/>Last steady view · outlines clear when you move</>:<><ScanLine size={16}/>Hold a clear view of the surface</>}</div>
+          <div className="live-camera-hint" role="status">{camera.analyzing?<><LoaderCircle size={15} className="spin"/>Finding the things in view…</>:!autoAnalyze?<><Eye size={16}/>Camera preview · recognition off</>:camera.recognitionStatus==='retrying'?<><LoaderCircle size={15} className="spin"/>Trying again in {camera.retryInSeconds}s</>:camera.error?<><VideoOff size={16}/>Recognition needs attention</>:!camera.steady?<><ScanLine size={16}/>Hold still to refresh the outlines</>:camera.analysis?<><Check size={16}/>{recognized.length?`${recognized.length} items located · tap an outline`:'No items located · try a closer view'}</>:<><ScanLine size={16}/>Hold a clear view of your space</>}</div>
         </>}
         {xrRunning&&<div className="xr-guidance"><span className="live-kicker">{xrState?.points===3?'SPACE MEASURED':xrState?.detectedSurface?'SURFACE MEASURED AUTOMATICALLY':`CORNER ${(xrState?.points??0)+1} OF 3`}</span><h2>{xrState?.points===3?'Your footprint, in your world.':xrState?.detectedSurface?`${meters(xrState.detectedSurface.width)} × ${meters(xrState.detectedSurface.length)}`:xrState?.points===0?'Scan slowly across the surface.':xrState?.points===1?'Mark the width of the space.':'Mark the far edge.'}</h2><p>{xrState?.message}</p>{xrState?.detectedSurface&&<><button className="live-primary" onClick={()=>controller.current?.useDetectedSurface()}><Check size={18}/>Use detected surface</button><p>Detected area may cover only part of the room. Check the outline.</p></>}{xrState?.points!==3&&<button className={xrState?.detectedSurface?'live-link':'live-primary'} disabled={!xrState?.canSelect} onClick={()=>controller.current?.selectPoint()}><Crosshair size={18}/>{xrState?.detectedSurface?'Mark corners instead':'Mark this corner'}</button>}{trackingLost&&<p role="status">The fit estimate is paused until tracking returns.</p>}</div>}
         <div className="live-viewer-tools">
@@ -113,8 +130,13 @@ export default function LiveSpace({active=true}:{active?:boolean}) {
       </section>
 
       <aside className="live-panel" aria-label="Space and fit controls">
+        {cameraLive&&!xrRunning&&<nav className="live-panel-tabs" aria-label="Work with your space">{([{id:'scene',label:'See',Icon:ScanLine},{id:'ask',label:'Ask',Icon:MessageCircle},{id:'fit',label:'Fit',Icon:Ruler}] as const).map(({id,label,Icon})=><button key={id} aria-pressed={panel===id} onClick={()=>setPanel(id)}><Icon size={15}/>{label}{id==='scene'&&displayedAnalysis&&<span>{displayedAnalysis.objects.length}</span>}</button>)}</nav>}
+        {(camera.error||xrError)&&<div className="live-error" role="alert"><p>{xrError||camera.error}</p><button disabled={camera.analyzing||xrStarting} onClick={()=>{if(xrError){void startAR();}else if(cameraLive){camera.retry();}else{void camera.start();}}}>{xrError?'Retry spatial AR':cameraLive?'Retry recognition now':'Retry camera'}</button></div>}
+        {cameraLive&&!xrRunning&&<div className="live-scene-panel" hidden={panel!=='scene'}><SceneUnderstanding analysis={displayedAnalysis} snapshot={!camera.analysis?camera.lastScan?.frame:null} status={camera.analyzing?'analyzing':camera.recognitionStatus} retryInSeconds={camera.retryInSeconds} selectedId={selectedObject} onSelect={setSelectedObject} onRefresh={camera.retry}/>{displayedAnalysis&&<button className="scene-ask-entry" onClick={()=>setPanel('ask')}><MessageCircle size={18}/><span><strong>What could come next?</strong><small>Ask a question about this view.</small></span><ArrowRight size={17}/></button>}</div>}
+        {cameraLive&&!xrRunning&&<div hidden={panel!=='ask'}><AskScene frame={camera.analysisFrame??camera.lastScan?.frame??null} analysis={displayedAnalysis} active={active&&cameraLive} onSelect={id=>{setSelectedObject(id);setPanel('scene');}} onAction={action=>{if(action==='measure'){setPanel('fit');useManual();}else if(action==='room'||action==='inspect'){camera.stop();navigate(action);}}}/></div>}
+        <div className="live-fit-panel" hidden={cameraLive&&!xrRunning&&panel!=='fit'}>
         <button className="room-entry-link" onClick={()=>{camera.stop();void endAR();navigate('room');}}><Box size={19}/><span><strong>Furnish a whole room</strong><small>Bed, desk, table, closet — together in 3D & AR</small></span><ArrowRight size={17}/></button>
-        <div className="live-panel-title"><div><span className="live-kicker">A LITTLE SPATIAL INTELLIGENCE</span><h2>Make room for…</h2></div><Box size={24} strokeWidth={1.3}/></div>
+        <div className="live-panel-title"><div><span className="live-kicker">FROM POSSIBILITY TO PLACEMENT</span><h2>Make room for…</h2></div><Box size={24} strokeWidth={1.3}/></div>
         <p className="live-panel-intro">The camera recognizes what is there. Try something you would like to add.</p>
         <div className="item-picker" role="group" aria-label="Try an item to add">{ITEM_PRESETS.map(value=><button key={value.id} aria-pressed={selected===value.id} onClick={()=>chooseItem(value)}>{value.label}</button>)}<button aria-pressed={selected==='custom'} onClick={()=>{setSelected('custom');setLabel('My item');setActualSize(false);}}>Custom</button></div>
         <div className="item-size-header"><label>{selected==='custom'?<input aria-label="Item name" value={label} maxLength={60} onChange={e=>setLabel(e.target.value)}/>:<strong>{label}</strong>}<span>{actualSize?'Your dimensions':'Editable example dimensions'}</span></label><select aria-label="Measurement unit" value={unit} onChange={e=>changeUnit(e.target.value as Unit)}><option value="cm">cm</option><option value="m">m</option></select></div>
@@ -134,9 +156,9 @@ export default function LiveSpace({active=true}:{active?:boolean}) {
         </section>
         {space&&assessment.verdict!=='unknown'&&<FootprintPlan space={space} item={item} rotation={assessment.rotation} clearance={clearance}/>}
         {!!candidates.length&&<details className="fit-suggestions" open><summary>What else fits this footprint? <ChevronDown size={16}/></summary><p className="live-small">Individual examples using the same clearance. Check actual product dimensions.</p>{candidates.map(({item:value})=><button key={value.id} onClick={()=>chooseItem(value)}><span>{value.label}<small>{meters(value.width)} × {meters(value.length)}</small></span><ArrowRight size={16}/></button>)}</details>}
+        </div>
 
-        {!xrRunning&&<section className="recognition-settings"><label><span><ScanLine size={16}/>Automatic item recognition</span><input type="checkbox" role="switch" aria-label="Automatic item recognition" checked={autoAnalyze} onChange={e=>setAutoAnalyze(e.target.checked)}/></label><p>When on, occasional steady camera frames go to your configured AI service. Recognition identifies items; it does not measure free space.</p>{camera.analysis&&<p className="recognition-evidence">{camera.analysis.live_request===false?'Test response · ':''}{camera.analysis.model} · {recognized.length} item suggestions</p>}</section>}
-        {(camera.error||xrError)&&<div className="live-error" role="alert"><p>{xrError||camera.error}</p><button onClick={()=>{setXrError('');if(cameraLive)camera.retry();else void camera.start();}}>Retry camera {cameraLive?'recognition':''}</button></div>}
+        {!xrRunning&&<section className="recognition-settings"><label><span><ScanLine size={16}/>Automatic item recognition</span><input type="checkbox" role="switch" aria-label="Automatic item recognition" checked={autoAnalyze} onChange={e=>setAutoAnalyze(e.target.checked)}/></label><p>When on, occasional steady camera frames go to your configured AI service. Recognition identifies items; it does not measure free space.</p>{camera.analysis&&<p className="recognition-evidence">{testResponse?'Test response · ':''}{camera.analysis.concepts.length?camera.analysis.model:camera.analysis.concept_discovery?.model??'Scene analysis'} · {recognized.length} item suggestions</p>}</section>}
         {!xrRunning&&<button className="saved-photo-link" onClick={()=>{camera.stop();navigate('inspect');}}>Compare with a saved setup <ArrowRight size={15}/></button>}
       </aside>
     </div>

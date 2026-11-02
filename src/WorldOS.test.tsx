@@ -12,7 +12,7 @@ import { navigate } from './navigation';
 beforeEach(()=>{window.history.replaceState(null,'','/');localStorage.clear();vi.spyOn(window,'scrollTo').mockImplementation(()=>{});});
 afterEach(()=>{cleanup();vi.restoreAllMocks();delete document.documentElement.dataset.motion;});
 it('opens the live camera workspace from the main action and preserves its entered dimensions',async()=>{
-  render(<WorldOS/>);expect(screen.getByRole('heading',{name:'See what fits. Before you move it.'})).toBeTruthy();
+  render(<WorldOS/>);expect(screen.getByRole('heading',{name:/Your world.*Understood/})).toBeTruthy();
   const navigation=screen.getByRole('navigation',{name:'Main navigation'});expect(navigation.querySelectorAll('button').length).toBe(3);
   expect(screen.queryByText('Technical diagnostics')).toBeNull();fireEvent.click(screen.getByRole('button',{name:'Check my space'}));
   const input=await screen.findByLabelText('Live fit dimensions');fireEvent.change(input,{target:{value:'2.5 by 5 metres'}});

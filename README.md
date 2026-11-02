@@ -1,54 +1,27 @@
 # WorldOS
 
-**Current local implementation: Room Studio (V1.6).** Furnish a whole room with a queen bed, desk, table and wardrobe together. Edit a scaled 3D layout, check the combined fit, and place the same furniture in native AR. Compatible runtimes can automatically estimate detected surfaces and labelled object geometry; other browsers retain manual measurement and 3D planning. See [Room Studio, automatic measurements, validation and limits](docs/V16_ROOM_STUDIO.md). **272 frontend tests and the production build pass. Physical-device accuracy is not yet validated; changes are local, not deployed.**
+**Your world. Understood.**
 
-**Live Space (V1.5).** “Check my space” opens a live camera with automatic item recognition, native WebXR measurement on compatible devices, and a measured “what fits here?” comparison. Saved-photo inspection remains available. See [the architecture, device support, evidence, and limits](docs/V15_LIVE_AR.md).
+Point your camera at a workspace. WorldOS recognizes visible objects, answers questions about the captured view, and helps you decide what to do next: compare dimensions, arrange a room, or save a setup to return to.
 
-Validation: **211 frontend tests, 36 backend security/production tests, and the production build passed.** Fake-camera browser checks covered five screen sizes; simulated XR covered rendering and tracking-loss behavior. Separately, one real automatic recognition chain on a public photograph returned **12 detections in 12.6 seconds** through Meta Muse Spark 1.3 and SAM 3.1. Physical AR accuracy and parking suitability remain unverified. These changes are local and have not been deployed.
+Built for the Meta AI Hackathon with **Muse Spark and SAM 3.1**.
 
-## Historical release notes: V1.3 and earlier
+- **See:** automatic recognition after the camera settles, selectable object outlines, and a scene summary.
+- **Ask:** questions grounded in the captured image and detected objects, with tappable references and a suggested next step.
+- **Act:** measured fit comparisons, Room Studio's combined furniture layout, and saved-photo inspection.
+- **Explore:** a responsive home screen with an interactive, explicitly recorded scan from a real provider run.
 
-The provider-access and deployment reports below describe their respective earlier checks. The V1.5 evidence above is the current implementation record; its single successful live request does not establish sustained provider reliability.
+The full experience runs locally at **http://127.0.0.1:5173**. Sign in with the existing WorldOS login if configured, then choose **Check my space**.
 
-**Choose a photo. Find your items. Check what changed.** The guided wizard automatically requests recognition after a new photo is chosen, saves the photo before inference, and keeps manual correction optional. See [V1.3 recognition findings and deployment blockers](docs/V13_AUTOMATIC_RECOGNITION.md).
+Read the [90-second judge demo](docs/HACKATHON_DEMO.md), [current implementation and evidence](docs/V19_PRODUCT_EXPERIENCE.md), and [camera reliability notes](docs/V18_CAMERA_RECOGNITION.md).
 
-**V1.3 is not deployed. SAM access remains unreliable.** One real-photo SAM request succeeded, but production and the subsequent automatic discovery/localization test returned model-access errors. Baseten discovery succeeded. No new paid provider, model substitution, or credential change was made.
+## Validation and status
 
+**339 frontend tests and 357 backend tests passed**, with 2 optional live tests skipped. The production build and authenticated HTTP smoke checks pass. Chromium checks cover 320, 390, 768, and 1440 pixel layouts, camera lifecycle, question-to-object selection, and the measurement handoff using a synthetic camera.
 
-**V1.1 reliability work is ready for deployment review; production was not redeployed.** See [real-world readiness, fixes, live AI evidence, and the guided phone test](docs/V11_REAL_WORLD_READINESS.md). Current live verification: Baseten Muse goal interpretation passed; Meta SAM 3.1 returned a model-access error. The complete physical workflow and real iPhone experience remain unverified. Historical results below do not supersede that current limitation.
+Separate real provider checks on one public desk photo returned **17 detections in 20.3 seconds** (12 displayed across types), followed by a scene question answered in **6.1 seconds**. These are recorded integration observations, not an accuracy benchmark or a latency guarantee. See [recognition evidence](docs/v18-live-recognition.json) and [question evidence](docs/v19-scene-question.json).
 
-**V0.8 defaults to Render Free: one $0-compute web service, no disk or paid database.** Follow the [Free Blueprint retry and iPhone installation guide](docs/V08_DEPLOYMENT.md). **SQLite data, uploaded photos, inspections, backups, and login/session state may be lost on restarts, redeployments, or idle spin-down.** Export important work to your device. Authentication, CSRF, Meta SAM 3.1, Baseten Muse Spark, Inspect, and Spatial Studio remain available. External AI calls retain their provider costs. The original Standard + disk option is separate in [deploy/render.paid.yaml](deploy/render.paid.yaml) for future paid use. No paid service was authorized by this change.
-
-V0.8 validation: **310 backend tests passed (2 optional live tests skipped), 124 frontend tests passed, production build and four HTTP smoke scripts passed.** Separate real provider connectivity checks passed for Meta SAM 3.1 and Baseten Muse Spark through local production-mode authentication; this does not verify a hosted URL or physical accuracy. See [the sanitized live connectivity record](docs/v08-provider-connectivity.json).
-
-**Owner and judge access:** optional, expiring judge logins use a separate demo workspace (ephemeral on Free), with no access to owner data, backups, or connection probes. Judges can complete the existing scan, review, correction, and verification workflow. See the [judge setup and revocation instructions](docs/V08_DEPLOYMENT.md#optional-controlled-judgedemo-access). Judge access is disabled by default.
-
-**Mobile app infrastructure is implemented:** responsive Inspect and Spatial Studio, camera/library controls, touch selection and zoom, an installable PWA with an honest offline screen, generated Capacitor Android/iOS projects, and authenticated HTTPS backend deployment configuration. API credentials remain backend-only. Start with the [V0.7 installation, deployment, native builds, test results, and device checklist](docs/V07_MOBILE.md).
-
-V0.7 validation: **283 backend tests passed (2 optional live tests skipped), 117 frontend tests passed, production build and three HTTP smoke scripts passed.** Native projects were generated and synchronized; **no APK/AAB/IPA was compiled**, and physical-device camera/install validation remains required. Docker deployment was configured but not run. The earlier release notes below retain their historical results.
-
-**Baseten Muse Spark is integrated and live-tested for connection, goal interpretation, and Inspect explanations.** Meta SAM 3.1 remains the detector; the geometric planner and existing workflows are preserved. See the [V0.6 integration, actual request results, configuration, and remaining blockers](docs/V06_BASETEN.md). Baseten credentials stay in the ignored backend `.env`. Physical inspection accuracy is still unmeasured.
-
-
-**WorldOS Inspect adds persistent visual workspace standards, camera alignment, conservative inspection, and geometric restoration.** Open the app to create a reference template, inspect a new photo, review uncertainty, generate correction arrows, and verify another photo. Templates and inspection history persist in local SQLite. The existing desk workflow remains available under **Spatial Studio**.
-
-Start with the [V0.5 startup, first-template, inspection, demo, and evaluation guide](docs/V05_INSPECT.md). [Current Inspect physical evaluation report](docs/inspect-evaluation/results.json): **0 captured photo pairs / 10 defined scenarios; real-world inspection performance is unmeasured.** No V0.5 live provider inspection has been performed in this checkout.
-
-**Demo preparation:** the in-app **Evaluate real photographs** workflow now freezes independent labels before inference, saves inspection/corrected captures and failed attempts, retains original and human-assisted decisions, and exports trial evidence and metrics. Follow the [guided physical trials, demo readiness checklist, backup procedure, and final submission steps](docs/DEMO_READINESS.md). Software validation: **243 backend tests passed (2 optional live tests skipped), 76 frontend tests passed, production build and both HTTP smoke tests passed**. These are not physical accuracy measurements.
-
-Earlier desk releases and their historical observations are documented below.
-
-**V0.4 adds Demo Mode, stronger conservative identity matching, blocker-first movement ordering, fixed-space conflict explanations, bounded inference caching/request sharing, and a ten-scenario physical evaluation workflow.** Start with the [V0.4 demo recording runbook and evaluation protocol](docs/V04_DEMO_AND_EVALUATION.md). [Current physical evaluation report](docs/evaluation-v04/results.json): **0 captured / 10 specified scenarios; real-world movement accuracy remains unmeasured.** Existing single-photo V0.3 observations below are historical evidence, not physical movement trials.
-
-For the first real provider request, follow [First AI connection inference](docs/FIRST_INFERENCE.md): exact credential locations, backend environment setup, the **AI Connection Status** panel, and **Test AI Connection**.
-
-A working spatial planning MVP for the Meta Global AI Developer Hackathon 2026, Indie Developer Track. Upload a photo of a flat surface, annotate objects, specify the area to clear, and receive collision-aware movement instructions. Photograph the result, verify detected or manually reviewed placements, and adapt the plan to the current scene.
-
-**V0.2 adds opt-in, reviewed AI assistance.** Muse Spark reasoning and the selected Meta Model API SAM 3.1 path are implemented against official contracts and validated with real provider requests on synthetic fixtures. V0.3 has now exercised real desk photos; detection gaps and an unchanged-photo verification control are documented in the V0.3 guide. Reliable physical before/after accuracy remains unmeasured. The requested Baseten SAM path is explicitly blocked pending your deployment-specific request/response contract. Manual mode works without keys. See [AI integration setup, exact environment variables, verified sources, test instructions and limitations](docs/AI_INTEGRATION.md).
-
-**V0.3 adds automatic after-photo verification, conservative identity review, protected-object checks, and adaptive replanning.** Follow [V0.3 workflow, reproducible photo benchmark, actual results, and limitations](docs/V03_VERIFICATION.md). The deterministic planner remains unchanged.
-
-The included desk is an original illustration with manual annotations; it uses the same real planner as uploads. Upload alone never sends a photo to a model provider.
+This checkout is **local, not redeployed**. Physical camera and AR behavior on the actual demo phone still need checking. Image recognition does not establish physical dimensions or obstacle-free placement; fit comparisons require entered measurements or supported tracked AR. The configured free hosting option has ephemeral storage; export work you want to keep. [Deployment instructions](docs/V08_DEPLOYMENT.md) and [historical release notes](docs/RELEASE_HISTORY.md) remain available.
 
 ## Run on Windows PowerShell
 
@@ -57,7 +30,6 @@ Requirements: Python 3.12+ and Node.js 22.13+ or 24+ (tested with Python 3.12 an
 First-time setup:
 
 ```powershell
-Set-Location C:\Users\Administrator\Desktop\Github_AI201\WorldOS
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
 npm ci
@@ -67,14 +39,12 @@ if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 Start the backend in terminal 1:
 
 ```powershell
-Set-Location C:\Users\Administrator\Desktop\Github_AI201\WorldOS
 .\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Start the frontend in terminal 2:
 
 ```powershell
-Set-Location C:\Users\Administrator\Desktop\Github_AI201\WorldOS
 npm run dev
 ```
 
@@ -89,7 +59,7 @@ npm run build
 
 Open **http://127.0.0.1:8000**. FastAPI serves `dist/` when it exists at startup. Local loopback mode may run without a login; public deployment requires authentication and HTTPS. SQLite persists saved templates and inspections. See the V0.8 runbook for production setup.
 
-## Test the complete workflow
+## Advanced Spatial Studio workflow
 
 1. **Explore the sample.** The included illustration has six manual object boxes, a laptop-sized target, and three locks. Click **Generate spatial plan**. The API calculates placements for the notebook and headphones, shows numbered arrows, and preserves coffee, plant, and keyboard. Export the full request and result using the download icon. The original image is never presented as a synthesized after-photo.
 2. **Use a real scene.** Click **Understand**, then **Upload photo**, or drop a JPEG, PNG, or WebP onto the scene. Uploads are limited to 12 MB and 24 megapixels. The API decodes the image, corrects EXIF orientation, and resizes large images to at most 1800 pixels on the long side. A new photo clears all previous annotations.
@@ -139,6 +109,7 @@ For reproducible upload/comparison QA without taking photos, run `.\.venv\Script
 | `POST /api/verify/reviewed` | Reviewed current identities and obstacles | Check original protected anchors and current placements without inference |
 | `POST /api/replan` | Reviewed current scene + original/current requests | Preserve goal/locks and generate revised deterministic movements |
 | `POST /api/ai/reason` | Objects, goal, target, optional inline image | Muse Spark structured constraints for review |
+| `POST /api/ai/ask` | Captured image, question, detected objects | Grounded scene answer, existing object references, and a suggested next action |
 | `POST /api/plan` | `PlanRequest` | Validate scene, apply locks, search for sequentially feasible placements |
 | `POST /api/verify` | `{plan_request, observed_objects, tolerance?}` | Recompute the deterministic plan and compare observed geometry |
 
@@ -174,10 +145,15 @@ Clearance is 0.8% of each image axis by default. Coordinates measure image space
 
 Verification compares maximum left/top/right/bottom edge error, with a 2.5% tolerance by default (1% maximum for locked objects), and checks target clearance, object collisions, and workspace bounds. The API requires the exact original object IDs and recomputes the plan rather than trusting client-submitted expected positions. Same aspect ratio is checked for final uploads, but camera registration is manual. Manual success means reviewed annotations match. Automatic success requires supported identities and camera/inventory confirmation, and remains dependent on model detections. V0.3 does not automatically register camera motion. Original protected anchors survive replanning; moved protected objects block revision.
 
-## Structure and future integration
+## Structure
 
 ```text
-src/App.tsx              Workflow and application state
+src/WorldOS.tsx          Product navigation and screen lifecycle
+src/screens/ProductHome.tsx  Product home and saved-space entry points
+src/showcase/            Interactive recorded scan and product styling
+src/live/               Camera lifecycle, recognition, scene questions, and measured fit
+src/room/               Combined furniture planning and supported native AR
+src/App.tsx              Advanced Spatial Studio workflow and application state
 src/Canvas.tsx           Normalized SVG annotations, drag/resize, arrows
 src/geometry.ts          Coordinate utilities and unit tests
 src/api.ts               Upload, plan, and verify API client
@@ -189,7 +165,7 @@ backend/planner.py      Geometry, bounded search, verification
 backend/adapters.py     Manual/rule implementations and async provider interfaces
 backend/ai_adapters.py  Verified Meta SAM and Muse request/response adapters
 backend/providers.py    Credentials, deadlines, safe logs, provider status
-backend/ai_service.py   Concept discovery and segmentation orchestration
+backend/ai_service.py   Concept discovery, segmentation, and scene-question orchestration
 backend/visual_verification.py  Identity matching, evidence review, adaptive replanning
 backend/evaluation.py   Scoped reference-box comparison
 scripts/evaluate_vision.py  Explicit real-photo detection benchmark

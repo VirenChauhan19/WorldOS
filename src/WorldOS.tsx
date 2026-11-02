@@ -40,7 +40,7 @@ export default function WorldOS() {
   },[route.page]);
   return <div className={`worldos-app ${route.page==='live'||route.page==='room'?'live-workspace':''}`}>
     <a className="skip-link" href="#main-content" onClick={event=>{event.preventDefault();document.getElementById(`screen-${route.page}`)?.focus();}}>Skip to content</a>
-    {route.page!=='live'&&route.page!=='room'&&<header className="app-header"><button className="app-brand" onClick={()=>navigate('home')} aria-label="WorldOS home"><span className="brand-symbol"><ScanLine size={23}/></span>world<span>os</span><small>SPATIAL WORKSPACE</small></button>
+    {route.page!=='live'&&route.page!=='room'&&<header className="app-header"><button className="app-brand" onClick={()=>navigate('home')} aria-label="WorldOS home"><span className="brand-symbol"><ScanLine size={23}/></span>world<span>os</span><small>SPATIAL INTELLIGENCE</small></button>
       {route.page!=='inspect'&&<nav className="app-navigation" aria-label="Main navigation">{mainPages.map(page=>{const Icon=icons[page];return <button key={page} aria-current={route.page===page?'page':undefined} onClick={()=>navigate(page)}><Icon size={18} aria-hidden="true"/><span>{titles[page]}</span></button>;})}</nav>}
       {route.page==='inspect'&&<span className="app-header-note"><span className="status-dot"/> YOUR SPACE, IN FOCUS</span>}
     </header>}

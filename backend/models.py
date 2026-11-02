@@ -49,6 +49,31 @@ class AIAnalysisRequest(BaseModel):
     image_url: str = Field(max_length=18_000_000)
     # One noun phrase per entry. Empty means ask Muse Spark to discover concepts.
     concepts: list[str] = Field(default_factory=list, max_length=12)
+    # A live camera preview can show a bounded selection. Planning must retain
+    # the complete validated result or fail, never silently drop obstacles.
+    purpose: Literal["planning", "live"] = "planning"
+
+
+class SceneQuestionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    image_url: str = Field(min_length=1, max_length=18_000_000)
+    question: str = Field(min_length=3, max_length=600)
+    objects: list[SceneObject] = Field(default_factory=list, max_length=12)
+
+    @model_validator(mode="after")
+    def unique_ids(self):
+        if len({obj.id for obj in self.objects}) != len(self.objects):
+            raise ValueError("Object IDs must be unique.")
+        return self
+
+
+class SceneAnswer(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    answer: str = Field(min_length=1, max_length=1500)
+    observations: list[str] = Field(max_length=3)
+    object_ids: list[str] = Field(max_length=12)
+    next_action: Literal["measure", "room", "inspect", "none"]
+    limitation: str = Field(max_length=500)
 
 
 class PlanRequest(BaseModel):

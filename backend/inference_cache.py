@@ -2,6 +2,7 @@
 import asyncio
 from collections import OrderedDict
 from copy import deepcopy
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from hashlib import sha256
 import json
@@ -15,6 +16,7 @@ class InferenceCache:
         self.ttl, self.capacity, self.max_pending, self.clock = ttl, capacity, max_pending, clock
         self.results = OrderedDict()
         self.pending = {}
+        self._depth = ContextVar(f"inference_cache_depth_{id(self)}", default=0)
 
     async def get(self, payload, operation):
         key = sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
@@ -27,20 +29,28 @@ class InferenceCache:
             return {**deepcopy(value), "inference_cache": {"status": "hit", "age_ms": round((now-at)*1000)}}
         shared = key in self.pending
         if not shared:
-            if len(self.pending) >= self.max_pending:
+            # An inspection contains analysis, which contains segment calls.
+            # Count callers rather than these nested cache entries: otherwise
+            # two legitimate concurrent scans can exhaust their own budget.
+            root_operation = self._depth.get() == 0
+            if root_operation and sum(entry["root"] for entry in self.pending.values()) >= self.max_pending:
                 raise ProviderError("AI engine is busy. Wait for the current scan before retrying.", 429, "busy")
 
             async def run():
                 # Bound shared work independently of any individual HTTP caller.
-                async with asyncio.timeout(120):
-                    value = await operation()
+                token = self._depth.set(self._depth.get() + 1)
+                try:
+                    async with asyncio.timeout(120):
+                        value = await operation()
+                finally:
+                    self._depth.reset(token)
                 value = {**value, "inferred_at": datetime.now(timezone.utc).isoformat()}
                 self.results[key] = (self.clock(), deepcopy(value))
                 while len(self.results) > self.capacity:
                     self.results.popitem(last=False)
                 return value
 
-            self.pending[key] = {"task": asyncio.create_task(run()), "waiters": 0}
+            self.pending[key] = {"task": asyncio.create_task(run()), "waiters": 0, "root": root_operation}
         entry = self.pending[key]
         entry["waiters"] += 1
         try:

@@ -1,13 +1,13 @@
 {
   "id": "/",
-  "name": "WorldOS Inspect",
+  "name": "WorldOS",
   "short_name": "WorldOS",
-  "description": "Save your setup. Spot what moved or went missing. Put things back.",
+  "description": "Your world. Understood. See your space, ask about it, and decide what comes next.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f7f9fc",
-  "theme_color": "#f7f9fc",
+  "background_color": "#f4f3ec",
+  "theme_color": "#f4f3ec",
   "lang": "en",
   "icons": [
     {"src":"/icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},
