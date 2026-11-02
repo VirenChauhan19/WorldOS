@@ -3,6 +3,7 @@
 .env.*
 .venv
 node_modules
+public/vision-runtime
 dist
 data
 artifacts
