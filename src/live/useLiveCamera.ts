@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
-import { analyzeAI } from '../api';
-import type { AIAnalysis, SceneImage } from '../types';
+import { analyzeAI, observeLive } from '../api';
+import type { AIAnalysis, SceneImage, SceneObject } from '../types';
+import { ImageTracker, trackingFrame } from './imageTracking';
+import { SceneMemory } from './sceneMemory';
+import type { MemorySnapshot } from './sceneMemory';
+import { LocalDetector, localObjects, mergeLiveObjects, overlap } from './localDetector';
+import type { LocalDetectorStatus } from './localDetector';
 
 export type CameraStatus = 'idle' | 'starting' | 'live' | 'error';
 export type RecognitionStatus = 'off' | 'waiting' | 'stabilizing' | 'analyzing' | 'ready' | 'retrying' | 'error';
@@ -54,10 +59,13 @@ function retryDelay(error: unknown, attempt: number): number | null {
 
 type RecognitionRequest = { controller: AbortController; session: number; scene: number };
 
-export function useLiveCamera({ active, autoAnalyze, videoRef }: {
+export function useLiveCamera({ active, autoAnalyze, videoRef, mode = 'detailed', pauseRecognition = false, findingId = null }: {
   active: boolean;
   autoAnalyze: boolean;
   videoRef: RefObject<HTMLVideoElement | null>;
+  mode?: 'live' | 'detailed';
+  pauseRecognition?: boolean;
+  findingId?: string|null;
 }) {
   const [status, setStatus] = useState<CameraStatus>('idle');
   const [error, setError] = useState('');
@@ -69,6 +77,27 @@ export function useLiveCamera({ active, autoAnalyze, videoRef }: {
   const [recognitionStatus, setRecognitionStatus] = useState<RecognitionStatus>(autoAnalyze ? 'waiting' : 'off');
   const [retryInSeconds, setRetryInSeconds] = useState(0);
   const [lastRecognizedAt, setLastRecognizedAt] = useState<number | null>(null);
+  const [trackedObjects, setTrackedObjects] = useState<SceneObject[]>([]);
+  const [latencyMs, setLatencyMs] = useState<number | null>(null);
+  const [resultAgeMs, setResultAgeMs] = useState<number | null>(null);
+  const tracker = useRef(new ImageTracker());
+  const localTracker=useRef(new ImageTracker(1200));
+  const localDetector=useRef<LocalDetector|null>(null);
+  const localBoxes=useRef<SceneObject[]>([]),cloudBoxes=useRef<SceneObject[]>([]);
+  const localEpoch=useRef(0),localPending=useRef(false),localSerial=useRef(0);
+  const lastLocalResult=useRef(-Infinity),lastLocalMemory=useRef(-Infinity);
+  const cloudAnalysis=useRef<AIAnalysis|null>(null);
+  const [localStatus,setLocalStatus]=useState<LocalDetectorStatus>('off');
+  const [localLatencyMs,setLocalLatencyMs]=useState<number|null>(null);
+  const memoryEngine = useRef(new SceneMemory());
+  const [memory,setMemory]=useState<MemorySnapshot>(()=>memoryEngine.current.snapshot());
+  const capturedTime = useRef<number | null>(null);
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
+  const pausedRef = useRef(pauseRecognition);
+  pausedRef.current = pauseRecognition;
+  const findingRef=useRef(findingId);
+  findingRef.current=findingId;
   const mounted = useRef(true);
   const activeRef = useRef(active), autoRef = useRef(autoAnalyze);
   activeRef.current = active;
@@ -92,7 +121,27 @@ export function useLiveCamera({ active, autoAnalyze, videoRef }: {
     if (mounted.current) { setAnalysis(null); setAnalysisFrame(null); setSteady(false); setLastRecognizedAt(null); }
   }, []);
 
+  const clearTracking = useCallback(() => {
+    tracker.current.clear(); capturedTime.current = null;
+    localEpoch.current++;localTracker.current.clear();localBoxes.current=[];cloudBoxes.current=[];
+    cloudAnalysis.current=null;lastLocalResult.current=-Infinity;lastLocalMemory.current=-Infinity;
+    memoryEngine.current.loseLocation();
+    if(mounted.current)setMemory(memoryEngine.current.snapshot());
+    if (mounted.current) { setTrackedObjects([]); setLatencyMs(null); setResultAgeMs(null); setLocalLatencyMs(null); }
+  }, []);
+
+  const forgetMemory=useCallback(()=>{
+    request.current?.controller.abort();request.current=null;
+    clearTracking();
+    memoryEngine.current.clear();
+    if(mounted.current){setMemory(memoryEngine.current.snapshot());setTrackedObjects([]);setAnalysis(null);setAnalysisFrame(null);setLastScan(null);setAnalyzing(false);setResultAgeMs(null);setLatencyMs(null);}
+  },[clearTracking]);
+  const renamePlace=useCallback((id:string,name:string)=>{
+    memoryEngine.current.rename(id,name);setMemory(memoryEngine.current.snapshot());
+  },[]);
+
   const cancelRecognition = useCallback(() => {
+    localEpoch.current++;
     const old = request.current;
     request.current = null;
     old?.controller.abort();
@@ -111,6 +160,7 @@ export function useLiveCamera({ active, autoAnalyze, videoRef }: {
     cancelRecognition();
     invalidate();
     resetFailures();
+    clearTracking();
     previous.current = null;
     stableSince.current = 0;
     lastRequest.current = -Infinity;
@@ -124,16 +174,19 @@ export function useLiveCamera({ active, autoAnalyze, videoRef }: {
     if (video && old && video.srcObject === old) { video.pause(); video.srcObject = null; }
     stateRef.current = 'idle';
     if (mounted.current) { setStatus('idle'); setLastScan(null); setRecognitionStatus(autoRef.current ? 'waiting' : 'off'); }
-  }, [cancelRecognition, invalidate, resetFailures, videoRef]);
+  }, [cancelRecognition, clearTracking, invalidate, resetFailures, videoRef]);
 
   const retry = useCallback(() => {
+    // Do not abort and start overlapping provider work on repeated clicks.
+    if (request.current) return;
     cancelRecognition();
     resetFailures();
     lastRequest.current = -Infinity;
     stableSince.current = performance.now();
     invalidate();
+    clearTracking();
     setRecognitionStatus(autoRef.current ? stateRef.current === 'live' ? 'stabilizing' : 'waiting' : 'off');
-  }, [cancelRecognition, invalidate, resetFailures]);
+  }, [cancelRecognition, clearTracking, invalidate, resetFailures]);
 
   const start = useCallback(async () => {
     if (!activeRef.current || !mounted.current || pageHidden() || stateRef.current === 'starting' || stateRef.current === 'live') return;
@@ -152,7 +205,7 @@ export function useLiveCamera({ active, autoAnalyze, videoRef }: {
     try {
       let next: MediaStream;
       try {
-        next = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+        next = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } });
       } catch (reason) {
         if (!(reason instanceof Error || reason instanceof DOMException) || reason.name !== 'OverconstrainedError' || currentSession !== session.current || !activeRef.current) throw reason;
         next = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
@@ -182,50 +235,118 @@ export function useLiveCamera({ active, autoAnalyze, videoRef }: {
       const sampleContext = sampleCanvas.getContext('2d', { willReadFrequently: true });
       const frameCanvas = document.createElement('canvas');
       const frameContext = frameCanvas.getContext('2d');
-      if (!sampleContext || !frameContext) throw new DOMException('Camera frame capture unavailable.', 'CaptureError');
+      const localCanvas=document.createElement('canvas');
+      const localContext=localCanvas.getContext('2d');
+      if (!sampleContext || !frameContext || !localContext) throw new DOMException('Camera frame capture unavailable.', 'CaptureError');
       stateRef.current = 'live';
       setStatus('live'); setRecognitionStatus(autoRef.current ? 'stabilizing' : 'off');
       stableSince.current = performance.now();
 
+      let lastSampleAt = performance.now(), lastMemoryCheck = -Infinity,lastLocalStart=-Infinity;
       timer.current = setInterval(() => {
         if (currentSession !== session.current || !activeRef.current) return;
+        const fast = modeRef.current === 'live';
+        const now = performance.now();
+        if (now - lastSampleAt < (fast ? 75 : SAMPLE_MS)) return;
+        lastSampleAt = now;
         if (video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
           stableSince.current = performance.now();
           previous.current = null;
           invalidate();
+          clearTracking();
           return;
         }
+        const sampleWidth = fast ? 128 : 64, sampleHeight = fast ? 96 : 48;
+        if (sampleCanvas.width !== sampleWidth) { sampleCanvas.width = sampleWidth; sampleCanvas.height = sampleHeight; previous.current = null; }
         let pixels: Uint8ClampedArray;
         try {
-          sampleContext.drawImage(video, 0, 0, 64, 48);
-          pixels = sampleContext.getImageData(0, 0, 64, 48).data;
+          sampleContext.drawImage(video, 0, 0, sampleWidth, sampleHeight);
+          pixels = sampleContext.getImageData(0, 0, sampleWidth, sampleHeight).data;
         } catch {
           invalidate();
+          clearTracking();
           stableSince.current = performance.now();
           failedRecognition.current = true;
           setRecognitionStatus(autoRef.current ? 'error' : 'off');
           setError('This camera frame could not be read. Try recognition again.');
           return;
         }
-        const now = performance.now();
+        const trackedFrame = fast ? trackingFrame(pixels, sampleWidth, sampleHeight, now) : null;
+        if (trackedFrame && autoRef.current) {
+          cloudBoxes.current=tracker.current.push(trackedFrame);
+          localBoxes.current=localTracker.current.push(trackedFrame);
+          setTrackedObjects(mergeLiveObjects(localBoxes.current,cloudBoxes.current));
+          // Local place recognition continues even while a cloud request is
+          // in flight. No API round trip is needed to recover a known view.
+          if(now-lastMemoryCheck>=400){
+            lastMemoryCheck=now;
+            memoryEngine.current.observe(trackedFrame,findingRef.current);
+          }else memoryEngine.current.track(trackedFrame);
+          setMemory(memoryEngine.current.snapshot());
+          if (capturedTime.current !== null) setResultAgeMs(now - capturedTime.current);
+        }
+        const detector=localDetector.current;
+        if(trackedFrame&&autoRef.current&&!pausedRef.current&&detector?.available&&!localPending.current&&now-lastLocalStart>=120){
+          localPending.current=true;lastLocalStart=now;
+          const generation=localEpoch.current,capturedAt=Date.now();
+          const previousLocal=localBoxes.current,remote=cloudBoxes.current,remoteDetails=cloudAnalysis.current?.details??{};
+          const sameLocal=()=>mounted.current&&currentSession===session.current&&generation===localEpoch.current&&activeRef.current&&autoRef.current&&!pausedRef.current&&modeRef.current==='live'&&localDetector.current===detector;
+          try{
+          const scale=Math.min(1,512/Math.max(video.videoWidth,video.videoHeight));
+          localCanvas.width=Math.max(1,Math.round(video.videoWidth*scale));localCanvas.height=Math.max(1,Math.round(video.videoHeight*scale));
+          localContext.drawImage(video,0,0,localCanvas.width,localCanvas.height);
+          const width=localCanvas.width,height=localCanvas.height;
+          const frame:SceneImage={image_url:localCanvas.toDataURL('image/jpeg',.65),width,height,name:'On-device camera frame'};
+          void createImageBitmap(localCanvas).then(bitmap=>{
+            if(!sameLocal()){bitmap.close();return null;}
+            return detector.detect(bitmap,now);
+          }).then(result=>{
+            if(!result||!sameLocal())return;
+            const objects=localObjects(result,width,height,previousLocal,()=>`device-${++localSerial.current}`);
+            const details=Object.fromEntries(objects.flatMap(object=>{
+              const match=remote.find(old=>old.label.toLowerCase()===object.label.toLowerCase()&&overlap(old,object)>.5);
+              return match&&remoteDetails[match.id]?[[object.id,remoteDetails[match.id]]]:[];
+            }));
+            let observed:AIAnalysis={objects:mergeLiveObjects(objects,remote),details:{...remoteDetails,...details},concepts:objects.map(object=>object.label),summary:'Common objects recognized on this device. AI adds details in the background.',message:'',warnings:[],provider:'on_device',model:'EfficientDet Lite0',live_request:false};
+            // Remember at most once a second, while fresh labels update faster.
+            if(now-lastLocalMemory.current>=1000){
+              lastLocalMemory.current=now;
+              observed=memoryEngine.current.remember(observed,frame,trackedFrame,capturedAt);
+              setMemory(memoryEngine.current.snapshot());
+            }
+            const local=observed.objects.filter(object=>object.source==='on_device');
+            localBoxes.current=localTracker.current.seed(local,trackedFrame);
+            setTrackedObjects(mergeLiveObjects(localBoxes.current,cloudBoxes.current));
+            lastLocalResult.current=performance.now();capturedTime.current=now;
+            setLocalLatencyMs(performance.now()-now);setResultAgeMs(performance.now()-now);
+            setAnalysis(observed);setAnalysisFrame(frame);setLastScan({analysis:observed,frame,capturedAt});
+            setLastRecognizedAt(Date.now());
+          }).catch(()=>{
+            if(sameLocal()){detector.close();setLocalStatus('unavailable');}
+          }).finally(()=>{localPending.current=false;});
+          }catch{localPending.current=false;detector.close();setLocalStatus('unavailable');}
+        }
         const moving = !!previous.current && changed(pixels, previous.current) || !!anchor.current && changed(pixels, anchor.current);
         previous.current = pixels;
         if (moving) {
           stableSince.current = now;
-          invalidate();
+          if (!fast) invalidate();
           if (autoRef.current && !failedRecognition.current && !retryAt.current) setRecognitionStatus('stabilizing');
         }
         if (retryAt.current) setRetryInSeconds(Math.max(0, Math.ceil((retryAt.current - now) / 1000)));
-        if (moving || now - stableSince.current < STEADY_MS) return;
-        setSteady(true);
-        if (!autoRef.current || failedRecognition.current || request.current || completedScene.current === scene.current || now < retryAt.current || now - lastRequest.current < MIN_REQUEST_GAP_MS) return;
-        const scale = Math.min(1, 1280 / Math.max(video.videoWidth, video.videoHeight));
+        if (!fast && (moving || now - stableSince.current < STEADY_MS)) return;
+        setSteady(!moving);
+        // The camera and local tracking run independently. At most one API
+        // frame is in flight; sample the newest frame only when capacity frees.
+        // 3.5s also stays below the default 20 requests/minute production budget.
+        if (!autoRef.current || pausedRef.current || failedRecognition.current || request.current || (!fast && completedScene.current === scene.current) || now < retryAt.current || now - lastRequest.current < (fast ? 3500 : MIN_REQUEST_GAP_MS)) return;
+        const scale = Math.min(1, (fast ? 768 : 1280) / Math.max(video.videoWidth, video.videoHeight));
         frameCanvas.width = Math.max(1, Math.round(video.videoWidth * scale));
         frameCanvas.height = Math.max(1, Math.round(video.videoHeight * scale));
         let frame: SceneImage;
         try {
           frameContext.drawImage(video, 0, 0, frameCanvas.width, frameCanvas.height);
-          const image_url = frameCanvas.toDataURL('image/jpeg', .82);
+          const image_url = frameCanvas.toDataURL('image/jpeg', fast ? .7 : .82);
           if (!image_url.startsWith('data:image/')) throw new Error('Empty camera frame.');
           frame = { image_url, width: frameCanvas.width, height: frameCanvas.height, name: 'Live camera frame' };
         } catch {
@@ -234,7 +355,7 @@ export function useLiveCamera({ active, autoAnalyze, videoRef }: {
           setError('This camera frame could not be read. Try recognition again.');
           return;
         }
-        anchor.current = pixels;
+        anchor.current = fast ? null : pixels;
         const current: RecognitionRequest = { controller: new AbortController(), session: currentSession, scene: scene.current };
         const capturedAt = Date.now();
         request.current = current;
@@ -244,18 +365,31 @@ export function useLiveCamera({ active, autoAnalyze, videoRef }: {
         setAnalyzing(true); setRecognitionStatus('analyzing');
         const sameSession = () => mounted.current && request.current === current && current.session === session.current && autoRef.current && activeRef.current;
         const isCurrent = () => sameSession() && current.scene === scene.current;
-        void analyzeAI(frame.image_url, [], current.controller.signal, 'live').then(result => {
+        void (fast ? observeLive(frame.image_url, current.controller.signal) : analyzeAI(frame.image_url, [], current.controller.signal, 'live')).then(received => {
+          if(!sameSession())return;
+          const result=fast&&trackedFrame?memoryEngine.current.remember(received,frame,trackedFrame,capturedAt):received;
+          if(fast)cloudAnalysis.current=result;
+          if(fast)setMemory(memoryEngine.current.snapshot());
           // Slow cloud inference can complete after the phone has moved. Keep
           // the exact captured photo and its result available for review, but
           // never project those old boxes over the changed live video.
-          if (sameSession()) {
+          const localIsFresh=fast&&performance.now()-lastLocalResult.current<1200;
+          if (sameSession()&&!localIsFresh) {
             setLastScan({ analysis: result, frame, capturedAt });
             retryCount.current = 0;
           }
           if (!isCurrent()) return;
+          if (fast && trackedFrame) {
+            if(!localIsFresh)capturedTime.current = trackedFrame.at;
+            cloudBoxes.current=tracker.current.seed(result.objects, trackedFrame);
+            setTrackedObjects(mergeLiveObjects(localBoxes.current,cloudBoxes.current));
+            setLatencyMs(performance.now() - now);
+            if(!localIsFresh)setResultAgeMs(performance.now() - now);
+          }
           completedScene.current = current.scene;
           retryCount.current = 0;
-          setAnalysis(result); setAnalysisFrame(frame); setError('');
+          if(!localIsFresh){setAnalysis(result);setAnalysisFrame(frame);}
+          setError('');
           setLastRecognizedAt(Date.now()); setRecognitionStatus('ready');
         }).catch(reason => {
           // Provider failures apply to this session even if the camera moved.
@@ -279,39 +413,53 @@ export function useLiveCamera({ active, autoAnalyze, videoRef }: {
           request.current = null;
           if (mounted.current) setAnalyzing(false);
         });
-      }, SAMPLE_MS);
+      }, 40);
     } catch (reason) {
       if (!mounted.current || currentSession !== session.current) return;
       stop();
       stateRef.current = 'error';
       setStatus('error'); setRecognitionStatus('error'); setError(cameraError(reason));
     }
-  }, [invalidate, resetFailures, stop, videoRef]);
+  }, [clearTracking, invalidate, resetFailures, stop, videoRef]);
 
   useEffect(() => { if (!active) stop(); }, [active, stop]);
+  useEffect(()=>{
+    if(!active||!autoAnalyze||mode!=='live'){setLocalStatus('off');return;}
+    if(typeof Worker==='undefined'||typeof OffscreenCanvas==='undefined'||typeof createImageBitmap==='undefined'){setLocalStatus('unavailable');return;}
+    let detector:LocalDetector;
+    try{detector=new LocalDetector(value=>{if(mounted.current)setLocalStatus(value);});localDetector.current=detector;}
+    catch{setLocalStatus('unavailable');return;}
+    return()=>{detector.close();if(localDetector.current===detector)localDetector.current=null;};
+  },[active,autoAnalyze,mode]);
+  useEffect(() => {
+    if (pauseRecognition) cancelRecognition();
+  }, [pauseRecognition, cancelRecognition]);
   useEffect(() => {
     cancelRecognition();
+    clearTracking();
     invalidate();
     setLastScan(null);
     if (stateRef.current !== 'error') resetFailures();
     lastRequest.current = -Infinity;
     stableSince.current = performance.now();
     setRecognitionStatus(autoAnalyze ? stateRef.current === 'live' ? 'stabilizing' : stateRef.current === 'error' ? 'error' : 'waiting' : 'off');
-  }, [autoAnalyze, cancelRecognition, invalidate, resetFailures]);
+  }, [autoAnalyze, mode, cancelRecognition, clearTracking, invalidate, resetFailures]);
   useEffect(() => {
     mounted.current = true;
     const onVisibility = () => { if (document.visibilityState === 'hidden') stop(); };
+    const onSessionExpired=()=>{stop();forgetMemory();localDetector.current?.close();};
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('pagehide', stop);
-    window.addEventListener('worldos:session-expired', stop);
+    window.addEventListener('worldos:session-expired', onSessionExpired);
     return () => {
       mounted.current = false;
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('pagehide', stop);
-      window.removeEventListener('worldos:session-expired', stop);
+      window.removeEventListener('worldos:session-expired', onSessionExpired);
       stop();
+      memoryEngine.current.clear();
     };
-  }, [stop]);
+  }, [forgetMemory,stop]);
 
-  return { status, error, analysis, analysisFrame, lastScan, steady, analyzing, recognitionStatus, retryInSeconds, lastRecognizedAt, start, stop, retry };
+  return { status, error, analysis, analysisFrame, lastScan, steady, analyzing, recognitionStatus, retryInSeconds, lastRecognizedAt, trackedObjects, latencyMs, resultAgeMs, localStatus, localLatencyMs, memory, forgetMemory, renamePlace, start, stop, retry };
 }

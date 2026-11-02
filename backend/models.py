@@ -23,7 +23,7 @@ class SceneObject(BaseModel):
     label: str = Field(min_length=1, max_length=80)
     box: Box
     locked: bool = False
-    source: Literal["manual", "sam_3_1", "ai_corrected"] = "manual"
+    source: Literal["manual", "sam_3_1", "ai_corrected", "muse_spark", "on_device"] = "manual"
     confidence: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
 
 
@@ -52,6 +52,24 @@ class AIAnalysisRequest(BaseModel):
     # A live camera preview can show a bounded selection. Planning must retain
     # the complete validated result or fail, never silently drop obstacles.
     purpose: Literal["planning", "live"] = "planning"
+
+
+class LiveAnalysisRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    image_url: str = Field(min_length=1, max_length=2_000_000)
+
+
+class LiveDetection(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    label: str = Field(min_length=1, max_length=60)
+    box: Box
+    detail: str = Field(max_length=120)
+
+
+class LiveObservation(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    summary: str = Field(min_length=1, max_length=200)
+    objects: list[LiveDetection] = Field(max_length=6)
 
 
 class SceneQuestionRequest(BaseModel):

@@ -4,8 +4,11 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useLiveCamera } from './useLiveCamera';
 import type { AIAnalysis } from '../types';
 
-vi.mock('../api', () => ({ analyzeAI: vi.fn() }));
-import { analyzeAI } from '../api';
+vi.mock('../api', () => ({ analyzeAI: vi.fn(), observeLive: vi.fn() }));
+import { analyzeAI, observeLive } from '../api';
+vi.mock('./localDetector',async original=>({...await original<typeof import('./localDetector')>(),LocalDetector:vi.fn()}));
+import { LocalDetector } from './localDetector';
+import type { LocalResult } from './localDetector';
 
 const response: AIAnalysis = { objects: [{ id: 'cup', label: 'Cup', box: { x: .2, y: .3, width: .1, height: .1 }, locked: false }], concepts: ['cup'], summary: '', message: '', warnings: [], provider: 'fixture', model: 'fixture', live_request: false };
 let level = 40;
@@ -32,8 +35,144 @@ beforeEach(() => {
   }) as unknown as CanvasRenderingContext2D);
   vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockImplementation(function(this: HTMLCanvasElement) { return `data:image/jpeg;base64,fixture-${this.width}x${this.height}`; });
   vi.mocked(analyzeAI).mockResolvedValue(response);
+  vi.mocked(observeLive).mockResolvedValue(response);
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.clearAllMocks(); vi.useRealTimers(); });
+
+function enableLocalDetection(){
+  vi.stubGlobal('Worker',vi.fn());vi.stubGlobal('OffscreenCanvas',vi.fn());
+  vi.stubGlobal('createImageBitmap',vi.fn().mockResolvedValue({close:vi.fn()}));
+  const detector={available:true,close:vi.fn(),detect:vi.fn<(...args:unknown[])=>Promise<LocalResult>>()};
+  vi.mocked(LocalDetector).mockImplementation(function(onStatus){onStatus('ready');return detector as unknown as LocalDetector;});
+  return detector;
+}
+
+it('prepares the local model before camera access and shows fresh labels without a cloud result',async()=>{
+  const detector=enableLocalDetection();
+  detector.detect.mockResolvedValue({latencyMs:40,detections:[{boundingBox:{originX:100,originY:80,width:100,height:100},categories:[{categoryName:'cup',score:.8}]}]});
+  vi.mocked(observeLive).mockImplementation(()=>new Promise(()=>{}));
+  getUserMedia.mockResolvedValue(camera().stream);const ref=videoRef();
+  const {result}=renderHook(()=>useLiveCamera({active:true,autoAnalyze:true,videoRef:ref,mode:'live'}));
+  expect(LocalDetector).toHaveBeenCalledOnce();expect(getUserMedia).not.toHaveBeenCalled();
+  await act(async()=>result.current.start());await advance(80);
+  expect(result.current.analysis?.provider).toBe('on_device');
+  expect(result.current.analysisFrame?.width).toBe(512);
+  expect(result.current.trackedObjects[0].label).toBe('Cup');
+  expect(result.current.memory.items[0].object.source).toBe('on_device');
+  expect(observeLive).toHaveBeenCalledOnce();
+  await advance(500);expect(detector.detect.mock.calls.length).toBeGreaterThan(1);
+  expect(observeLive).toHaveBeenCalledOnce();
+});
+
+it('never queues local frames and ignores a local result after recognition is disabled',async()=>{
+  const detector=enableLocalDetection();let complete!:(value:LocalResult)=>void;
+  detector.detect.mockImplementation(()=>new Promise(resolve=>{complete=resolve;}));
+  vi.mocked(observeLive).mockImplementation(()=>new Promise(()=>{}));
+  getUserMedia.mockResolvedValue(camera().stream);const ref=videoRef();
+  const {result,rerender}=renderHook(({autoAnalyze})=>useLiveCamera({active:true,autoAnalyze,videoRef:ref,mode:'live'}),{initialProps:{autoAnalyze:true}});
+  await act(async()=>result.current.start());await advance(1000);
+  expect(detector.detect).toHaveBeenCalledOnce();
+  rerender({autoAnalyze:false});expect(detector.close).toHaveBeenCalledOnce();
+  await act(async()=>complete({latencyMs:30,detections:[{boundingBox:{originX:100,originY:80,width:100,height:100},categories:[{categoryName:'cup',score:.8}]}]}));
+  expect(result.current.analysis).toBeNull();expect(result.current.memory.items).toEqual([]);
+  expect(result.current.trackedObjects).toEqual([]);
+});
+
+it('live mode captures immediately, downsizes, and refreshes without waiting for stillness', async () => {
+  getUserMedia.mockResolvedValue(camera().stream);
+  const ref=videoRef();
+  const {result}=renderHook(()=>useLiveCamera({active:true,autoAnalyze:true,videoRef:ref,mode:'live'}));
+  await act(async()=>result.current.start());
+  await advance(80);
+  expect(observeLive).toHaveBeenCalledWith('data:image/jpeg;base64,fixture-768x432',expect.any(AbortSignal));
+  expect(analyzeAI).not.toHaveBeenCalled();
+  level=140;
+  await advance(3600);
+  expect(observeLive).toHaveBeenCalledTimes(2);
+  expect(result.current.latencyMs).not.toBeNull();
+});
+
+it('live mode never queues frames and ignores a result after switching mode', async () => {
+  getUserMedia.mockResolvedValue(camera().stream);
+  let complete!: (value:AIAnalysis)=>void;
+  vi.mocked(observeLive).mockImplementationOnce(()=>new Promise(resolve=>{complete=resolve;}));
+  const ref=videoRef();
+  const {result,rerender}=renderHook(({mode}:{mode:'live'|'detailed'})=>useLiveCamera({active:true,autoAnalyze:true,videoRef:ref,mode}),{initialProps:{mode:'live'}});
+  await act(async()=>result.current.start()); await advance(80);
+  const signal=vi.mocked(observeLive).mock.calls[0][1];
+  await advance(5000);
+  expect(observeLive).toHaveBeenCalledOnce();
+  act(()=>result.current.retry());
+  expect(signal.aborted).toBe(false);
+  rerender({mode:'detailed'});
+  expect(signal.aborted).toBe(true);
+  await act(async()=>complete(response));
+  expect(result.current.analysis).toBeNull();
+  expect(result.current.trackedObjects).toEqual([]);
+  await advance(1000);
+  expect(analyzeAI).toHaveBeenCalledOnce();
+});
+
+it('live mode stops requests and clears tracking when recognition is turned off',async()=>{
+  getUserMedia.mockResolvedValue(camera().stream);
+  const ref=videoRef();
+  const {result,rerender}=renderHook(({autoAnalyze})=>useLiveCamera({active:true,autoAnalyze,videoRef:ref,mode:'live'}),{initialProps:{autoAnalyze:true}});
+  await act(async()=>result.current.start()); await advance(80);
+  rerender({autoAnalyze:false}); await advance(15000);
+  expect(observeLive).toHaveBeenCalledOnce();
+  expect(result.current.trackedObjects).toEqual([]);
+  expect(result.current.latencyMs).toBeNull();
+  expect(result.current.status).toBe('live');
+});
+
+it('retains remembered items after stopping, but clears them when the session expires',async()=>{
+  getUserMedia.mockResolvedValue(camera().stream);
+  const ref=videoRef();
+  const {result}=renderHook(()=>useLiveCamera({active:true,autoAnalyze:true,videoRef:ref,mode:'live'}));
+  await act(async()=>result.current.start());await advance(80);
+  const item=result.current.memory.items[0];
+  expect(item.object.label).toBe('Cup');
+  act(()=>result.current.renamePlace(item.placeId,'My desk'));
+  act(()=>result.current.stop());
+  expect(result.current.memory.items[0]).toEqual(item);
+  expect(result.current.memory.places[0].name).toBe('My desk');
+  expect(result.current.memory.location).toBeNull();
+  act(()=>window.dispatchEvent(new Event('worldos:session-expired')));
+  expect(result.current.memory.items).toEqual([]);
+  expect(result.current.memory.places).toEqual([]);
+});
+
+it('clearing memory discards an in-flight result and allows a fresh scan',async()=>{
+  getUserMedia.mockResolvedValue(camera().stream);
+  let complete!:(value:AIAnalysis)=>void;
+  vi.mocked(observeLive).mockImplementationOnce(()=>new Promise(resolve=>{complete=resolve;}));
+  const ref=videoRef();
+  const {result}=renderHook(()=>useLiveCamera({active:true,autoAnalyze:true,videoRef:ref,mode:'live'}));
+  await act(async()=>result.current.start());await advance(80);
+  const signal=vi.mocked(observeLive).mock.calls[0][1];
+  act(()=>result.current.forgetMemory());
+  expect(signal.aborted).toBe(true);
+  await act(async()=>complete(response));
+  expect(result.current.memory.items).toEqual([]);
+  expect(result.current.analysis).toBeNull();
+  await advance(3600);
+  expect(observeLive).toHaveBeenCalledTimes(2);
+  expect(result.current.memory.items[0].object.label).toBe('Cup');
+});
+
+it('holds the captured question view while pausing API refresh and resumes afterward',async()=>{
+  getUserMedia.mockResolvedValue(camera().stream);
+  const ref=videoRef();
+  const {result,rerender}=renderHook(({pauseRecognition})=>useLiveCamera({active:true,autoAnalyze:true,videoRef:ref,mode:'live',pauseRecognition}),{initialProps:{pauseRecognition:false}});
+  await act(async()=>result.current.start()); await advance(80);
+  const captured=result.current.analysisFrame;
+  rerender({pauseRecognition:true}); await advance(10000);
+  expect(observeLive).toHaveBeenCalledOnce();
+  expect(result.current.analysisFrame).toBe(captured);
+  expect(result.current.status).toBe('live');
+  rerender({pauseRecognition:false}); await advance(80);
+  expect(observeLive).toHaveBeenCalledTimes(2);
+});
 
 it('stops a late permission grant after the user closes the camera', async () => {
   const source = camera(), ref = videoRef();

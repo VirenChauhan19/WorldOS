@@ -18,9 +18,15 @@ The main flow is **Photo → Steps → Check**. Start without typing, follow one
 
 Read the [simplified experience](docs/V21_EASY_TO_USE.md), [judge demo](docs/HACKATHON_DEMO.md), [current implementation and evidence](docs/V20_USEFUL_WORKSPACE.md), [scene-question notes](docs/V19_PRODUCT_EXPERIENCE.md), and [camera reliability notes](docs/V18_CAMERA_RECOGNITION.md).
 
+## Live camera mode
+
+Choose **Open live camera** on Home for fast on-device labels over the camera preview. Common objects can be recognized before the API responds; the API adds details in the background. The real local-model browser check measured 76–97 ms per inference after preparation. First camera labels took 410 ms in that controlled test; physical-phone performance remains unverified. Tap labels for details or use **Expand** for the camera workspace. **Detailed** retains the steady SAM scan. See [local recognition and evidence](docs/V24_LOCAL_RECOGNITION.md) and the [cloud camera path](docs/V22_CONTINUOUS_CAMERA.md). This is 2D image augmentation, not headset-grade 3D anchoring.
+
+**Memory** remembers seen areas and items while you look around. Name an area, search for an item, and return toward its last-seen photo to recover remembered spots locally. **Help me with this area** starts a guided task from that photo. Memory lasts for this page session and has bounded capacity; this is visual view recognition, not a 3D room map. See [memory behavior and evidence](docs/V23_SCENE_MEMORY.md).
+
 ## Validation and status
 
-**348 frontend tests and 370 backend tests pass**, with 2 optional live tests skipped. The production build passes. Chromium checks cover 320, 390, 768, and 1440 pixel layouts, persisted progress, reusable routines, export/restore, portrait overlays, and the existing camera/question flow. Browser checks use explicitly synthetic model output; they are not evidence of recognition accuracy.
+**374 frontend tests and 378 backend tests pass**, with 2 optional live tests skipped. The production build passes. Chromium checks cover 320, 390, 768, and 1440 pixel layouts, persisted progress, reusable routines, export/restore, portrait overlays, and the camera/question flow. Camera memory checks cover looking away and returning, finding an earlier item, and clearing memory at 390 and 1440 pixels. Most browser checks use synthetic model output. The separate local-detector check runs the real bundled model on a synthetic camera feed with cloud inference blocked; it is not a physical-phone or general-accuracy benchmark.
 
 Separate real-provider checks on one public desk photo returned **17 detections in 20.3 seconds** (12 displayed), a scene answer in **6.1 seconds**, and a three-step task plan in **23.3 seconds**. These are individual integration observations, not benchmarks. See [recognition](docs/v18-live-recognition.json), [question](docs/v19-scene-question.json), and [task-plan evidence](docs/v20-mission-plan.json).
 

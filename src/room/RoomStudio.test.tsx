@@ -23,7 +23,7 @@ const measured: WorldARMeasurement = {
 };
 
 beforeEach(() => {
-  camera = { status: 'idle', error: '', analysis: null, analysisFrame: null, lastScan: null, steady: false, analyzing: false, recognitionStatus: 'off', retryInSeconds: 0, lastRecognizedAt: null, start: vi.fn(async () => {}), stop: vi.fn(), retry: vi.fn() };
+  camera = { memory:{places:[],items:[],location:null,full:false}, forgetMemory:vi.fn(), renamePlace:vi.fn(), trackedObjects:[], latencyMs:null, localStatus:'off', localLatencyMs:null, resultAgeMs:null, status: 'idle', error: '', analysis: null, analysisFrame: null, lastScan: null, steady: false, analyzing: false, recognitionStatus: 'off', retryInSeconds: 0, lastRecognizedAt: null, start: vi.fn(async () => {}), stop: vi.fn(), retry: vi.fn() };
   controller = { setFootprint: vi.fn(), setRoomLayout: vi.fn(), selectPoint: vi.fn(() => true), useDetectedSurface: vi.fn(() => true), reset: vi.fn(), end: vi.fn(async () => {}) };
   vi.mocked(useLiveCamera).mockReturnValue(camera);
   vi.mocked(isWorldARSupported).mockResolvedValue(false);

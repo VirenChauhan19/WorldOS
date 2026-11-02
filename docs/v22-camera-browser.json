@@ -1,0 +1,34 @@
+{
+  "scope": "Synthetic camera and AI integration. No physical device or recognition accuracy claim.",
+  "viewports": [
+    {
+      "width": 320,
+      "passed": true,
+      "requests": 2,
+      "translationTracked": true,
+      "staleLabelsRemoved": true
+    },
+    {
+      "width": 390,
+      "passed": true,
+      "requests": 2,
+      "translationTracked": true,
+      "staleLabelsRemoved": true
+    },
+    {
+      "width": 768,
+      "passed": true,
+      "requests": 2,
+      "translationTracked": true,
+      "staleLabelsRemoved": true
+    },
+    {
+      "width": 1440,
+      "passed": true,
+      "requests": 2,
+      "translationTracked": true,
+      "staleLabelsRemoved": true
+    }
+  ],
+  "passed": true
+}

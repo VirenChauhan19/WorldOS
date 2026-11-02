@@ -56,6 +56,7 @@ try {
       };
     },{portrait:width===768});
     await page.goto(`${baseURL}/#/live`);
+    await page.getByRole('button',{name:'Detailed Steady SAM scan'}).click();
     await page.getByRole('button',{name:'Open camera & recognize'}).click();
     await page.getByRole('heading',{name:'3 items located'}).waitFor();
     const item=page.getByRole('group',{name:'Recognized items'}).getByRole('button',{name:/smartphone/});

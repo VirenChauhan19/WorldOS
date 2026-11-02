@@ -97,3 +97,25 @@ def test_main_auth_validation_never_echoes_input():
     with TestClient(app) as client:
         response = client.post('/api/auth/login', json={'password':'test-private-input','extra':'test-private-input'})
         assert response.status_code == 422 and 'test-private-input' not in response.text
+
+
+def test_public_policy_allows_local_wasm_without_enabling_javascript_eval(encoded):
+    settings = SecuritySettings('public', encoded, ('https://app.example.com',), ('testserver',))
+    client, _ = client_for(settings)
+    response = client.get('/api/auth/status')
+    policy = response.headers['content-security-policy']
+    scripts = next(part.split() for part in policy.split(';') if part.strip().startswith('script-src'))
+    assert "'wasm-unsafe-eval'" in scripts
+    assert "'unsafe-eval'" not in scripts
+    assert "worker-src 'self'" in policy
+
+
+def test_only_versioned_public_vision_assets_are_cached():
+    client, _ = client_for(SecuritySettings())
+    for path in ('/vision-runtime/0.10.21/wasm/vision_wasm_internal.wasm', '/models/efficientdet-lite0-int8-v1.tflite', '/vision-worker.js'):
+        client.app.add_api_route(path, lambda: {'fixture': True})
+    for path in ('/vision-runtime/0.10.21/wasm/vision_wasm_internal.wasm', '/models/efficientdet-lite0-int8-v1.tflite'):
+        assert client.get(path).headers['cache-control'] == 'public, max-age=31536000, immutable'
+    assert client.get('/vision-worker.js').headers['cache-control'] == 'no-cache'
+    assert client.get('/api/private').headers['cache-control'] == 'no-store'
+    assert client.get('/vision-runtime/0.10.21/missing.wasm').headers.get('cache-control') != 'public, max-age=31536000, immutable'

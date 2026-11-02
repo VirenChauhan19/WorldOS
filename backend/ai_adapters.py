@@ -68,12 +68,16 @@ class MuseSparkReasoning:
         provider = self.http.settings.reasoning_provider
         # Interactive questions should not wait through a slow discovery-provider
         # timeout before reaching Meta. Explicit provider settings still win.
-        interactive = operation in {"ask_scene", "mission_plan", "mission_check"}
+        interactive = operation in {"ask_scene", "mission_plan", "mission_check", "live_observe"}
         if interactive and self.http.settings.muse_provider == "auto" and self.http.settings.meta_key:
             provider = "meta"
         try:
             return await self._structured_once(provider, operation, instruction, context, schema, image_url)
         except ProviderError as error:
+            # Live frames have a short total deadline. Never spend it on a
+            # second provider or fan out extra calls for an obsolete frame.
+            if operation == "live_observe":
+                raise
             fallback_codes = {"missing_credentials", "invalid_credentials", "insufficient_credits", "unsupported_model_access", "rate_limited", "timeout", "network_error", "provider_error"}
             fallback = ("meta" if provider == "baseten" and self.http.settings.meta_key else
                         "baseten" if interactive and self.http.settings.muse_provider == "auto" and self.http.settings.baseten_key else None)
@@ -97,9 +101,11 @@ class MuseSparkReasoning:
                 "The only allowed top-level output fields are: " + ", ".join(output_schema["properties"]) + ". "
                 "Populate the fields with the answer. Never copy schema definitions or schema keywords into the answer. "
                 "JSON Schema for data validation: " + json.dumps(output_schema))
-            options = {"max_tokens": 4096}
+            options = {"max_tokens": 1200 if operation == "live_observe" else 4096}
         else:
-            options = {"max_completion_tokens": 4096, "response_format": {"type": "json_schema", "json_schema": {"name": schema.__name__, "schema": schema.model_json_schema()}}}
+            options = {"max_completion_tokens": 1200 if operation == "live_observe" else 4096, "response_format": {"type": "json_schema", "json_schema": {"name": schema.__name__, "schema": schema.model_json_schema()}}}
+            if operation == "live_observe":
+                options["reasoning_effort"] = "minimal"
         data = await self.http.post(provider=provider, model=model, operation=operation, include_metadata=True,
             url=f"{base_url}/chat/completions", key=key, payload={"model": model, "messages": [
                 {"role": "developer", "content": instruction}, {"role": "user", "content": content}], **options})

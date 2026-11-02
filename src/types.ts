@@ -1,5 +1,5 @@
 export interface Box { x: number; y: number; width: number; height: number }
-export interface SceneObject { id: string; label: string; box: Box; locked: boolean; source?: 'manual' | 'sam_3_1' | 'ai_corrected'; confidence?: number | null }
+export interface SceneObject { id: string; label: string; box: Box; locked: boolean; source?: 'manual' | 'sam_3_1' | 'ai_corrected' | 'muse_spark' | 'on_device'; confidence?: number | null }
 export interface PlanningConstraints { protected_object_ids: string[]; summary: string; unsupported_requirements: string[]; needs_clarification: boolean }
 export interface PlanRequest { objects: SceneObject[]; target: Box; workspace: Box; goal: string; clearance: number; constraints?: PlanningConstraints }
 export interface Movement { number: number; object_id: string; label: string; source: Box; destination: Box; instruction: string }
@@ -7,7 +7,7 @@ export interface Plan { status: 'ready' | 'already_clear' | 'impossible' | 'sear
 export interface SceneImage { image_url: string; width: number; height: number; name: string }
 export interface Analysis extends SceneImage { annotation_source: string; message: string }
 export interface InferenceMetadata { inferred_at?: string; inference_cache?: { status: 'hit' | 'miss' | 'shared'; age_ms: number } | null; inference_latency_ms?:number; usage?:Record<string,number>; live_request?:boolean; fallback?:{from_provider:string;reason:string} }
-export interface AIAnalysis extends InferenceMetadata { objects: SceneObject[]; concepts: string[]; summary: string; message: string; warnings: string[]; provider: string; model: string; concept_discovery?: InferenceMetadata & {provider?:string;model?:string}; unmatched_concepts?: string[]; total_objects?: number; truncated?: boolean }
+export interface AIAnalysis extends InferenceMetadata { objects: SceneObject[]; concepts: string[]; summary: string; message: string; warnings: string[]; provider: string; model: string; details?: Record<string,string>; latency_ms?: number; concept_discovery?: InferenceMetadata & {provider?:string;model?:string}; unmatched_concepts?: string[]; total_objects?: number; truncated?: boolean }
 export interface Reasoning extends InferenceMetadata { constraints: PlanningConstraints; provider: string; model: string; confidence: null; message: string }
 export interface SceneAnswer extends InferenceMetadata { answer:string; observations:string[]; object_ids:string[]; next_action:'measure'|'room'|'inspect'|'none'; limitation:string; provider:string; model:string; source:'captured_view' }
 export interface AICapabilities { live_tested: boolean; sam: { provider: string; status: string; message: string; model: string | null }; muse: { provider: string; model: string; status: string; message: string } }

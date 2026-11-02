@@ -18,7 +18,7 @@ export default function ProductHome({active=true}:{active?:boolean}) {
       <div className="product-hero-copy"><span className="product-label hero-eyebrow"><i/> A SPACE READY FOR WHAT COMES NEXT</span>
         <h1 id="home-title">Make room.<br/><span>Get going.</span><span className="hero-asterisk" aria-hidden="true">✳</span></h1>
         <p>Get your space ready to study, work, or create.<br className="desktop-break"/> Show us what’s there. Get a few clear steps.<br className="desktop-break"/> Keep the setup that works for you.</p>
-        <div className="product-hero-actions"><button className="product-primary" onClick={()=>navigate('mission')}><ScanLine size={19}/>Get my space ready<ArrowUpRight size={19}/></button><button className="product-text" onClick={explore}>See an example<ArrowDown size={15}/></button></div>
+        <div className="product-hero-actions"><button className="product-primary" onClick={()=>navigate('mission')}><ScanLine size={19}/>Get my space ready<ArrowUpRight size={19}/></button><button className="product-text" onClick={()=>navigate('live')}><Camera size={17}/>Open live camera<ArrowUpRight size={15}/></button><button className="product-text" onClick={explore}>See an example<ArrowDown size={15}/></button></div>
         <div className="mission-value-note">TAKE A PHOTO · FOLLOW THE STEPS · KEEP YOUR SETUP</div>
         <div className="product-powered"><span className="meta-loop" aria-hidden="true">∞</span><div><span>BUILT WITH META AI</span><strong>Muse Spark <i>+</i> SAM 3.1</strong></div></div>
       </div>

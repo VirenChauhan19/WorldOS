@@ -200,12 +200,16 @@ class SessionAuth:
             response.headers["Pragma"] = "no-cache"
         if request.url.path in {'/', '/sw.js', '/manifest.webmanifest', '/healthz'}:
             response.headers['Cache-Control'] = 'no-store' if request.url.path in {'/','/healthz'} else 'no-cache'
+        if request.url.path == '/vision-worker.js':
+            response.headers['Cache-Control'] = 'no-cache'
+        if response.status_code == 200 and (request.url.path.startswith('/vision-runtime/0.10.21/') or request.url.path == '/models/efficientdet-lite0-int8-v1.tflite'):
+            response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Frame-Options"] = "DENY"
         if self.settings.deployment == "public":
             response.headers["Strict-Transport-Security"] = "max-age=31536000"
-            response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+            response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
             response.headers['Permissions-Policy'] = 'camera=(self), xr-spatial-tracking=(self), microphone=(), geolocation=()'
         return response
 

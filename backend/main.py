@@ -25,7 +25,7 @@ from .imaging import prepare_image
 from .inspect_routes import build_inspect_router
 from .consumer_routes import build_consumer_router
 from .missions import build_mission_router
-from .models import AIAnalysisRequest, PlanRequest, PlanResponse, ReasonRequest, VerifyRequest, SceneQuestionRequest
+from .models import AIAnalysisRequest, LiveAnalysisRequest, PlanRequest, PlanResponse, ReasonRequest, VerifyRequest, SceneQuestionRequest
 from .planner import generate_plan, verify_positions
 from .providers import AISettings, ProviderError, ProviderHTTP, capabilities, logger
 from .visual_verification import ReviewedStateRequest, VisualVerifyRequest, adaptive_replan, automatic_verify, verify_reviewed
@@ -177,6 +177,11 @@ async def run_ai(operation):
 @app.post("/api/ai/analyze")
 async def ai_analyze(request: AIAnalysisRequest, service: AIService = Depends(get_ai_service)):
     return await run_ai(service.analyze(request))
+
+
+@app.post("/api/ai/live")
+async def ai_live(request: LiveAnalysisRequest, service: AIService = Depends(get_ai_service)):
+    return await run_ai(service.observe_live(request))
 
 
 @app.post("/api/ai/reason")

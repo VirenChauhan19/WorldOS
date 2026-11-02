@@ -43,6 +43,7 @@ try{
     await page.getByRole('group',{name:'Recorded object types'}).getByRole('button',{name:'Laptop',exact:true}).click();
     assert.equal(await page.getByRole('button',{name:'Explore Laptop',exact:true}).getAttribute('aria-pressed'),'true');
     await page.getByRole('button',{name:/Check my space/}).click();
+    await page.getByRole('button',{name:'Detailed Steady SAM scan'}).click();
     await page.getByRole('button',{name:'Open camera & recognize'}).click();
     try{await page.getByRole('heading',{name:'12 items located'}).waitFor();}catch(error){
       await page.screenshot({path:path.join(output,`failure-${width}.png`),fullPage:true});

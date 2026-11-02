@@ -1,0 +1,24 @@
+{
+  "scope": "Synthetic moving camera and mocked AI. Tests visual recall, not native world tracking.",
+  "viewports": [
+    {
+      "width": 390,
+      "recallMs": 406,
+      "requests": 5,
+      "returnedWithoutAI": true,
+      "earlierItemSurvivesOmission": true,
+      "retainedAfterStop": true,
+      "cleared": true
+    },
+    {
+      "width": 1440,
+      "recallMs": 304,
+      "requests": 5,
+      "returnedWithoutAI": true,
+      "earlierItemSurvivesOmission": true,
+      "retainedAfterStop": true,
+      "cleared": true
+    }
+  ],
+  "passed": true
+}
