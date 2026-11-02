@@ -5,6 +5,7 @@ RUN npm ci
 COPY index.html vite.config.ts tsconfig.json ./
 COPY src ./src
 COPY public ./public
+COPY docs/v18-live-recognition.json ./docs/v18-live-recognition.json
 RUN npm run build
 
 FROM python:3.12-slim AS app
