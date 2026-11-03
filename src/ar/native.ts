@@ -175,7 +175,8 @@ export async function startNativeInteriorAR(options: WorldAROptions): Promise<Na
     end,
     setScene(value, selection = null) {
       if (ended) return;
-      objects = value.map(object => ({ ...object, item: { ...object.item }, position: { ...object.position } })); selectedId = selection;
+      objects = value.map(object => ({ ...object, item: { ...object.item }, position: { ...object.position } }));
+      selectedId = selection && objects.some(object => object.id === selection) ? selection : null;
       const keep = new Set(objects.map(o => o.item.id)); if (preview) keep.add(preview.id);
       for (const id of models.keys()) if (!keep.has(id)) models.delete(id);
       queue();

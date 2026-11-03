@@ -119,7 +119,7 @@ try:
                 page.get_by_role('button',name='Design when room is ready',exact=True).click()
                 expect(page.get_by_role('button',name='Design queued',exact=True)).to_be_visible()
                 # Persist the pending job before simulating a real reload.
-                expect(page.get_by_text('Saved on this device',exact=True)).to_be_visible()
+                expect(page.get_by_role('region',name='Room project',exact=True).get_by_role('status')).to_have_text('Saved on this device')
                 page.reload()
                 expect(page.get_by_text(design['title'],exact=True)).to_be_visible(timeout=25000)
                 expect(page.get_by_role('button',name='Inspect Sage sofa in room photo',exact=True)).to_be_visible()

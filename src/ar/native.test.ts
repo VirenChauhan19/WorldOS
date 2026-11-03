@@ -379,3 +379,13 @@ it('ends on pagehide and on a native background event without leaving a transpar
   expect(document.documentElement.classList.contains('native-interior-ar')).toBe(false);
   expect(vi.getTimerCount()).toBe(0);
 });
+
+it('keeps unplaced studio selections out of native positioned-object updates', async () => {
+  const r = await open();
+  r.ar.setScene?.([], 'studio-chair-not-yet-placed'); await settle();
+  expect(sent()).toMatchObject({ objects: [], selectedId: null });
+  r.ar.setScene?.([object('placed-chair')], 'other-unplaced-chair'); await settle();
+  expect(sent().selectedId).toBeNull();
+  r.ar.setScene?.([object('placed-chair')], 'placed-chair'); await settle();
+  expect(sent().selectedId).toBe('placed-chair');
+});

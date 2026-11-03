@@ -171,8 +171,10 @@ it('analyzes a capture automatically, reserves visible access, and never asks fo
   expect(screen.queryByLabelText('Room width')).toBeNull();
   expect(screen.queryByLabelText('I checked the dimensions and reserved areas')).toBeNull();
   expect(screen.queryByText(/Tap the back left/)).toBeNull();
-  const saved=JSON.parse(localStorage.getItem(roomDraftKey)!);
-  expect(saved.source).toBe('photo');expect(saved.zones).toEqual(survey.zones);expect(saved.roomFields.width).toBe('4');
+  await waitFor(()=>{
+    const saved=JSON.parse(localStorage.getItem(roomDraftKey)!);
+    expect(saved.source).toBe('photo');expect(saved.zones).toEqual(survey.zones);expect(saved.roomFields.width).toBe('4');
+  });
   await waitFor(()=>expect(saveRoomReference).toHaveBeenLastCalledWith(expect.objectContaining({corners:survey.floor_corners,survey:expect.objectContaining({status:'ready'})})));
   fireEvent.click(screen.getByText('Furniture & fine adjustments'));
   fireEvent.click(screen.getByRole('button',{name:'Add suggested Compact desk'}));

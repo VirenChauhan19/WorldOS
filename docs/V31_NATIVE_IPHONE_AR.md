@@ -42,6 +42,12 @@ The workflow verifies that the resulting bundle contains a native executable, th
 
 The existing Linux release-check workflow remains separate. A passing web build alone does not establish that Swift and RealityKit compile. A passing native compile establishes compilation and linking; device camera behavior, tracking quality, alignment, thermal performance, and touch interactions require an installed physical-device test.
 
+## Verification evidence
+
+The native Release app compiled and its iPhone/iPad bundle passed verification on macOS for [`9cbe190`](https://github.com/VirenChauhan19/WorldOS/actions/runs/41692595751). This checks the real Swift, ARKit, RealityKit, Capacitor registration, linking, bundled web assets, and permission declaration.
+
+All 621 frontend tests and the production web build pass. Bridge and editor tests cover independent placements, all 26 model geometries, queued updates, selection, origin resets, stale tracking, permission cancellation, and session cleanup. A browser check exercises the real Capacitor JavaScript proxy against a simulated native bridge at 320, 390, and 844 pixels, including portrait and landscape controls. That check verifies the interface and transport; it does not run the Swift renderer or a physical camera.
+
 ## Physical-device verification
 
 Physical-device AR validation has not been performed in this Windows development environment. Before distributing a build, record the commit, iPhone/iPad model, iOS version, and result of each of these checks:

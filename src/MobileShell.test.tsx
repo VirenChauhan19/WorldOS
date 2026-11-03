@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { Capacitor } from '@capacitor/core';
-import { StrictMode } from 'react';
+import { StrictMode, useLayoutEffect } from 'react';
 import MobileShell from './MobileShell';
 import PhotoActions from './PhotoActions';
 import { apiFetch, configureBackend } from './backend';
@@ -109,6 +109,24 @@ it('restores an unsaved draft after same-role reauthentication and clears it on 
   expect((draft as HTMLInputElement).value).toBe('Phone moved');
   act(()=>window.dispatchEvent(new Event('worldos:sign-out')));await screen.findByRole('button',{name:'Sign in'});
   expect(screen.queryByLabelText('Inspection draft')).toBeNull();
+});
+it('honors sign-out as soon as the authenticated workspace is committed',async()=>{
+  const fetcher=vi.fn().mockImplementation(async(url:string)=>new Response(url.endsWith('/auth/status')
+    ?'{"required":true,"authenticated":false}'
+    :url.endsWith('/auth/login')?'{"authenticated":true,"session_mode":"cookie","csrf_token":"synthetic"}':'{}'));
+  vi.stubGlobal('fetch',fetcher);
+  function Workspace(){
+    // External events can arrive after the workspace commits but before the
+    // shell's passive effects run. Do not wait for a later render to sign out.
+    useLayoutEffect(()=>{window.dispatchEvent(new Event('worldos:sign-out'));},[]);
+    return <input aria-label="Immediate sign-out draft" defaultValue="Private draft"/>;
+  }
+  render(<MobileShell><Workspace/></MobileShell>);
+  fireEvent.change(await screen.findByLabelText('Workspace passphrase'),{target:{value:'synthetic'}});
+  fireEvent.click(screen.getByRole('button',{name:'Sign in'}));
+  await waitFor(()=>expect(fetcher.mock.calls.filter(([url])=>url.endsWith('/auth/logout'))).toHaveLength(1));
+  await screen.findByRole('button',{name:'Sign in'});
+  expect(screen.queryByLabelText('Immediate sign-out draft')).toBeNull();
 });
 it('discards the retained owner tree before allowing a judge login',async()=>{
   const fetcher=vi.fn().mockResolvedValueOnce(new Response('{"required":true,"authenticated":true,"judge_enabled":true,"access":"owner"}'))

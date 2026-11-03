@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App as NativeApp } from '@capacitor/app';
@@ -30,7 +30,6 @@ export default function MobileShell({children}:{children:ReactNode}) {
   const [restored,setRestored]=useState(false);
   const [retainedAccess,setRetainedAccess]=useState<WorkspaceAccess|null>(null);
   const connectionAttempt=useRef(0),submitLock=useRef(false);
-  const accessRef=useRef(access);accessRef.current=access;
   useEffect(()=>{
     const connection=()=>setSettings(true),installation=()=>setInstallHelp(true);
     window.addEventListener('worldos:open-connection',connection);window.addEventListener('worldos:install',installation);
@@ -69,15 +68,18 @@ export default function MobileShell({children}:{children:ReactNode}) {
     }catch(e){if(attempt===connectionAttempt.current){setState('unavailable');setError(e instanceof DOMException&&e.name==='AbortError'?'The server did not wake in time. Retry connection; no upload or AI request was started.':e instanceof Error?e.message:'Cannot reach the backend.');}}
     finally{window.clearTimeout(timeout);if(attempt===connectionAttempt.current)setPending(false);}
   }
+  const onSessionExpired=useEffectEvent(()=>{
+    setState(access==='guest'?'unavailable':'login');setAuthRequired(true);
+    setError(access==='guest'?'Your demo session ended. Reconnect to start a new demo space. Room projects saved on this device are still available.':'Your session expired. Sign in again to resume your draft. No action will retry automatically.');
+  });
   useEffect(()=>{
     void connect();
     const offline=()=>setOnline(false),online=()=>setOnline(true);
-    const expired=()=>{setState(accessRef.current==='guest'?'unavailable':'login');setAuthRequired(true);setError(accessRef.current==='guest'?'Your demo session ended. Reconnect to start a new demo space. Room projects saved on this device are still available.':'Your session expired. Sign in again to resume your draft. No action will retry automatically.');};
     const prompt=(event:Event)=>{event.preventDefault();setInstall(event as InstallPrompt);};
     const installed=()=>{setInstall(null);setInstallHelp(false);};
-    window.addEventListener('offline',offline);window.addEventListener('online',online);window.addEventListener('worldos:session-expired',expired);
+    window.addEventListener('offline',offline);window.addEventListener('online',online);window.addEventListener('worldos:session-expired',onSessionExpired);
     window.addEventListener('beforeinstallprompt',prompt);window.addEventListener('appinstalled',installed);
-    return()=>{connectionAttempt.current++;window.removeEventListener('offline',offline);window.removeEventListener('online',online);window.removeEventListener('worldos:session-expired',expired);window.removeEventListener('beforeinstallprompt',prompt);window.removeEventListener('appinstalled',installed);};
+    return()=>{connectionAttempt.current++;window.removeEventListener('offline',offline);window.removeEventListener('online',online);window.removeEventListener('worldos:session-expired',onSessionExpired);window.removeEventListener('beforeinstallprompt',prompt);window.removeEventListener('appinstalled',installed);};
   },[]);
   useEffect(()=>{
     if(!Capacitor.isNativePlatform())return;
@@ -119,7 +121,10 @@ export default function MobileShell({children}:{children:ReactNode}) {
       configureBackend(url);setSettings(false);setState('loading');setRetainedAccess(null);setGeneration(n=>n+1);await connect();
     }catch(e){setError(e instanceof Error?e.message:'Cannot change the backend.');}finally{submitLock.current=false;setPending(false);}
   }
-  useEffect(()=>{const logout=()=>{if(state==='ready')void signOut();};window.addEventListener('worldos:sign-out',logout);return()=>window.removeEventListener('worldos:sign-out',logout);},[state,pending]);
+  // Events can arrive between committing the visible workspace and running
+  // passive effects. Read committed state without replacing the listener.
+  const onSignOut=useEffectEvent(()=>{if(state==='ready')void signOut();});
+  useEffect(()=>{window.addEventListener('worldos:sign-out',onSignOut);return()=>window.removeEventListener('worldos:sign-out',onSignOut);},[]);
   return <>
     <div className="mobile-utility" hidden={state==='ready'}><span><LockKeyhole size={14}/>{authRequired?(access==='judge'?'Judge demo':'Private workspace'):'Local workspace'}</span><div>
       {!Capacitor.isNativePlatform()&&<button onClick={()=>{if(install){void install.prompt().then(()=>install.userChoice).then(()=>setInstall(null));}else setInstallHelp(!installHelp);}}><Download size={15}/>Install</button>}
