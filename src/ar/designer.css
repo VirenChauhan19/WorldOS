@@ -180,3 +180,15 @@
 .design-ar-header-actions button{display:grid;place-items:center;width:39px;min-height:42px;background:#edf2e2;border:1px solid #d5e1c5;border-radius:10px;color:#496442}
 .design-ar-overlay>header>div:first-child{min-width:0}
 .design-ar-overlay>header strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* The installed iOS app renders its ARKit camera below the transparent WebView. */
+html.native-interior-ar,html.native-interior-ar :is(body,#root,.worldos-app,.app-content,.route-screen){background:transparent!important}
+html.native-interior-ar .worldos-app>:not(.app-content){visibility:hidden}
+html.native-interior-ar .scene-designer{visibility:visible}
+html.native-interior-ar body{overflow:hidden}
+.design-native-touch-layer{position:fixed;inset:0;touch-action:none;outline-offset:-5px}
+
+.design-native-reticle{position:fixed;left:50%;top:50%;width:34px;height:34px;transform:translate(-50%,-50%);pointer-events:none;border:1.5px dashed #fff9;border-radius:50%;filter:drop-shadow(0 1px 3px #0007);display:grid;place-items:center}
+.design-native-reticle.is-ready{border:2px solid #dbf7a1;background:#d5f58016}
+.design-native-reticle>i{width:5px;height:5px;border-radius:50%;background:#fff9}
+.design-native-reticle.is-ready>i{background:#dbf7a1}

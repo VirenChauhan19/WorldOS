@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A80000000000000000000001 /* InteriorARPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A80000000000000000000002 /* InteriorARPlugin.swift */; };
+		A80000000000000000000003 /* InteriorARRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A80000000000000000000004 /* InteriorARRenderer.swift */; };
+		A80000000000000000000005 /* WorldOSBridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A80000000000000000000006 /* WorldOSBridgeViewController.swift */; };
 		A70000000000000000000001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A70000000000000000000002 /* PrivacyInfo.xcprivacy */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
@@ -20,6 +23,9 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		A80000000000000000000002 /* InteriorARPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InteriorARPlugin.swift; sourceTree = "<group>"; };
+		A80000000000000000000004 /* InteriorARRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InteriorARRenderer.swift; sourceTree = "<group>"; };
+		A80000000000000000000006 /* WorldOSBridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorldOSBridgeViewController.swift; sourceTree = "<group>"; };
 		A70000000000000000000002 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
@@ -66,6 +72,9 @@
 		504EC3061FED79650016851F /* App */ = {
 			isa = PBXGroup;
 			children = (
+				A80000000000000000000002 /* InteriorARPlugin.swift */,
+				A80000000000000000000004 /* InteriorARRenderer.swift */,
+				A80000000000000000000006 /* WorldOSBridgeViewController.swift */,
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
@@ -162,6 +171,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A80000000000000000000001 /* InteriorARPlugin.swift in Sources */,
+				A80000000000000000000003 /* InteriorARRenderer.swift in Sources */,
+				A80000000000000000000005 /* WorldOSBridgeViewController.swift in Sources */,
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
 			);

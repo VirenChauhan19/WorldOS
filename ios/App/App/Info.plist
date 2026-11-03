@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>NSCameraUsageDescription</key>
-    <string>Photograph your workspace to create a reference, inspect changes, or verify a correction.</string>
+    <string>Use the camera to preview furniture in augmented reality, photograph your workspace, inspect changes, or verify a correction.</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>Choose workspace photographs for reference templates and visual inspections.</string>
     <key>NSPhotoLibraryAddUsageDescription</key>

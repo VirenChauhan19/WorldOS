@@ -4,11 +4,13 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FurnitureItem, FurniturePlacement, RoomSize } from '../room/layout';
 import type { WorldARController, WorldAROptions, WorldARPlacementPose, WorldARSceneObject } from '../live/xr';
+import type { NativeARController } from './native';
 
 interface PreviewProps { room: RoomSize; items: FurnitureItem[]; placements: FurniturePlacement[]; selectedId: string }
 vi.mock('../room/RoomPreview', () => ({ default: (props: PreviewProps) => <output data-testid="design-preview">{JSON.stringify(props)}</output> }));
 vi.mock('./ObjectThumbnail', () => ({ default: () => <span aria-hidden="true"/> }));
 vi.mock('../live/xr', () => ({ isWorldARSupported: vi.fn(), startWorldAR: vi.fn() }));
+vi.mock('./native', () => ({ nativeARCapabilities: vi.fn(), startNativeInteriorAR: vi.fn() }));
 vi.mock('../room/quickLook', () => ({ supportsQuickLook: vi.fn() }));
 vi.mock('../room/QuickLookLink', () => ({
   useQuickLookAsset: vi.fn(),
@@ -18,6 +20,7 @@ vi.mock('../room/QuickLookLink', () => ({
 }));
 
 import { isWorldARSupported, startWorldAR } from '../live/xr';
+import { nativeARCapabilities, startNativeInteriorAR } from './native';
 import { supportsQuickLook } from '../room/quickLook';
 import { useQuickLookAsset } from '../room/QuickLookLink';
 import { createScene, loadScene, saveScene, SCENE_STORAGE_KEY } from './scene';
@@ -25,11 +28,12 @@ import SceneDesigner from './SceneDesigner';
 
 let options: WorldAROptions;
 let pose: WorldARPlacementPose;
-let controller: WorldARController;
+let controller: NativeARController;
 
 beforeEach(() => {
   localStorage.clear();
   vi.mocked(isWorldARSupported).mockResolvedValue(false);
+  vi.mocked(nativeARCapabilities).mockResolvedValue({ supported: false });
   vi.mocked(supportsQuickLook).mockReturnValue(false);
   vi.mocked(useQuickLookAsset).mockReturnValue({ url: 'blob:design', error: '', retry: vi.fn() });
   pose = { position: { x: 1, y: 0, z: 2 }, rotation: 0 };
@@ -37,10 +41,16 @@ beforeEach(() => {
     setFootprint: vi.fn(), setRoomLayout: vi.fn(), useDetectedSurface: vi.fn(() => false),
     selectPoint: vi.fn(() => true), reset: vi.fn(), end: vi.fn(async () => {}),
     setScene: vi.fn(), setPlacementPreview: vi.fn(), getPlacementPose: vi.fn(() => pose),
+    selectAt: vi.fn(async () => {}),
   };
   vi.mocked(startWorldAR).mockImplementation(async value => {
     options = value;
     value.onState({ phase: 'searching', points: 0, canSelect: true, message: 'Surface found.' });
+    return controller;
+  });
+  vi.mocked(startNativeInteriorAR).mockImplementation(async value => {
+    options = value;
+    value.onState({ phase: 'ready', points: 0, canSelect: true, message: 'Native surface found.' });
     return controller;
   });
 });
@@ -438,6 +448,77 @@ describe('interactive AR editing', () => {
     expect(preview().items).toHaveLength(1);
     setField('Object width', '.7');
     expect(preview().items[0].width).toBe(.7);
+  });
+});
+
+describe('native iPhone studio integration', () => {
+  it('prefers the native engine when both runtimes are available and keeps the shared editing controls live', async () => {
+    vi.mocked(nativeARCapabilities).mockResolvedValue({ supported: true, cameraPermission: 'prompt' });
+    vi.mocked(isWorldARSupported).mockResolvedValue(true);
+    await renderDesigner();
+    expect(startNativeInteriorAR).not.toHaveBeenCalled();
+    await startAR();
+    expect(startNativeInteriorAR).toHaveBeenCalledOnce();
+    expect(startWorldAR).not.toHaveBeenCalled();
+    expect(screen.getByText('IPHONE AR STUDIO')).toBeTruthy();
+    fireEvent.click(liveControls().getByRole('button', { name: 'Add Chair' }));
+    fireEvent.click(liveControls().getByRole('button', { name: 'Place here' }));
+    expect(worldObjects()[0].position).toEqual(pose.position);
+    setField('Object width', '.7', liveControls());
+    expect(worldObjects()).toHaveLength(1);
+    expect(worldObjects()[0].item.width).toBe(.7);
+    expect(worldObjects()[0].position.x).toBeCloseTo(pose.position.x + .1);
+  });
+
+  it('normalizes camera taps and keyboard picks without sending control-panel touches through to native objects', async () => {
+    vi.mocked(nativeARCapabilities).mockResolvedValue({ supported: true });
+    vi.stubGlobal('PointerEvent', MouseEvent);
+    await renderDesigner(); await startAR();
+    const camera = screen.getByRole('button', { name: 'Select an object in the AR view' });
+    vi.spyOn(camera, 'getBoundingClientRect').mockReturnValue({ left: 10, top: 20, width: 400, height: 800 } as DOMRect);
+    fireEvent.pointerUp(camera, { clientX: 110, clientY: 620 });
+    expect(controller.selectAt).toHaveBeenLastCalledWith(.25, .75);
+    fireEvent.keyDown(camera, { key: 'Enter' });
+    expect(controller.selectAt).toHaveBeenLastCalledWith(.5, .5);
+    const panel = screen.getByText('IPHONE AR STUDIO').closest('[data-xr-ui]')!;
+    fireEvent.pointerUp(panel, { clientX: 110, clientY: 620 });
+    fireEvent.pointerUp(liveControls().getByRole('button', { name: 'Add Chair' }), { clientX: 110, clientY: 620 });
+    expect(controller.selectAt).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows native permission guidance, allows retry, and releases the session when the editor becomes inactive', async () => {
+    vi.mocked(nativeARCapabilities).mockResolvedValue({ supported: true, cameraPermission: 'prompt' });
+    vi.mocked(startNativeInteriorAR).mockRejectedValueOnce({ code: 'CAMERA_PERMISSION_DENIED', message: 'Allow Camera access for WorldOS in Settings to use AR.' });
+    const view = await renderDesigner();
+    fireEvent.click(screen.getByRole('button', { name: 'Add Chair' }));
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Start interactive AR' }))[0]);
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Allow Camera access for WorldOS in Settings'));
+    expect(screen.queryByRole('button', { name: 'Select an object in the AR view' })).toBeNull();
+    expect(preview().items).toHaveLength(1);
+    await startAR();
+    const signal = options.signal;
+    view.rerender(<SceneDesigner active={false}/>);
+    expect(signal?.aborted).toBe(true);
+    expect(controller.end).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('button', { name: 'Select an object in the AR view' })).toBeNull();
+    expect(preview().items).toHaveLength(1);
+  });
+
+  it('discards a native start that finishes after navigation cancels its permission request', async () => {
+    vi.mocked(nativeARCapabilities).mockResolvedValue({ supported: true });
+    let finish!: (value: NativeARController) => void;
+    vi.mocked(startNativeInteriorAR).mockImplementationOnce(value => {
+      options = value;
+      return new Promise<NativeARController>(resolve => { finish = resolve; });
+    });
+    const view = await renderDesigner();
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Start interactive AR' }))[0]);
+    view.rerender(<SceneDesigner active={false}/>);
+    expect(options.signal?.aborted).toBe(true);
+    await act(async () => { finish(controller); });
+    expect(controller.end).toHaveBeenCalledOnce();
+    expect(controller.setScene).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Select an object in the AR view' })).toBeNull();
   });
 });
 

@@ -38,6 +38,8 @@ Open **Room planner**, capture or choose a room photo, and let AI estimate its f
 
 Open **AR studio** (`#/ar`) to arrange up to 24 independent objects. Search the collection, try a living-room or workspace starter, and edit each piece's dimensions, finish, position, height above the floor, and rotation in 90-degree steps. Drag pieces in **Floor plan**, use the arrow keys for 10 cm moves, or inspect the scene in **3D studio**. Changes save locally; undo, redo, and JSON export/restore are available. The starting plan and model sizes are editable examples.
 
+The installed iPhone/iPad app includes a native **ARKit and RealityKit** path: the camera and independently placed models appear beneath the shared studio controls. Camera access starts with **Start interactive AR**; leaving AR or backgrounding the app ends the session. The editable design persists, while physical placements belong to that session. Read [native iOS setup, compile checks, and device validation](docs/V31_NATIVE_IPHONE_AR.md). Physical-device AR testing remains outstanding.
+
 Browsers with the required native WebXR features offer **Start interactive AR**: place the whole design or individual pieces on tracked horizontal surfaces, then keep adding and editing in the AR view. On compatible iPhone/iPad Safari, **View in my room** opens a local USDZ in Apple Quick Look. Choose the whole design or one selected piece; the exported design moves as one group in Apple's viewer. Quick Look edits do not return to the website. WebXR world positions last for that AR session, while the editable layout persists. Physical-phone AR behavior and placement accuracy remain unverified. See [implementation and checks](docs/V30_AR_INTERIOR_STUDIO.md).
 
 ## Validation and status

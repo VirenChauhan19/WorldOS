@@ -1,0 +1,106 @@
+name: Native iOS compile
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile:
+    name: Compile iPhone and iPad app
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Verify Apple toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcrun swift --version
+          xcrun --sdk iphoneos --show-sdk-version
+          xcode_major=$(xcodebuild -version | awk '/^Xcode / {split($2, version, "."); print version[1]}')
+          test "$xcode_major" -ge 26
+      - run: npm ci
+      - name: Build bundled native web assets
+        env:
+          # Compile-only origin. Real native releases use npm run build:mobile
+          # with their deployed HTTPS backend origin.
+          VITE_API_BASE_URL: https://example.invalid
+          VITE_NATIVE_BUILD: '1'
+        run: npm run build -- --configLoader native
+      - name: Sync Capacitor and its Swift packages
+        run: npx cap sync ios
+      - name: Compile the native app without signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/native-ios
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/worldos-ios-build" \
+            -resultBundlePath artifacts/native-ios/compile.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee artifacts/native-ios/xcodebuild.log
+      - name: Report compiler diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          log = Path('artifacts/native-ios/xcodebuild.log')
+          if log.exists():
+              count = 0
+              for line in log.read_text(errors='replace').splitlines():
+                  if re.search(r'(^|\s)error:', line):
+                      message = line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+                      print(f'::error title=Native iOS compiler::{message}')
+                      count += 1
+                      if count == 30:
+                          break
+          PY
+      - name: Verify the compiled app bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="$RUNNER_TEMP/worldos-ios-build/Build/Products/Release-iphoneos/App.app"
+          test -x "$app/App"
+          test -s "$app/public/index.html"
+          file "$app/App"
+          plutil -convert json -o artifacts/native-ios/built-app-info.json "$app/Info.plist"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          info = json.loads(Path('artifacts/native-ios/built-app-info.json').read_text())
+          assert set(info['UIDeviceFamily']) == {1, 2}, 'Expected iPhone and iPad support'
+          assert info['NSCameraUsageDescription'].strip(), 'Camera permission text is required'
+          assert int(info['MinimumOSVersion'].split('.')[0]) >= 15, 'Expected iOS 15 or later'
+          print('Native iPhone/iPad executable and bundled web assets verified.')
+          PY
+      - name: Save native compiler evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-ios-compile-${{ github.sha }}
+          path: artifacts/native-ios/
+          if-no-files-found: ignore
+          retention-days: 7
