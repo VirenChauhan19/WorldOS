@@ -1,7 +1,7 @@
 import type { XRPoint } from '../live/xr-types';
 import { orientedSize } from '../room/layout';
 import { parseScene } from './scene';
-import type { DesignScene } from './scene';
+import type { DesignPlacement, DesignScene } from './scene';
 
 const finitePoint = (point: XRPoint) => !!point && [point.x, point.y, point.z].every(Number.isFinite);
 
@@ -28,10 +28,11 @@ export function placeSceneObject(scene: DesignScene, id: string, position: XRPoi
   const nextOrigin = { x: base.x - shift.x, y: base.y - shift.y, z: base.z - shift.z };
   let width = valid.room.width, depth = valid.room.depth, height = valid.room.height ?? 2.7;
   const objects = valid.objects.map(object => {
-    const source = object.item.id === id ? { ...object.placement, ...target } : object.placement;
+    // A tracked physical surface is independent of the rectangular plan walls.
+    const source = object.item.id === id ? { ...object.placement, ...target, ...(object.placement.mount === undefined ? {} : { mount: 'free' as const }) } : object.placement;
     const elevation = (source.elevation ?? 0) + shift.y;
     if (!Number.isFinite(elevation) || elevation > 10) throw new Error('Choose a closer floor level. Every object must stay within 10 m above the design floor.');
-    const placement = {
+    const placement: DesignPlacement = {
       ...source,
       x: source.x + shift.x,
       z: source.z + shift.z,
@@ -46,7 +47,14 @@ export function placeSceneObject(scene: DesignScene, id: string, position: XRPoi
   if (![width, depth, height].every(value => Number.isFinite(value) && value <= 30) || !finitePoint(nextOrigin)) {
     throw new Error('Place this object closer to your design. The plan can be at most 30 m wide, long, and high.');
   }
-  const next = parseScene({ ...valid, room: { width, depth, height }, objects });
+  const room = { width, depth, height };
+  const retained = objects.map(object => {
+    if (!object.placement.mount || object.placement.mount === 'free' || parseScene({ ...valid, room, objects: [object] })) return object;
+    // Rebasing or enlarging the plan must not drag other physical objects to a
+    // new wall/ceiling. Keep their exact positions and release only that binding.
+    return { ...object, placement: { ...object.placement, mount: 'free' as const } };
+  });
+  const next = parseScene({ ...valid, room, objects: retained });
   if (!next) throw new Error('This surface cannot be saved as a valid design position. Choose another spot.');
   return { scene: next, origin: nextOrigin };
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { XRPoint } from '../live/xr-types';
 import { orientedSize } from '../room/layout';
 import { placeSceneObject } from './placement';
-import { parseScene } from './scene';
+import { addObject, createScene, mountObject, parseScene } from './scene';
 import type { DesignScene } from './scene';
 
 function design(): DesignScene {
@@ -130,5 +130,39 @@ describe('physical placement saved as a coherent plan', () => {
     expect(() => placeSceneObject({ ...scene, room: { width: 1, depth: 1 } }, 'desk', position, null)).toThrow('dimensions');
     expect(() => placeSceneObject(scene, 'desk', { ...position, x: NaN }, null)).toThrow('tracked surface');
     expect(() => placeSceneObject(scene, 'desk', position, { x: 0, y: Infinity, z: 0 })).toThrow('tracked surface');
+  });
+
+  it('places a mounted fixture on a tracked surface independently from rectangular plan walls',()=>{
+    const scene=addObject(createScene(),'wall-sconce'),object=scene.objects[0],before=structuredClone(scene);
+    const origin={x:0,y:0,z:0},position={x:2,y:1.6,z:2};
+    const result=placeSceneObject(scene,object.item.id,position,origin);
+    expect(result.scene.objects[0].placement.mount).toBe('free');
+    expect(result.scene.objects[0].item).toEqual(object.item);
+    expectPoint(world(result.scene,object.item.id,result.origin),position);
+    expect(scene).toEqual(before);expect(parseScene(result.scene)).toEqual(result.scene);
+  });
+
+  it('retains still-valid wall bindings but detaches an affected ceiling during physical expansion',()=>{
+    let scene=addObject(addObject(addObject(createScene(),'wall-art'),'ceiling-light'),'desk');
+    const [art,light,desk]=scene.objects;
+    scene=mountObject(scene,art.item.id,'back-wall');
+    const origin={x:0,y:0,z:0},oldArt=world(scene,art.item.id,origin),oldLight=world(scene,light.item.id,origin);
+    const result=placeSceneObject(scene,desk.item.id,{x:3,y:3,z:2},origin);
+    expect(result.scene.objects[0].placement.mount).toBe('back-wall');
+    expect(result.scene.objects[1].placement.mount).toBe('free');
+    expectPoint(world(result.scene,art.item.id,result.origin),oldArt);
+    expectPoint(world(result.scene,light.item.id,result.origin),oldLight);
+    expect(parseScene(result.scene)).toEqual(result.scene);
+  });
+
+  it('does not move other wall-mounted objects when negative physical placement rebases the room',()=>{
+    let scene=addObject(addObject(createScene(),'wall-art'),'desk');
+    const [art,desk]=scene.objects;
+    scene=mountObject(scene,art.item.id,'left-wall');
+    const origin={x:2,y:0,z:2},oldArt=world(scene,art.item.id,origin);
+    const result=placeSceneObject(scene,desk.item.id,{x:0,y:0,z:1},origin);
+    expect(result.scene.objects[0].placement.mount).toBe('free');
+    expectPoint(world(result.scene,art.item.id,result.origin),oldArt);
+    expect(parseScene(result.scene)).toEqual(result.scene);
   });
 });

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createStarterScene } from './scene';
+import { addObject, createScene, createStarterScene } from './scene';
 import { consumeRoomHandoff, prepareRoomHandoff, roomScene } from './roomHandoff';
 
 beforeEach(()=>sessionStorage.clear());
@@ -37,5 +37,17 @@ describe('room layout handoff',()=>{
     sessionStorage.setItem(key,JSON.stringify(value));
     expect(consumeRoomHandoff(token)).toBeNull();
     expect(sessionStorage.getItem(key)).toBeNull();
+  });
+
+  it('preserves wall models, fixture settings, mounts, and room finishes in a prepared handoff',()=>{
+    const scene=addObject(addObject(createScene(),'wall-sconce'),'pendant-light');
+    scene.finishes={wallColor:'#d7ddca',floorColor:'#b69a77'};
+    const token=prepareRoomHandoff(scene),carried=consumeRoomHandoff(token)!;
+    expect(carried).toEqual(scene);
+    expect(carried.objects[0].placement.mount).toBe('back-wall');
+    expect(carried.objects[1].placement.mount).toBe('ceiling');
+    expect(carried.objects[0].item.light).not.toBe(scene.objects[0].item.light);
+    const fromRoom=roomScene(scene.name,scene.room,scene.objects.map(o=>o.item),scene.objects.map(o=>o.placement));
+    expect(fromRoom?.objects).toEqual(scene.objects);
   });
 });

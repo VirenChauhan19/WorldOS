@@ -14,6 +14,7 @@ type Pick = {id:string;left:number;right:number;top:number;bottom:number;depth:n
 const DEFAULT:Orbit={yaw:.70,pitch:.72,zoom:1};
 const EMPTY_ZONES:readonly ReservedZone[]=[];
 const EMPTY_FEATURES:readonly RoomFeature[]=[];
+export interface PreviewFinishes {wallColor:string;floorColor:string}
 const clamp=(value:number,min:number,max:number)=>Math.max(min,Math.min(max,value));
 const normalize=(v:Vector):Vector=>{const l=Math.hypot(...v)||1;return [v[0]/l,v[1]/l,v[2]/l];};
 const cross=(a:Vector,b:Vector):Vector=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
@@ -56,18 +57,18 @@ function createRenderer(canvas:HTMLCanvasElement){
   };
 }
 
-function roomMeshes(room:RoomSize,eye:Vector,showWalls:boolean,features:readonly RoomFeature[]):SceneMesh[]{
+function roomMeshes(room:RoomSize,eye:Vector,showWalls:boolean,features:readonly RoomFeature[],finishes?:PreviewFinishes):SceneMesh[]{
   const {width:w,depth:d}=room,h=room.height??2.7,result:SceneMesh[]=[];
   // The cutaway shell and feature sizes are illustrative. Only observed features appear.
   result.push(...boxMeshes(-.08,-.10,-.08,w+.16,.087,d+.16,material('#a99a83')));
   const planks=Math.min(90,Math.ceil(w/.20));
-  for(let i=0;i<planks;i++)result.push(...boxMeshes(i*w/planks,-.012,0,w/planks-.004,.012,d,material(i%3===0?'#cbb899':i%3===1?'#d3c2a6':'#cdbc9e')));
+  for(let i=0;i<planks;i++)result.push(...boxMeshes(i*w/planks,-.012,0,w/planks-.004,.012,d,finishes?material(finishes.floorColor,[.96,1.02,.99][i%3]):material(i%3===0?'#cbb899':i%3===1?'#d3c2a6':'#cdbc9e')));
   if(!showWalls)return result;
   const wallX=eye[0]>w/2?-.07:w,wallZ=eye[2]>d/2?-.07:d;
-  const sideWall=boxMeshes(wallX,0,0,.07,h,d,material('#e1dfd9'));
-  const backWall=boxMeshes(0,0,wallZ,w,h,.07,material('#ece9e2'));
-  sideWall[wallX<0?2:3].color=material('#d6d2c9');
-  backWall[wallZ<0?1:4].color=material('#e4e0d7');
+  const sideWall=boxMeshes(wallX,0,0,.07,h,d,material(finishes?.wallColor??'#e1dfd9',finishes ? .95 : 1));
+  const backWall=boxMeshes(0,0,wallZ,w,h,.07,material(finishes?.wallColor??'#ece9e2'));
+  sideWall[wallX<0?2:3].color=material(finishes?.wallColor??'#d6d2c9',finishes ? .90 : 1);
+  backWall[wallZ<0?1:4].color=material(finishes?.wallColor??'#e4e0d7',finishes ? .97 : 1);
   result.push(...sideWall,...backWall);
   result.push(...boxMeshes(wallX<0?0:w-.018,0,0,.018,.10,d,material('#f5f4ec')));
   result.push(...boxMeshes(0,0,wallZ<0?0:d-.018,w,.10,.018,material('#f5f4ec')));
@@ -85,7 +86,7 @@ function roomMeshes(room:RoomSize,eye:Vector,showWalls:boolean,features:readonly
   return result;
 }
 
-export default function RoomPreview({room,items,placements,selectedId,onSelect,showWalls=true,reserved=EMPTY_ZONES,features=EMPTY_FEATURES}:{room:RoomSize;items:readonly FurnitureItem[];placements:readonly FurniturePlacement[];selectedId?:string;onSelect?:(id:string)=>void;showWalls?:boolean;reserved?:readonly ReservedZone[];features?:readonly RoomFeature[]}){
+export default function RoomPreview({room,items,placements,selectedId,onSelect,showWalls=true,reserved=EMPTY_ZONES,features=EMPTY_FEATURES,finishes}:{room:RoomSize;items:readonly FurnitureItem[];placements:readonly FurniturePlacement[];selectedId?:string;onSelect?:(id:string)=>void;showWalls?:boolean;reserved?:readonly ReservedZone[];features?:readonly RoomFeature[];finishes?:PreviewFinishes}){
   const canvasRef=useRef<HTMLCanvasElement>(null),graphics=useRef<ReturnType<typeof createRenderer>|null>(null),orbit=useRef<Orbit>({...DEFAULT});
   const frame=useRef(0),drawRef=useRef<()=>void>(()=>{}),picks=useRef<Pick[]>([]);
   const pointers=useRef(new Map<number,{x:number;y:number}>()),gesture=useRef<{x:number;y:number;moved:boolean}|null>(null);
@@ -104,7 +105,7 @@ export default function RoomPreview({room,items,placements,selectedId,onSelect,s
     const distance=cameraDistance(room,target,o,width/height);
     const eye:Vector=[target[0]+Math.sin(o.yaw)*Math.cos(o.pitch)*distance,target[1]+Math.sin(o.pitch)*distance,target[2]+Math.cos(o.yaw)*Math.cos(o.pitch)*distance];
     const projection=perspective(width/height,Math.max(100,distance+Math.hypot(room.width,room.depth,room.height??2.7)*2)),view=lookAt(eye,target);
-    renderer.begin(projection,view);renderer.draw(batch(roomMeshes(room,eye,showWalls,features)));
+    renderer.begin(projection,view);renderer.draw(batch(roomMeshes(room,eye,showWalls,features,finishes)));
     for(const zone of reserved){if([zone.x,zone.z,zone.width,zone.depth].every(Number.isFinite)&&zone.width>0&&zone.depth>0)renderer.draw(boxMeshes(zone.x,.025,zone.z,zone.width,.018,zone.depth,[.67,.40,.23,.6]));}
     // Soft grounding shadows are illustrative, not a light simulation.
     for(const {item,placement:p} of placed){const w=p.rotation%180===90?item.depth:item.width,d=p.rotation%180===90?item.width:item.depth;renderer.draw([{vertices:[p.x-.025,.016,p.z-.025,p.x+w+.025,.016,p.z-.025,p.x+w+.025,.016,p.z+d+.025,p.x-.025,.016,p.z-.025,p.x+w+.025,.016,p.z+d+.025,p.x-.025,.016,p.z+d+.025],color:[.25,.26,.20,.12]}],false,false);}
@@ -132,7 +133,7 @@ export default function RoomPreview({room,items,placements,selectedId,onSelect,s
     return()=>{cancelAnimationFrame(frame.current);frame.current=0;resize?.disconnect();window.removeEventListener('resize',redraw);canvas.removeEventListener('wheel',wheel);canvas.removeEventListener('webglcontextlost',lost);canvas.removeEventListener('webglcontextrestored',restore);graphics.current?.dispose();graphics.current=null;pointers.current.clear();gesture.current=null;picks.current=[];};
   // The renderer persists as room and furniture data change.
   },[valid]);
-  useEffect(redraw,[furniture,room.width,room.depth,room.height,selectedId,showWalls,reserved,features]);
+  useEffect(redraw,[furniture,room.width,room.depth,room.height,selectedId,showWalls,reserved,features,finishes?.wallColor,finishes?.floorColor]);
 
   function reset(top=false){orbit.current=top?{yaw:.001,pitch:1.50,zoom:.95}:{...DEFAULT};setViewMode(top?'top':'perspective');redraw();}
   function pointerDown(event:ReactPointerEvent<HTMLCanvasElement>){if(event.button!==0)return;event.currentTarget.setPointerCapture(event.pointerId);pointers.current.set(event.pointerId,{x:event.clientX,y:event.clientY});if(pointers.current.size===1)gesture.current={x:event.clientX,y:event.clientY,moved:false};else if(gesture.current)gesture.current.moved=true;}

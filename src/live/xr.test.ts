@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { isWorldARSupported, rectangleFromPoints, roomVerticesToWorld, sceneVerticesToWorld, selectARObjectByRay, startWorldAR } from './xr';
+import { isWorldARSupported, placementOnSurface, rectangleFromPoints, roomVerticesToWorld, sceneVerticesToWorld, selectARObjectByRay, startWorldAR } from './xr';
 import { inscribedPlaneRectangle, observedMeshBounds, planeRectangleToWorld } from './xr-plane';
 import type { WorldARMeasurement, WorldARSceneObject, WorldARState } from './xr';
 import type { XRFrameLike, XRMeshLike, XRPlaneLike, XRPoint } from './xr-types';
@@ -695,4 +695,71 @@ it('rotates object triangles around their bottom center and selects rotated fini
   expect(selectARObjectByRay([object], { x: NaN, y: 0, z: 0 }, { x: 0, y: 0, z: 1 })).toBeNull();
   expect(() => sceneVerticesToWorld([0, 0, 0], object)).toThrow();
   expect(() => sceneVerticesToWorld([0, 0, NaN, 0, 0, 0, 0, 0, 0], object)).toThrow();
+});
+
+it('centers upright fixtures on observed walls and aligns their front to the camera-facing normal', () => {
+  const item = { ...sceneObject().item, width: .6, depth: .2, height: .8 };
+  const point = { x: 2, y: 1.8, z: -2 }, camera = { x: 0, y: 1.6, z: 0 };
+  const normal = { x: Math.SQRT1_2, y: 0, z: -Math.SQRT1_2 };
+  const result = placementOnSurface(point, normal, camera, null, 'vertical', item, 180)!;
+  expect(result.surface).toBe('vertical');
+  expect(result.position.x).toBeCloseTo(2 - .1 * Math.SQRT1_2);
+  expect(result.position.y).toBeCloseTo(1.4);
+  expect(result.position.z).toBeCloseTo(-2 + .1 * Math.SQRT1_2);
+  expect(result.rotation).toBeCloseTo(45);
+  expect(placementOnSurface(point, { x: -normal.x, y: 0, z: -normal.z }, camera, null, 'vertical', item)).toEqual(result);
+  const backCenter = sceneVerticesToWorld([.3, .4, 0, .3, .5, 0, .4, .4, 0], { id: 'wall-piece', item, position: result.position, rotation: result.rotation });
+  expect(backCenter[0]).toBeCloseTo(point.x); expect(backCenter[1]).toBeCloseTo(point.y); expect(backCenter[2]).toBeCloseTo(point.z);
+  expect(placementOnSurface(point, { x: 0, y: 1, z: 0 }, camera, null, 'vertical', item)).toBeNull();
+  expect(placementOnSurface(point, { x: 0, y: .5, z: Math.sqrt(.75) }, camera, null, 'vertical', item)).toBeNull();
+});
+
+it('accepts ceiling placement only while looking up at a horizontal hit above the camera', () => {
+  const item = { ...sceneObject().item, height: .6 }, camera = { x: 0, y: 1.6, z: 0 };
+  const point = { x: .2, y: 2.7, z: -1 }, normal = { x: 0, y: -1, z: 0 }, up = { x: 0, y: .7, z: -.7 };
+  const result = placementOnSurface(point, normal, camera, up, 'ceiling', item, 90)!;
+  expect(result).toMatchObject({ rotation: 90, surface: 'ceiling' }); expect(result.position.y).toBeCloseTo(2.1);
+  expect(placementOnSurface(point, normal, camera, { ...up, y: -.7 }, 'ceiling', item)).toBeNull();
+  expect(placementOnSurface({ ...point, y: .8 }, normal, camera, up, 'ceiling', item)).toBeNull();
+  expect(placementOnSurface(point, { x: 1, y: 0, z: 0 }, camera, up, 'ceiling', item)).toBeNull();
+  expect(placementOnSurface(point, normal, camera, up, 'horizontal', item)).toBeNull();
+  expect(placementOnSurface(point, { x: 0, y: NaN, z: 0 }, camera, up, 'ceiling', item)).toBeNull();
+});
+
+it('switches live placement surfaces without reusing old poses and keeps ceiling and wall previews at their mounted positions', async () => {
+  const r = runtime(), ar = await startWorldAR({ ...r.options, interactionMode: 'place' });
+  const item = { ...sceneObject().item, width: .6, depth: .2, height: .8 };
+  ar.setPlacementPreview!(item, 90); r.tick({ x: 0, y: 0, z: -2 });
+  expect(ar.getPlacementPose!()).not.toBeNull();
+  ar.setPlacementSurface!('vertical');
+  expect(ar.getPlacementPose!()).toBeNull(); expect(r.states.at(-1)?.canSelect).toBe(false);
+  r.tick({ x: 0, y: 0, z: -2 }); expect(ar.getPlacementPose!()).toBeNull();
+  const wall = new Float32Array([1,0,0,0, 0,0,1,0, 0,-1,0,0, 0,0,0,1]);
+  const frame = detectedFrame();
+  frame.getHitTestResults = () => [{ getPose: () => ({ transform: transform({ x: 0, y: 1.8, z: -2 }, wall) }) }];
+  r.tickFrame(frame);
+  expect(ar.getPlacementPose!()).toMatchObject({ surface: 'vertical', rotation: 0, position: { x: 0, z: -1.9 } });
+  expect(ar.getPlacementPose!()!.position.y).toBeCloseTo(1.4);
+  ar.setPlacementSurface!('ceiling'); expect(ar.getPlacementPose!()).toBeNull();
+  r.tickFrame(frame); expect(ar.getPlacementPose!()).toBeNull();
+  const upward = new Float32Array(identity); upward[9] = -.7; upward[10] = .7;
+  frame.getViewerPose = () => ({ views: [{ projectionMatrix: identity, transform: transform({ x: 0, y: 1.6, z: 0 }, upward) }] });
+  frame.getHitTestResults = () => [{ getPose: () => ({ transform: transform({ x: 0, y: 2.7, z: -1 }) }) }];
+  r.tickFrame(frame);
+  expect(ar.getPlacementPose!()).toMatchObject({ surface: 'ceiling', rotation: 90 });
+  expect(ar.getPlacementPose!()!.position.y).toBeCloseTo(1.9);
+  ar.setPlacementPreview!({ ...item, height: 1 }); expect(ar.getPlacementPose!()).toBeNull();
+  r.tickFrame(frame); expect(ar.getPlacementPose!()!.position.y).toBeCloseTo(1.7);
+  ar.setPlacementSurface!('horizontal'); expect(ar.getPlacementPose!()).toBeNull();
+  r.tickFrame(frame); expect(ar.getPlacementPose!()).toBeNull();
+  await ar.end();
+});
+
+it('never enables vertical or ceiling placement while measuring a floor', async () => {
+  const r = runtime(), ar = await startWorldAR(r.options);
+  ar.setPlacementSurface!('vertical');
+  r.tick({ x: 0, y: 1, z: -2 }, { horizontal: false });
+  expect(ar.selectPoint()).toBe(false); expect(ar.getPlacementPose!()).toBeNull();
+  r.tick({ x: 0, y: 0, z: -2 }); expect(ar.selectPoint()).toBe(true);
+  await ar.end();
 });

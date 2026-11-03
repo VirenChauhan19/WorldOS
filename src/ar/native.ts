@@ -2,7 +2,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 import type { PluginListenerHandle } from '@capacitor/core';
 import { furnitureMeshes } from '../room/furnitureGeometry';
 import type { FurnitureItem } from '../room/layout';
-import type { WorldARController, WorldAROptions, WorldARPlacementPose, WorldARSceneObject, WorldARState } from '../live/xr';
+import type { WorldARController, WorldAROptions, WorldARPlacementPose, WorldARPlacementSurface, WorldARSceneObject, WorldARState } from '../live/xr';
 
 export interface NativeARCapabilities {
   supported: boolean;
@@ -18,6 +18,7 @@ interface NativeState extends Partial<WorldARState> {
   sessionId: string;
   pose?: WorldARPlacementPose;
   reset?: boolean;
+  placementRevision?: number;
 }
 interface NativeSceneUpdate {
   sessionId: string;
@@ -25,6 +26,8 @@ interface NativeSceneUpdate {
   selectedId: string | null;
   preview: NativeARModel | null;
   previewRotation: number;
+  placementSurface: WorldARPlacementSurface;
+  placementRevision: number;
 }
 interface InteriorARPlugin {
   getCapabilities(): Promise<NativeARCapabilities>;
@@ -38,6 +41,7 @@ const native = registerPlugin<InteriorARPlugin>('InteriorAR');
 export interface NativeARController extends WorldARController {
   selectAt(x: number, y: number): Promise<void>;
 }
+const copyItem = (item: FurnitureItem): FurnitureItem => ({ ...item, ...(item.light ? { light: { ...item.light } } : {}) });
 
 /** Discovery never requests camera access and never treats mobile Safari as a native app. */
 export async function nativeARCapabilities(): Promise<NativeARCapabilities> {
@@ -55,7 +59,7 @@ export function nativeModel(item: FurnitureItem): NativeARModel {
     if (existing) existing.vertices.push(...vertices);
     else groups.set(key, { vertices, color: [...mesh.color] });
   }
-  return { item: { ...item }, meshes: [...groups.values()] };
+  return { item: copyItem(item), meshes: [...groups.values()] };
 }
 
 const isPose = (value: WorldARPlacementPose | undefined): value is WorldARPlacementPose => !!value?.position
@@ -71,6 +75,7 @@ export async function startNativeInteriorAR(options: WorldAROptions): Promise<Na
   const sessionId = crypto.randomUUID();
   let ended = false, started = false, listener: PluginListenerHandle | undefined;
   let objects: WorldARSceneObject[] = [], selectedId: string | null = null, preview: FurnitureItem | null = null, previewRotation = 0;
+  let placementSurface: WorldARPlacementSurface = 'horizontal', placementRevision = 0;
   let pose: WorldARPlacementPose | null = null, receivedAt = 0, phase: WorldARState['phase'] = 'searching', stateKey = '';
   let scheduled = false, inFlight = false, changed = false, retryTracking = false, needsReset = true, resetVersion = 0, selectionRequest = 0;
   const models = new Map<string, { key: string; value: NativeARModel }>();
@@ -86,7 +91,7 @@ export async function startNativeInteriorAR(options: WorldAROptions): Promise<Na
   }
   function currentPose() {
     if (ended || !pose || phase === 'tracking-lost' || Date.now() - receivedAt > 350) return null;
-    return { position: { ...pose.position }, rotation: previewRotation };
+    return { ...pose, position: { ...pose.position }, rotation: placementSurface === 'vertical' ? pose.rotation : previewRotation };
   }
   function release() {
     if (ended) return;
@@ -119,8 +124,8 @@ export async function startNativeInteriorAR(options: WorldAROptions): Promise<Na
     const snapshot = acknowledging ? [] : objects;
     try {
       const payload: NativeSceneUpdate = {
-        sessionId, objects: snapshot.map(object => ({ ...object, item: { ...object.item }, position: { ...object.position }, meshes: model(object.item).meshes })),
-        selectedId: acknowledging ? null : selectedId, preview: preview ? model(preview) : null, previewRotation,
+        sessionId, objects: snapshot.map(object => ({ ...object, item: copyItem(object.item), position: { ...object.position }, meshes: model(object.item).meshes })),
+        selectedId: acknowledging ? null : selectedId, preview: preview ? model(preview) : null, previewRotation, placementSurface, placementRevision,
       };
       await native.updateScene(payload);
       if (ended || generation !== resetVersion) return;
@@ -142,7 +147,9 @@ export async function startNativeInteriorAR(options: WorldAROptions): Promise<Na
     if (!nextPhase || !['searching', 'ready', 'tracking-lost', 'ended'].includes(nextPhase)) return;
     phase = nextPhase; receivedAt = Date.now();
     if (nextPhase === 'ended') { release(); publish({ phase: 'ended', points: 0, canSelect: false, message: value.message || 'AR session ended.' }); return; }
-    pose = value.canSelect && isPose(value.pose) && nextPhase !== 'tracking-lost' ? value.pose : null;
+    pose = value.canSelect && isPose(value.pose) && nextPhase !== 'tracking-lost'
+      && (value.pose.surface ?? 'horizontal') === placementSurface
+      && (value.placementRevision === undefined || value.placementRevision === placementRevision) ? value.pose : null;
     if (value.reset) {
       resetVersion++; needsReset = true; objects = []; selectedId = null; preview = null; pose = null; retryTracking = false; selectionRequest++;
       onSceneReset?.(); queue();
@@ -175,13 +182,25 @@ export async function startNativeInteriorAR(options: WorldAROptions): Promise<Na
     end,
     setScene(value, selection = null) {
       if (ended) return;
-      objects = value.map(object => ({ ...object, item: { ...object.item }, position: { ...object.position } }));
+      objects = value.map(object => ({ ...object, item: copyItem(object.item), position: { ...object.position } }));
       selectedId = selection && objects.some(object => object.id === selection) ? selection : null;
       const keep = new Set(objects.map(o => o.item.id)); if (preview) keep.add(preview.id);
       for (const id of models.keys()) if (!keep.has(id)) models.delete(id);
       queue();
     },
-    setPlacementPreview(item, rotation = 0) { if (ended) return; selectionRequest++; preview = item ? { ...item } : null; previewRotation = rotation; queue(); },
+    setPlacementPreview(item, rotation = 0) {
+      if (ended) return;
+      if (!Number.isFinite(rotation)) throw new Error('Choose a finite object rotation.');
+      if (JSON.stringify(item) !== JSON.stringify(preview) || previewRotation !== rotation) { placementRevision++; pose = null; }
+      selectionRequest++; preview = item ? copyItem(item) : null; previewRotation = rotation; queue();
+    },
+    setPlacementSurface(surface) {
+      if (ended || placementSurface === surface) return;
+      if (!['horizontal', 'vertical', 'ceiling'].includes(surface)) throw new Error('Choose a floor, wall, or ceiling surface.');
+      placementSurface = surface; placementRevision++; selectionRequest++; pose = null;
+      publish({ phase: 'searching', points: 0, canSelect: false, message: surface === 'vertical' ? 'Aim at a wall to place this piece.' : surface === 'ceiling' ? 'Look up at the ceiling to place this light.' : 'Aim at a floor or tabletop to place this piece.' });
+      queue();
+    },
     getPlacementPose: currentPose,
     async selectAt(x, y) {
       if (ended || !started || phase === 'tracking-lost' || Date.now() - receivedAt > 350 || ![x, y].every(n => Number.isFinite(n) && n >= 0 && n <= 1)) return;

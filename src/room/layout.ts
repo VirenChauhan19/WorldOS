@@ -3,6 +3,11 @@ export interface RoomSize { width: number; depth: number; height?: number }
 /** Measured floor rectangles reserved for existing objects or access. */
 export interface ReservedZone { id:string; label:string; kind:'obstacle'|'access'; x:number; z:number; width:number; depth:number }
 export type FurnitureKind = 'bed' | 'desk' | 'table' | 'wardrobe' | 'chair' | 'sofa' | 'ottoman' | 'shelf' | 'plant' | 'lamp' | 'rug' | 'monitor' | 'laptop' | 'speaker' | 'custom';
+/** Optional studio detail. Existing furniture kinds remain compatible with room planning. */
+export const INTERIOR_MODELS = ['wall-art', 'wall-mirror', 'wall-clock', 'wall-shelf', 'wall-sconce', 'pendant-light', 'ceiling-light', 'curtains', 'wall-tv'] as const;
+export type InteriorModel = typeof INTERIOR_MODELS[number];
+export const LIGHT_TEMPERATURES = [2700, 4000, 6500] as const;
+export interface InteriorLight { enabled: boolean; temperature: typeof LIGHT_TEMPERATURES[number]; brightness: number }
 export interface FurnitureItem {
   id: string;
   kind: FurnitureKind;
@@ -11,6 +16,9 @@ export interface FurnitureItem {
   depth: number;
   height: number;
   color: string;
+  model?: InteriorModel;
+  /** Appearance of the fixture, not a measured illumination or electrical specification. */
+  light?: InteriorLight;
 }
 /** x/z locate the minimum corner of the rotated, axis-aligned footprint. */
 export type FurnitureRotation = 0 | 90 | 180 | 270;

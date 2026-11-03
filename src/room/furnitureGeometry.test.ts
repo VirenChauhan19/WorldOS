@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { furnitureMeshes, material } from './furnitureGeometry';
+import { furnitureMeshes, material, fixtureLightColor } from './furnitureGeometry';
 import type { SceneMesh } from './furnitureGeometry';
 import { FURNITURE_PRESETS, orientedSize } from './layout';
 import type { FurnitureItem, FurniturePlacement } from './layout';
+import { AR_CATALOG, createCatalogItem } from '../ar/catalog';
 
 const placement = (item: FurnitureItem, rotation: 0 | 90 | 180 | 270 = 0): FurniturePlacement => ({ itemId: item.id, x: 3.2, z: -1.7, rotation });
 const points = (meshes: SceneMesh[]) => meshes.flatMap(mesh => {
@@ -122,6 +123,53 @@ describe('shared furniture geometry', () => {
         const u = b.map((value, axis) => value - a[axis]), v = c.map((value, axis) => value - a[axis]);
         expect(Math.hypot(u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0])).toBeGreaterThan(1e-15);
       }
+    }
+  });
+
+  it('exports each detailed wall and ceiling concept as finite solids within editable bounds',()=>{
+    for(const entry of AR_CATALOG.filter(entry=>entry.item.model)){
+      for(const dimensions of [{width:entry.item.width,depth:entry.item.depth,height:entry.item.height},{width:2,depth:.02,height:.3},{width:.03,depth:1.5,height:2.5}]){
+        const item={...entry.item,...dimensions};
+        for(const rotation of [0,90,180,270] as const){
+          const at={...placement(item,rotation),elevation:1.2},size=orientedSize(item,rotation),meshes=furnitureMeshes(item,at);
+          expect(meshes.length,entry.id).toBeGreaterThan(6);
+          const limits=[[at.x,at.x+size.width],[1.2,1.2+item.height],[at.z,at.z+size.depth]];
+          for(const mesh of meshes){
+            expect(mesh.vertices.every((value,index)=>Number.isFinite(value)&&value>=limits[index%3][0]-1e-9&&value<=limits[index%3][1]+1e-9),`${entry.id} ${rotation}`).toBe(true);
+            expect(mesh.color.every(value=>Number.isFinite(value)&&value>=0&&value<=1)).toBe(true);
+            for(let index=0;index<mesh.vertices.length;index+=9){
+              const [a,b,c]=[0,3,6].map(offset=>mesh.vertices.slice(index+offset,index+offset+3));
+              const u=b.map((value,axis)=>value-a[axis]),v=c.map((value,axis)=>value-a[axis]);
+              expect(Math.hypot(u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]),entry.id).toBeGreaterThan(1e-15);
+            }
+          }
+          expect(meshes.reduce((sum,mesh)=>sum+mesh.vertices.length/9,0)).toBeLessThan(5000);
+        }
+      }
+    }
+  });
+
+  it('keeps wall backs on the mounting plane and ceiling canopies at the declared top',()=>{
+    for(const id of ['wall-art','wall-mirror','wall-clock','wall-shelf','wall-sconce','curtains','wall-tv','pendant-light','ceiling-light']){
+      const item=createCatalogItem(id),vertices=points(furnitureMeshes(item,{itemId:item.id,x:0,z:0,rotation:0}));
+      expect(Math.min(...vertices.map(point=>point[1])),id).toBeCloseTo(0,9);
+      expect(Math.max(...vertices.map(point=>point[1])),id).toBeCloseTo(item.height,9);
+      expect(Math.min(...vertices.map(point=>point[2])),id).toBeCloseTo(0,9);
+      expect(Math.max(...vertices.map(point=>point[2])),id).toBeCloseTo(item.depth,9);
+    }
+  });
+
+  it('changes only fixture appearance when toggling, dimming, or choosing a light temperature',()=>{
+    for(const id of ['floor-lamp','table-lamp','pendant-light','ceiling-light','wall-sconce']){
+      const item=createCatalogItem(id),at={itemId:item.id,x:0,z:0,rotation:0 as const};
+      const on=furnitureMeshes(item,at),off=furnitureMeshes({...item,light:{...item.light!,enabled:false}},at);
+      expect(on.map(mesh=>mesh.vertices)).toEqual(off.map(mesh=>mesh.vertices));
+      expect(on.map(mesh=>mesh.color)).not.toEqual(off.map(mesh=>mesh.color));
+      const warm=fixtureLightColor({...item,light:{enabled:true,temperature:2700,brightness:100}}),cool=fixtureLightColor({...item,light:{enabled:true,temperature:6500,brightness:100}});
+      expect(warm[0]).toBeGreaterThan(warm[2]);expect(cool[2]).toBeGreaterThan(cool[0]);
+      expect(fixtureLightColor({...item,light:{enabled:true,temperature:2700,brightness:0}})).toEqual(fixtureLightColor({...item,light:{enabled:false,temperature:2700,brightness:100}}));
+      const dim=fixtureLightColor({...item,light:{enabled:true,temperature:2700,brightness:20}});
+      expect(dim[0]).toBeLessThan(warm[0]);
     }
   });
 });

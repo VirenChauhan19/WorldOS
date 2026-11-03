@@ -76,6 +76,30 @@ function foliage(x:number,y:number,z:number,rx:number,ry:number,rz:number,color:
   return meshes;
 }
 
+/** A closed shade with two elliptical rims, so every exported part is a solid. */
+function shade(x:number,y:number,z:number,bottomX:number,bottomZ:number,topX:number,topZ:number,height:number,color:Color):SceneMesh[] {
+  const meshes:SceneMesh[]=[],top:SceneMesh={vertices:[],color},bottom:SceneMesh={vertices:[],color:tint(color,.68)};
+  for(let i=0;i<32;i++){
+    const a=i*Math.PI/16,b=(i+1)*Math.PI/16;
+    const low=(angle:number):Point=>[x+Math.cos(angle)*bottomX,y,z+Math.sin(angle)*bottomZ];
+    const high=(angle:number):Point=>[x+Math.cos(angle)*topX,y+height,z+Math.sin(angle)*topZ];
+    meshes.push(face(low(a),low(b),high(b),high(a),tint(color,.78+.11*(Math.sin(a)+1)/2)));
+    top.vertices.push(x,y+height,z,...high(a),...high(b));
+    bottom.vertices.push(x,y,z,...low(b),...low(a));
+  }
+  meshes.push(top,bottom);return meshes;
+}
+
+/** A visual bulb/diffuser tint only; no lux, light casting, or real-room simulation. */
+export function fixtureLightColor(item: FurnitureItem): Color {
+  const light=item.light;
+  if(!light)return material('#eee9dc');
+  const amount=light.enabled&&Number.isFinite(light.brightness)?Math.max(0,Math.min(100,light.brightness))/100:0;
+  const color=material(light.temperature===6500?'#d4e7ff':light.temperature===4000?'#fff5e0':'#ffd49b');
+  const off=material('#898b81');
+  return [off[0]+(color[0]-off[0])*amount,off[1]+(color[1]-off[1])*amount,off[2]+(color[2]-off[2])*amount,1];
+}
+
 /** Shared by the WebXR and room renderers. The oriented footprint starts at placement.x/z. */
 export function furnitureMeshes(item: FurnitureItem, placement: FurniturePlacement): SceneMesh[] {
   const elevation=placement.elevation??0;
@@ -92,7 +116,89 @@ export function furnitureMeshes(item: FurnitureItem, placement: FurniturePlaceme
       meshes.push({vertices,color:mesh.color});
     }
   };
-  if(item.kind==='bed'){
+  const frontDisc=(cx:number,cy:number,z:number,rx:number,ry:number,depth:number,color:Color)=>{
+    for(const mesh of cylinder(cx,z,cy,rx,ry,depth,color)){
+      const vertices:number[]=[];
+      for(let i=0;i<mesh.vertices.length;i+=9)for(const offset of [0,6,3])vertices.push(mesh.vertices[i+offset],mesh.vertices[i+offset+2],mesh.vertices[i+offset+1]);
+      meshes.push({vertices,color:mesh.color});
+    }
+  };
+  const light=fixtureLightColor(item);
+  if(item.model==='wall-art'){
+    // Frame, recessed linen mat, and a small abstract landscape are separate solids.
+    box(0,0,0,w,h,d*.58,fabric);
+    box(w*.045,h*.035,d*.58,w*.91,h*.93,d*.13,material('#eee8da'));
+    box(w*.12,h*.11,d*.71,w*.76,h*.78,d*.08,material('#d8cab5'));
+    frontDisc(w*.66,h*.67,d*.79,w*.12,h*.10,d*.035,material('#b97759'));
+    box(w*.12,h*.11,d*.825,w*.76,h*.25,d*.045,material('#6f8069'));
+    softBack(w*.12,h*.25,d*.825,w*.48,h*.22,d*.04,Math.min(w,h)*.08,material('#98a288'));
+    box(w*.12,h*.11,d*.87,w*.76,h*.08,d*.03,material('#b0936f'));
+    for(const x of [0,w*.965])box(x,0,d*.58,w*.035,h,d*.42,fabric);
+    for(const y of [0,h*.97])box(0,y,d*.58,w,h*.03,d*.42,fabric);
+  } else if(item.model==='wall-mirror'){
+    softBack(0,0,0,w,h,d*.72,Math.min(w,h)*.10,fabric);
+    softBack(w*.045,h*.03,d*.72,w*.91,h*.94,d*.16,Math.min(w,h)*.08,material('#adbec0'));
+    // A neutral reflection motif keeps this recognizable without faking a camera reflection.
+    softBack(w*.075,h*.055,d*.88,w*.85,h*.89,d*.035,Math.min(w,h)*.06,material('#c8d6d5'));
+    box(w*.12,h*.68,d*.915,w*.055,h*.18,d*.045,material('#e6eeea'));
+    box(w*.195,h*.77,d*.915,w*.025,h*.09,d*.045,material('#e6eeea'));
+    box(w*.11,h*.11,d*.915,w*.78,h*.045,d*.085,material('#9eb2b3'));
+  } else if(item.model==='wall-clock'){
+    frontDisc(w/2,h/2,0,w/2,h/2,d*.72,fabric);
+    frontDisc(w/2,h/2,d*.72,w*.445,h*.445,d*.12,cream);
+    for(const [x,y] of [[.48,.84],[.48,.10],[.10,.48],[.84,.48]])box(w*x,h*y,d*.84,w*.04,h*.06,d*.055,dark);
+    box(w*.48,h*.48,d*.895,w*.045,h*.26,d*.045,dark);
+    box(w*.48,h*.48,d*.94,w*.24,h*.035,d*.035,dark);
+    frontDisc(w/2,h/2,d*.975,w*.045,h*.045,d*.025,dark);
+  } else if(item.model==='wall-shelf'){
+    // A floating slab stays unobstructed so the full declared top is usable.
+    box(0,0,0,w,h,d,fabric);
+    box(w*.035,h*.08,d*.98,w*.93,h*.03,d*.02,tint(fabric,.88));
+  } else if(item.model==='wall-sconce'){
+    softBack(w*.27,h*.08,0,w*.46,h*.84,d*.08,Math.min(w,h)*.08,fabric);
+    box(w*.44,h*.31,d*.08,w*.12,h*.11,d*.52,fabric);
+    meshes.push(...cylinder(w*.5,h*.29,d*.61,w*.07,d*.06,h*.24,dark));
+    meshes.push(...shade(w/2,h*.49,d*.61,w*.5,d*.39,w*.36,d*.29,h*.47,fabric));
+    meshes.push(...cylinder(w/2,h*.46,d*.61,w*.43,d*.33,h*.03,light));
+    meshes.push(...cylinder(w/2,h*.96,d*.61,w*.32,d*.25,h*.04,light));
+    box(w*.38,0,0,w*.24,h*.08,d*.06,fabric);
+  } else if(item.model==='pendant-light'){
+    // The canopy touches the ceiling at h; the shade hangs below its cord.
+    meshes.push(...cylinder(w/2,h*.94,d/2,w*.14,d*.14,h*.06,fabric));
+    meshes.push(...cylinder(w/2,h*.33,d/2,w*.012,d*.012,h*.61,dark));
+    meshes.push(...shade(w/2,h*.03,d/2,w*.5,d*.5,w*.20,d*.20,h*.30,fabric));
+    meshes.push(...cylinder(w/2,0,d/2,w*.45,d*.45,h*.03,light));
+    meshes.push(...cylinder(w/2,h*.32,d/2,w*.06,d*.06,h*.03,fabric));
+  } else if(item.model==='ceiling-light'){
+    meshes.push(...cylinder(w/2,h*.75,d/2,w*.44,d*.44,h*.25,fabric));
+    meshes.push(...cylinder(w/2,h*.16,d/2,w/2,d/2,h*.59,fabric));
+    meshes.push(...cylinder(w/2,0,d/2,w*.46,d*.46,h*.17,light));
+    meshes.push(...cylinder(w/2,h*.12,d/2,w*.48,d*.48,h*.06,light));
+  } else if(item.model==='curtains'){
+    // Two pleated fabric panels frame an opening. The rod and brackets stay in bounds.
+    const rodY=h*.97,rodZ=d*.46;
+    for(const mesh of cylinder(h*.97,0,rodZ,h*.009,d*.07,w,material('#6f7062'))){
+      const vertices:number[]=[];
+      // Extrusion changes from y to x. Reverse winding for the swapped axes.
+      for(let i=0;i<mesh.vertices.length;i+=9)for(const offset of [0,6,3])vertices.push(mesh.vertices[i+offset+1],mesh.vertices[i+offset],mesh.vertices[i+offset+2]);
+      meshes.push({vertices,color:mesh.color});
+    }
+    for(const x of [w*.03,w*.94])box(x,rodY-h*.012,0,w*.03,h*.024,d*.46,material('#6f7062'));
+    for(const panel of [0,.59])for(let fold=0;fold<7;fold++){
+      const x=w*(panel+.025+fold*.052),width=w*.052;
+      const shadeFactor=fold%2===0?.96:1.07;
+      soft(x,0,d*.25,width,h*.94,d*.75,width*.24,tint(fabric,shadeFactor));
+      box(x,h*.94,d*.42,width,h*.06,d*.08,tint(fabric,.84));
+    }
+  } else if(item.model==='wall-tv'){
+    softBack(0,0,0,w,h,d*.8,Math.min(w,h)*.018,fabric);
+    box(w*.018,h*.027,d*.8,w*.964,h*.946,d*.06,material('#1d3036'));
+    box(w*.028,h*.04,d*.86,w*.944,h*.90,d*.035,material('#759295'));
+    box(w*.028,h*.04,d*.895,w*.944,h*.32,d*.025,material('#3f6564'));
+    softBack(w*.14,h*.29,d*.895,w*.46,h*.26,d*.025,Math.min(w,h)*.07,material('#567b73'));
+    frontDisc(w*.78,h*.72,d*.895,w*.06,h*.10,d*.025,material('#c6ceba'));
+    box(w*.485,h*.008,d*.92,w*.03,h*.008,d*.08,material('#b0b6a4'));
+  } else if(item.kind==='bed'){
     // The entire model, including the headboard, stays within its declared dimensions.
     box(w*.035,h*.1,d*.025,w*.93,h*.23,d*.975,wood);
     for(const x of [w*.09,w*.85])for(const z of [d*.08,d*.86])box(x,0,z,w*.06,h*.16,d*.06,dark);
@@ -153,7 +259,8 @@ export function furnitureMeshes(item: FurnitureItem, placement: FurniturePlaceme
     meshes.push(...cylinder(w/2,0,d/2,w*.34,d*.34,h*.035,dark));
     meshes.push(...cylinder(w/2,h*.035,d/2,w*.027,d*.027,h*.77,dark));
     meshes.push(...cylinder(w/2,h*.77,d/2,w/2,d/2,h*.23,fabric));
-    meshes.push(...cylinder(w/2,h*.992,d/2,w*.41,d*.41,h*.008,cream));
+    meshes.push(...cylinder(w/2,h*.992,d/2,w*.41,d*.41,h*.008,light));
+    meshes.push(...cylinder(w/2,h*.765,d/2,w*.43,d*.43,h*.005,light));
   } else if(item.kind==='rug'){
     soft(0,0,0,w,h*.65,d,Math.min(w,d)*.035,fabric);
     soft(w*.055,h*.65,d*.045,w*.89,h*.25,d*.91,Math.min(w,d)*.025,tint(fabric,1.13));

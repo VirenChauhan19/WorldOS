@@ -8,6 +8,7 @@ import simd
 /// ARSession delegate callbacks run on the main queue. Coordinates are metres;
 /// rotations are the designer's clockwise degrees, not RealityKit radians.
 final class InteriorARRenderer: NSObject, ARSessionDelegate {
+    private enum PlacementSurface: String { case horizontal, vertical, ceiling }
     struct RendererError: LocalizedError {
         let code: String
         let message: String
@@ -38,6 +39,8 @@ final class InteriorARRenderer: NSObject, ARSessionDelegate {
         let selectedID: String?
         let preview: Asset?
         let previewRotation: Float
+        let placementSurface: PlacementSurface
+        let placementRevision: Int
     }
 
     private struct Geometry {
@@ -68,6 +71,9 @@ final class InteriorARRenderer: NSObject, ARSessionDelegate {
     private var previewModel: ModelEntity?
     private var previewRotation: Float = 0
     private var placementPosition: SIMD3<Float>?
+    private var placementRotation: Float = 0
+    private var placementSurface: PlacementSurface = .horizontal
+    private var placementRevision: Int = 0
     private var isRunning = false
     private var isInterrupted = false
     private var needsResetAcknowledgement = true
@@ -203,6 +209,9 @@ final class InteriorARRenderer: NSObject, ARSessionDelegate {
         }
         selectedID = scene.selectedID
         previewRotation = scene.previewRotation
+        placementSurface = scene.placementSurface
+        placementRevision = scene.placementRevision
+        placementPosition = nil
         if scene.preview != previewAsset {
             previewModel?.removeFromParent()
             previewModel = nil
@@ -277,7 +286,7 @@ final class InteriorARRenderer: NSObject, ARSessionDelegate {
         lastFrameTimestamp = 0
         lastSampleTimestamp = 0
         let configuration = ARWorldTrackingConfiguration()
-        configuration.planeDetection = [.horizontal]
+        configuration.planeDetection = [.horizontal, .vertical]
         configuration.environmentTexturing = .automatic
         // LiDAR enhances occlusion when available; it is never a prerequisite.
         view.environment.sceneUnderstanding.options.remove(.occlusion)
@@ -297,6 +306,9 @@ final class InteriorARRenderer: NSObject, ARSessionDelegate {
         previewAsset = nil
         previewRotation = 0
         placementPosition = nil
+        placementRotation = 0
+        placementSurface = .horizontal
+        placementRevision = 0
         selectedID = nil
     }
 
@@ -380,38 +392,72 @@ final class InteriorARRenderer: NSObject, ARSessionDelegate {
         lastSampleTimestamp = now
         setModelsVisible(true)
         let center = CGPoint(x: view.bounds.midX, y: view.bounds.midY)
-        var hit: ARRaycastResult?
+        var hits: [ARRaycastResult] = []
         if view.bounds.width > 0 && view.bounds.height > 0 {
-            // Prefer observed plane geometry; estimated horizontal surfaces also
-            // work on ordinary iPhones without a depth sensor.
-            hit = view.raycast(from: center, allowing: .existingPlaneGeometry, alignment: .horizontal).first
-            if hit == nil {
-                hit = view.raycast(from: center, allowing: .estimatedPlane, alignment: .horizontal).first
+            // Wall fixtures need observed vertical geometry. Ceiling rays stay
+            // horizontal, then pass explicit camera-height and look-up checks.
+            let alignment: ARRaycastQuery.TargetAlignment = placementSurface == .vertical ? .vertical : .horizontal
+            hits = view.raycast(from: center, allowing: .existingPlaneGeometry, alignment: alignment)
+            if hits.isEmpty {
+                hits = view.raycast(from: center, allowing: .estimatedPlane, alignment: alignment)
             }
         }
-        if let hit = hit {
-            let column = hit.worldTransform.columns.3
-            let position = SIMD3<Float>(column.x, column.y, column.z)
-            let cameraColumn = frame.camera.transform.columns.3
-            let camera = SIMD3<Float>(cameraColumn.x, cameraColumn.y, cameraColumn.z)
-            if isBounded(position, limit: 50), simd_distance(position, camera) <= 8 {
+        for hit in hits.prefix(16) {
+            if let (position, rotation) = placement(hit, camera: frame.camera.transform) {
                 placementPosition = position
+                placementRotation = rotation
                 previewModel?.position = position
-                previewModel?.orientation = orientation(degrees: previewRotation)
+                previewModel?.orientation = orientation(degrees: rotation)
                 previewModel?.isEnabled = !needsResetAcknowledgement
                 if needsResetAcknowledgement {
                     emit(phase: "searching", message: "Preparing a fresh AR scene.", canSelect: false, force: true)
                     return
                 }
-                emit(phase: "ready", message: "Surface found. Place furniture or tap an object to edit it.",
-                     canSelect: !objects.isEmpty, force: true)
+                emit(phase: "ready", message: "Surface found. Place your object at the preview.",
+                     canSelect: true, force: true)
                 return
             }
         }
         placementPosition = nil
         previewModel?.isEnabled = false
-        emit(phase: "searching", message: "Aim at a nearby floor or tabletop to place furniture.",
-             canSelect: !objects.isEmpty, force: true)
+        let guidance = placementSurface == .vertical ? "Aim at a nearby wall to place this piece." :
+            placementSurface == .ceiling ? "Look up at the ceiling to place this light." :
+            "Aim at a nearby floor or tabletop to place this piece."
+        emit(phase: "searching", message: guidance, canSelect: false, force: true)
+    }
+
+    /// Center the fixture on the observed hit while its model base stays upright.
+    /// Raycast plane normals can have either sign, so wall fronts face the camera.
+    private func placement(_ hit: ARRaycastResult, camera transform: simd_float4x4) -> (SIMD3<Float>, Float)? {
+        let column = hit.worldTransform.columns.3, axis = hit.worldTransform.columns.1
+        let cameraColumn = transform.columns.3, forward = -transform.columns.2
+        let camera = SIMD3<Float>(cameraColumn.x, cameraColumn.y, cameraColumn.z)
+        var position = SIMD3<Float>(column.x, column.y, column.z)
+        var normal = SIMD3<Float>(axis.x, axis.y, axis.z)
+        let length = simd_length(normal)
+        guard isBounded(position, limit: 50), isBounded(normal, limit: 1.1),
+              length >= 0.9, length <= 1.1, simd_distance(position, camera) <= 8 else { return nil }
+        normal /= length
+        var rotation = previewRotation
+        switch placementSurface {
+        case .vertical:
+            guard hit.targetAlignment == .vertical, abs(normal.y) <= 0.2 else { return nil }
+            var facing = simd_normalize(SIMD2<Float>(normal.x, normal.z))
+            if simd_dot(facing, SIMD2<Float>(camera.x - position.x, camera.z - position.z)) < 0 { facing = -facing }
+            position.x += facing.x * (previewAsset?.depth ?? 0) / 2
+            position.z += facing.y * (previewAsset?.depth ?? 0) / 2
+            position.y -= (previewAsset?.height ?? 0) / 2
+            rotation = normalizedDegrees(atan2(-facing.x, facing.y) * 180 / .pi)
+        case .ceiling:
+            guard hit.targetAlignment == .horizontal, abs(normal.y) >= 0.94,
+                  forward.y > 0.1, position.y > camera.y + 0.15 else { return nil }
+            position.y -= previewAsset?.height ?? 0
+        case .horizontal:
+            guard hit.targetAlignment == .horizontal, abs(normal.y) >= 0.94,
+                  position.y <= camera.y + 0.1 else { return nil }
+        }
+        guard isBounded(position, limit: 50), rotation.isFinite else { return nil }
+        return (position, rotation)
     }
 
     private func showUnavailable(message: String) {
@@ -451,11 +497,12 @@ final class InteriorARRenderer: NSObject, ARSessionDelegate {
         guard force || reset || key != lastStateKey || now - lastStateTimestamp >= Self.stateInterval else { return }
         lastStateTimestamp = now
         lastStateKey = key
-        var state: [String: Any] = ["phase": phase, "canSelect": canSelect, "message": message]
+        var state: [String: Any] = ["phase": phase, "canSelect": canSelect, "message": message,
+                                    "placementRevision": placementRevision]
         if reset { state["reset"] = true }
         if hasPose, let position = placementPosition {
             state["pose"] = ["position": ["x": Double(position.x), "y": Double(position.y), "z": Double(position.z)],
-                             "rotation": Double(previewRotation)] as [String: Any]
+                             "rotation": Double(placementRotation), "surface": placementSurface.rawValue] as [String: Any]
         }
         onState(state)
     }
@@ -494,8 +541,17 @@ final class InteriorARRenderer: NSObject, ARSessionDelegate {
             preview = try parseAsset(row, totalTriangles: &triangleCount)
         }
         let rotation = try number(payload["previewRotation"] ?? 0, field: "preview rotation", limit: 360_000)
+        let surfaceValue = try string(payload["placementSurface"] ?? "horizontal", field: "placement surface", maximum: 16)
+        guard let surface = PlacementSurface(rawValue: surfaceValue) else {
+            throw issue("AR_UPDATE_FAILED", "Choose a floor, wall, or ceiling placement surface.")
+        }
+        let revision = try number(payload["placementRevision"] ?? 0, field: "placement revision", limit: 1_000_000_000)
+        guard revision >= 0, revision.rounded() == revision else {
+            throw issue("AR_UPDATE_FAILED", "Placement revision must be a nonnegative integer.")
+        }
         return SceneInput(objects: parsed, selectedID: selectedID, preview: preview,
-                          previewRotation: normalizedDegrees(rotation))
+                          previewRotation: normalizedDegrees(rotation), placementSurface: surface,
+                          placementRevision: Int(revision))
     }
 
     private func parseAsset(_ payload: [String: Any], totalTriangles: inout Int) throws -> Asset {

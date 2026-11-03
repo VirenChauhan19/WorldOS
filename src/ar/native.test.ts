@@ -15,13 +15,15 @@ vi.mock('@capacitor/core', () => ({
   registerPlugin: () => bridge,
 }));
 
-type EventState = Partial<WorldARState> & { sessionId: string; pose?: WorldARPlacementPose; reset?: boolean };
+type EventState = Partial<WorldARState> & { sessionId: string; pose?: WorldARPlacementPose; reset?: boolean; placementRevision?: number };
 type SentScene = {
   sessionId: string;
   objects: (WorldARSceneObject & { meshes: NativeARModel['meshes'] })[];
   selectedId: string | null;
   preview: NativeARModel | null;
   previewRotation: number;
+  placementSurface: 'horizontal' | 'vertical' | 'ceiling';
+  placementRevision: number;
 };
 const controllers: NativeARController[] = [];
 const listeners: { receive: (state: EventState) => void; remove: ReturnType<typeof vi.fn> }[] = [];
@@ -189,6 +191,53 @@ it('requires a fresh finite pose from this session and uses the preview rotation
   expect(r.ar.selectPoint()).toBe(true);
   r.emit({ phase: 'tracking-lost', canSelect: true, pose: hit.pose });
   expect(r.ar.selectPoint()).toBe(false);
+});
+
+it('uses native wall yaw and rejects old surface or preview revision events', async () => {
+  const r = await open();
+  r.ar.setPlacementPreview?.(object().item, 90); r.emit(hit);
+  expect(r.ar.getPlacementPose?.()).not.toBeNull();
+  r.ar.setPlacementSurface?.('vertical');
+  expect(r.ar.getPlacementPose?.()).toBeNull();
+  expect(r.callbacks.onState).toHaveBeenLastCalledWith(expect.objectContaining({ canSelect: false }));
+  await settle(); expect(sent().placementSurface).toBe('vertical');
+  r.emit(hit); expect(r.ar.getPlacementPose?.()).toBeNull();
+  const wall = { ...hit, placementRevision: sent().placementRevision, pose: { ...hit.pose, surface: 'vertical' as const, rotation: 37 } };
+  r.emit(wall);
+  expect(r.ar.getPlacementPose?.()).toMatchObject({ surface: 'vertical', rotation: 37 });
+  expect(r.ar.selectPoint()).toBe(true);
+  expect(r.callbacks.onPlace).toHaveBeenLastCalledWith(expect.objectContaining({ surface: 'vertical', rotation: 37 }));
+  r.ar.setPlacementPreview?.({ ...object().item, height: 1.2 }, 0);
+  r.emit(wall); expect(r.ar.getPlacementPose?.()).toBeNull();
+  await settle(); r.emit({ ...wall, placementRevision: sent().placementRevision });
+  expect(r.ar.getPlacementPose?.()).not.toBeNull();
+  r.ar.setPlacementSurface?.('horizontal'); r.ar.setPlacementSurface?.('vertical');
+  r.emit(wall); expect(r.ar.getPlacementPose?.()).toBeNull();
+});
+
+it('requires an explicit ceiling pose and keeps its native bottom-center position', async () => {
+  const r = await open();
+  r.ar.setPlacementSurface?.('ceiling'); r.ar.setPlacementPreview?.(object().item, 180);
+  await settle();
+  r.emit(hit); expect(r.ar.getPlacementPose?.()).toBeNull();
+  const ceiling = { ...hit, placementRevision: sent().placementRevision, pose: { position: { x: 0, y: 2.1, z: -1 }, surface: 'ceiling' as const, rotation: 180 } };
+  r.emit(ceiling);
+  expect(r.ar.getPlacementPose?.()).toEqual(ceiling.pose);
+  r.ar.setPlacementSurface?.('horizontal');
+  r.emit(ceiling); expect(r.ar.getPlacementPose?.()).toBeNull();
+  await settle(); r.emit(hit);
+  expect(r.ar.getPlacementPose?.()).toEqual({ position: hit.pose.position, rotation: 180 });
+});
+
+it('snapshots light settings independently before a queued native update', async () => {
+  const r = await open(), lamp = object();
+  lamp.item = createCatalogItem('table-lamp', lamp.id);
+  lamp.item.light = { enabled: true, temperature: 2700, brightness: 65 };
+  r.ar.setScene?.([lamp]); r.ar.setPlacementPreview?.(lamp.item);
+  lamp.item.light.brightness = 0; lamp.item.light.enabled = false;
+  await settle();
+  expect(sent().objects[0].item.light).toEqual({ enabled: true, temperature: 2700, brightness: 65 });
+  expect(sent().preview?.item.light).toEqual({ enabled: true, temperature: 2700, brightness: 65 });
 });
 
 it('serializes native writes and sends only the newest complete scene after an in-flight move', async () => {

@@ -6,7 +6,7 @@ import type { FurnitureItem, FurniturePlacement, RoomSize } from '../room/layout
 import type { WorldARController, WorldAROptions, WorldARPlacementPose, WorldARSceneObject } from '../live/xr';
 import type { NativeARController } from './native';
 
-interface PreviewProps { room: RoomSize; items: FurnitureItem[]; placements: FurniturePlacement[]; selectedId: string }
+interface PreviewProps { room: RoomSize; items: FurnitureItem[]; placements: (FurniturePlacement&{mount?:string})[]; selectedId: string;finishes?:{wallColor:string;floorColor:string} }
 vi.mock('../room/RoomPreview', () => ({ default: (props: PreviewProps) => <output data-testid="design-preview">{JSON.stringify(props)}</output> }));
 vi.mock('./ObjectThumbnail', () => ({ default: () => <span aria-hidden="true"/> }));
 vi.mock('../live/xr', () => ({ isWorldARSupported: vi.fn(), startWorldAR: vi.fn() }));
@@ -44,7 +44,7 @@ beforeEach(() => {
   controller = {
     setFootprint: vi.fn(), setRoomLayout: vi.fn(), useDetectedSurface: vi.fn(() => false),
     selectPoint: vi.fn(() => true), reset: vi.fn(), end: vi.fn(async () => {}),
-    setScene: vi.fn(), setPlacementPreview: vi.fn(), getPlacementPose: vi.fn(() => pose),
+    setScene: vi.fn(), setPlacementSurface: vi.fn(), setPlacementPreview: vi.fn(), getPlacementPose: vi.fn(() => pose),
     selectAt: vi.fn(async () => {}),
   };
   vi.mocked(startWorldAR).mockImplementation(async value => {
@@ -89,7 +89,7 @@ describe('interior design editing', () => {
     await renderDesigner();
     fireEvent.click(screen.getByRole('button', { name: 'Add pieces' }));
     const collection = within(screen.getByRole('dialog', { name: 'Add pieces to your design' }));
-    fireEvent.click(collection.getByRole('button', { name: 'Decor' }));
+    fireEvent.click(collection.getByRole('button', { name: 'Lighting' }));
     fireEvent.change(collection.getByRole('searchbox', { name: 'Search objects' }), { target: { value: 'lamp' } });
     expect(collection.getByRole('button', { name: 'Add Floor lamp' })).toBeTruthy();
     expect(collection.getByRole('button', { name: 'Add Table lamp' })).toBeTruthy();
@@ -765,5 +765,113 @@ describe('native AR preview scope', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'AR preview selection' }), { target: { value: 'all' } });
     expect(quickAsset()[0]).toEqual([plan.items[0]]);
     expect(quickAsset()[1]).toEqual([plan.placements[0]]);
+  });
+});
+
+
+describe('walls, ceilings, and lighting',()=>{
+  it('mounts a wall piece, preserves its height while switching walls, and keeps its face inward',async()=>{
+    const view=await renderDesigner();
+    fireEvent.click(screen.getByRole('button',{name:'Add Framed artwork'}));
+    expect(screen.getByLabelText('Mounting surface')).toHaveProperty('value','back-wall');
+    expect(preview().items[0].model).toBe('wall-art');
+    setField('Mounting height','1.35');
+    fireEvent.change(screen.getByLabelText('Mounting surface'),{target:{value:'right-wall'}});
+    expect(preview().placements[0]).toMatchObject({mount:'right-wall',rotation:90,elevation:1.35});
+    expect(preview().placements[0].x+preview().items[0].depth).toBeCloseTo(preview().room.width);
+    expect(screen.getByLabelText('Position from left')).toHaveProperty('disabled',true);
+    expect(screen.getByRole('button',{name:/Rotate 90/})).toHaveProperty('disabled',true);
+    fireEvent.click(screen.getByRole('button',{name:'Undo design change'}));
+    expect(preview().placements[0].mount).toBe('back-wall');
+    view.rerender(<SceneDesigner active={false}/>);
+    expect(loadScene()?.objects[0].placement).toMatchObject({mount:'back-wall',elevation:1.35});
+  });
+
+  it('hangs a pendant from the ceiling and saves editable light settings independently',async()=>{
+    const view=await renderDesigner();
+    fireEvent.click(screen.getByRole('button',{name:'Add Pendant light'}));
+    expect(preview().placements[0].mount).toBe('ceiling');
+    expect(preview().placements[0].elevation!+preview().items[0].height).toBeCloseTo(2.7);
+    expect(screen.getByLabelText('Height off floor')).toHaveProperty('disabled',true);
+    fireEvent.click(screen.getByRole('button',{name:'Cool light'}));
+    fireEvent.change(screen.getByRole('slider',{name:'Light brightness'}),{target:{value:'35'}});
+    fireEvent.click(screen.getByRole('switch',{name:'Fixture light'}));
+    expect(preview().items[0].light).toEqual({enabled:false,temperature:6500,brightness:35});
+    fireEvent.click(screen.getByRole('button',{name:'Duplicate'}));
+    fireEvent.click(screen.getByRole('switch',{name:'Fixture light'}));
+    expect(preview().items[0].light?.enabled).toBe(false);
+    expect(preview().items[1].light?.enabled).toBe(true);
+    setField('Object height','1');
+    expect(preview().placements[1].elevation).toBeCloseTo(1.7);
+    expect(quickAsset()[0][1].light?.temperature).toBe(6500);
+    view.rerender(<SceneDesigner active={false}/>);
+    expect(loadScene()?.objects[1]).toMatchObject({item:{model:'pendant-light',light:{enabled:true,brightness:35}},placement:{mount:'ceiling'}});
+    expect(loadScene()?.objects[1].placement.elevation).toBeCloseTo(1.7);
+  });
+
+  it('keeps wall and floor colors in the preview, undo history, and saved design',async()=>{
+    const view=await renderDesigner();
+    fireEvent.click(screen.getByRole('button',{name:'Sage green walls'}));
+    fireEvent.click(screen.getByRole('button',{name:'Walnut floor'}));
+    expect(preview().finishes).toEqual({wallColor:'#a6b29b',floorColor:'#8c6c51'});
+    fireEvent.click(screen.getByRole('button',{name:'Undo design change'}));
+    expect(preview().finishes).toEqual({wallColor:'#a6b29b',floorColor:'#cdbc9e'});
+    view.rerender(<SceneDesigner active={false}/>);
+    expect(loadScene()?.finishes).toEqual(preview().finishes);
+  });
+
+  it('uses the observed wall angle in native AR and restores it through edit and undo',async()=>{
+    vi.mocked(nativeARCapabilities).mockResolvedValue({supported:true});
+    await renderDesigner();
+    fireEvent.click(screen.getByRole('button',{name:'Add Wall sconce'}));
+    await startAR();
+    fireEvent.click(liveControls().getByRole('button',{name:'Place this object'}));
+    expect(controller.setPlacementSurface).toHaveBeenLastCalledWith('vertical');
+    pose={position:{x:.5,y:1.4,z:-1.2},rotation:37,surface:'vertical'};
+    fireEvent.click(liveControls().getByRole('button',{name:'Place here'}));
+    expect(worldObjects()[0].rotation).toBe(37);
+    expect(worldObjects()[0].position).toEqual(pose.position);
+    setField('Object width','.4',liveControls());
+    expect(worldObjects()[0].position).toEqual(pose.position);
+    setField('Object depth','.4',liveControls());
+    expect(worldObjects()[0].position.x).toBeCloseTo(.5-Math.sin(37*Math.PI/180)*.09);
+    expect(worldObjects()[0].position.z).toBeCloseTo(-1.2+Math.cos(37*Math.PI/180)*.09);
+    fireEvent.click(screen.getByRole('button',{name:'Undo AR change'}));
+    expect(worldObjects()[0].position).toEqual(pose.position);
+    fireEvent.click(liveControls().getByRole('button',{name:/Rotate 90/}));
+    expect(worldObjects()[0].rotation).toBe(127);
+    fireEvent.click(screen.getByRole('button',{name:'Undo AR change'}));
+    expect(worldObjects()[0].rotation).toBe(37);
+    fireEvent.click(liveControls().getByRole('button',{name:'Move to a new spot'}));
+    pose={position:{x:5,y:0,z:5},rotation:0,surface:'horizontal'};
+    fireEvent.click(liveControls().getByRole('button',{name:'Place here'}));
+    expect(worldObjects()[0].position).toEqual({x:.5,y:1.4,z:-1.2});
+    expect(liveControls().getByText('Wait for a tracked wall before placing this piece.')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('AR placement surface'),{target:{value:'horizontal'}});
+    expect(controller.setPlacementSurface).toHaveBeenLastCalledWith('horizontal');
+    fireEvent.click(liveControls().getByRole('button',{name:'Place here'}));
+    expect(worldObjects()[0].position).toEqual(pose.position);
+    expect(worldObjects()[0].rotation).toBe(0);
+  });
+
+  it('keeps the observed ceiling contact when a hanging light is resized',async()=>{
+    vi.mocked(nativeARCapabilities).mockResolvedValue({supported:true});
+    await renderDesigner();
+    fireEvent.click(screen.getByRole('button',{name:'Add Pendant light'}));
+    await startAR();
+    fireEvent.click(liveControls().getByRole('button',{name:'Place this object'}));
+    expect(controller.setPlacementSurface).toHaveBeenLastCalledWith('ceiling');
+    pose={position:{x:1,y:2.4,z:-1},rotation:0,surface:'ceiling'};
+    fireEvent.click(liveControls().getByRole('button',{name:'Place here'}));
+    const top=worldObjects()[0].position.y+worldObjects()[0].item.height;
+    setField('Object height','1.1',liveControls());
+    expect(worldObjects()[0].position.y+worldObjects()[0].item.height).toBeCloseTo(top);
+    fireEvent.click(screen.getByRole('button',{name:'Undo AR change'}));
+    expect(worldObjects()[0].position).toEqual(pose.position);
+    expect(worldObjects()[0].item.height).toBe(.65);
+    fireEvent.click(liveControls().getByRole('button',{name:'Duplicate'}));
+    expect(controller.setPlacementSurface).toHaveBeenLastCalledWith('ceiling');
+    expect(screen.getByLabelText('AR placement surface')).toHaveProperty('value','ceiling');
+    expect(worldObjects()).toHaveLength(1);
   });
 });

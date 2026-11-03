@@ -16,6 +16,21 @@ describe('placeable object collection', () => {
     expect(() => createCatalogItem('sofa', '')).toThrow('Object ID');
   });
 
+  it('keeps lighting controls independent for each placed copy and the catalog',()=>{
+    const first=createCatalogItem('pendant-light','first'),second=createCatalogItem('pendant-light','second');
+    expect(first.light).toEqual({enabled:true,temperature:2700,brightness:70});
+    first.light!.enabled=false;first.light!.temperature=6500;first.light!.brightness=5;
+    expect(second.light).toEqual({enabled:true,temperature:2700,brightness:70});
+    expect(AR_CATALOG.find(entry=>entry.id==='pendant-light')!.item.light).toEqual(second.light);
+  });
+
+  it('organizes wall, ceiling, and freestanding lighting separately from decorative pieces',()=>{
+    expect(AR_CATEGORIES).toContainEqual({id:'lighting',label:'Lighting'});
+    expect(AR_CATEGORIES).toContainEqual({id:'walls',label:'Wall & window'});
+    expect(AR_CATALOG.filter(entry=>entry.category==='lighting').map(entry=>entry.id)).toEqual(expect.arrayContaining(['floor-lamp','table-lamp','pendant-light','ceiling-light','wall-sconce']));
+    expect(AR_CATALOG.filter(entry=>entry.category==='walls').map(entry=>entry.item.model)).toEqual(expect.arrayContaining(['wall-art','wall-mirror','wall-clock','wall-shelf','curtains','wall-tv']));
+  });
+
   it('keeps every concept inside its editable outer dimensions through four rotations', () => {
     expect(new Set(AR_CATALOG.map(entry => entry.id)).size).toBe(AR_CATALOG.length);
     for (const entry of AR_CATALOG) {

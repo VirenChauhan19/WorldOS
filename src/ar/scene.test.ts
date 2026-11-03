@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { addObject, createScene, createStarterScene, duplicateObject, loadScene, MAX_SCENE_OBJECTS, parseScene, removeObject, resizeScene, saveScene, SCENE_STORAGE_KEY, surfacePlacement, updateObject } from './scene';
+import { addObject, createScene, createStarterScene, defaultMount, duplicateObject, loadScene, MAX_SCENE_OBJECTS, mountObject, parseScene, removeObject, resizeScene, saveScene, SCENE_STORAGE_KEY, surfacePlacement, updateObject } from './scene';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -119,5 +119,130 @@ describe('modeled surface placement',()=>{
     const [base,top]=scene.objects;
     scene=updateObject(scene,top.item.id,{placement:surfacePlacement(scene,top.item.id,base.item.id)});
     expect(()=>surfacePlacement(scene,base.item.id,top.item.id)).toThrow('resting on the selected piece');
+  });
+});
+
+describe('wall and ceiling placement',()=>{
+  it.each(['wall-art','wall-mirror','wall-clock','wall-shelf','wall-sconce','curtains','wall-tv'])('adds %s upright against the back wall above floor level',catalogId=>{
+    const scene=addObject(createScene(),catalogId),object=scene.objects[0];
+    expect(defaultMount(object.item)).toBe('back-wall');
+    expect(object.placement).toMatchObject({mount:'back-wall',z:0,rotation:0});
+    expect(object.placement.elevation).toBeGreaterThan(0);
+    expect((object.placement.elevation??0)+object.item.height).toBeLessThanOrEqual(scene.room.height!);
+    expect(parseScene(scene)).toEqual(scene);
+  });
+
+  it.each([
+    ['back-wall',0,2.175,0],['front-wall',180,2.175,3.955],['left-wall',270,0,1.675],['right-wall',90,4.955,1.675],
+  ] as const)('faces inward on %s and stays attached while editing', (mount,rotation,x,z)=>{
+    const first=addObject(createScene(),'wall-art'),id=first.objects[0].item.id,before=structuredClone(first);
+    const mounted=mountObject(first,id,mount),placement=mounted.objects[0].placement;
+    expect(placement.rotation).toBe(rotation);
+    expect(placement.x).toBeCloseTo(x);expect(placement.z).toBeCloseTo(z);
+    const moved=updateObject(mounted,id,{placement:{x:99,z:99,rotation:180,elevation:1.5}});
+    expect(moved.objects[0].placement.rotation).toBe(rotation);
+    if(mount==='back-wall')expect(moved.objects[0].placement).toMatchObject({x:4.35,z:0});
+    if(mount==='front-wall'){expect(moved.objects[0].placement.x).toBeCloseTo(4.35);expect(moved.objects[0].placement.z).toBeCloseTo(3.955);}
+    if(mount==='left-wall')expect(moved.objects[0].placement).toMatchObject({x:0,z:3.35});
+    if(mount==='right-wall'){expect(moved.objects[0].placement.x).toBeCloseTo(4.955);expect(moved.objects[0].placement.z).toBeCloseTo(3.35);}
+    expect(parseScene(moved)).toEqual(moved);expect(first).toEqual(before);
+  });
+
+  it.each(['pendant-light','ceiling-light'])('keeps %s attached when room or fixture height changes',catalogId=>{
+    let scene=addObject(createScene(),catalogId),object=scene.objects[0];
+    expect(defaultMount(object.item)).toBe('ceiling');
+    expect(object.placement.mount).toBe('ceiling');
+    expect(object.placement.elevation).toBeCloseTo(2.7-object.item.height);
+    scene=updateObject(scene,object.item.id,{item:{height:.9},placement:{x:2,z:1,elevation:0}});
+    expect(scene.objects[0].placement).toMatchObject({x:2,z:1,mount:'ceiling'});
+    expect(scene.objects[0].placement.elevation).toBeCloseTo(1.8);
+    const before=structuredClone(scene);
+    scene=resizeScene(scene,{width:4,depth:3,height:3.4});
+    expect(scene.objects[0].placement.elevation).toBeCloseTo(2.5);
+    expect(parseScene(scene)).toEqual(scene);expect(before.objects[0].placement.elevation).toBeCloseTo(1.8);
+    expect(()=>resizeScene(scene,{width:4,depth:3,height:.5})).toThrow('too tall');
+  });
+
+  it('retains a wall relationship through room resize and rejects a piece larger than that wall',()=>{
+    const first=addObject(createScene(),'wall-art'),id=first.objects[0].item.id;
+    const right=mountObject(first,id,'right-wall');
+    const resized=resizeScene(right,{width:3,depth:2,height:2.1});
+    expect(resized.objects[0].placement.x).toBeCloseTo(2.955);
+    expect(resized.objects[0].placement.elevation).toBeCloseTo(1.2);
+    expect(parseScene(resized)).toEqual(resized);
+    expect(()=>updateObject(resized,id,{item:{width:2.2}})).toThrow('larger than this plan');
+    expect(()=>updateObject(resized,id,{item:{height:2.2}})).toThrow('too tall');
+    expect(()=>mountObject(resized,id,'invalid' as 'free')).toThrow('supported mounting');
+  });
+
+  it('centers on a newly chosen wall while preserving a placement on its current wall',()=>{
+    const first=addObject(createScene(),'wall-art'),id=first.objects[0].item.id;
+    const edited=updateObject(first,id,{placement:{x:.2,elevation:.9}});
+    const unchanged=mountObject(edited,id,'back-wall');
+    expect(unchanged.objects[0].placement).toEqual(edited.objects[0].placement);
+    const left=mountObject(edited,id,'left-wall');
+    expect(left.objects[0].placement).toMatchObject({x:0,z:1.675,elevation:.9,rotation:270});
+    const front=mountObject(left,id,'front-wall');
+    expect(front.objects[0].placement.x).toBeCloseTo(2.175);
+    expect(front.objects[0].placement.elevation).toBe(.9);
+  });
+
+  it('duplicates mounting and independent light settings, and explicitly detaches onto modeled surfaces',()=>{
+    let scene=addObject(addObject(createScene(),'desk'),'wall-sconce');
+    const [desk,sconce]=scene.objects;
+    scene=updateObject(scene,sconce.item.id,{item:{light:{enabled:false,temperature:6500,brightness:32}}});
+    const duplicate=duplicateObject(scene,sconce.item.id),copy=duplicate.objects[2];
+    expect(copy.placement.mount).toBe('back-wall');
+    expect(copy.placement.elevation).toBe(sconce.placement.elevation);
+    expect(copy.item.light).toEqual(scene.objects[1].item.light);
+    expect(copy.item.light).not.toBe(scene.objects[1].item.light);
+    expect(copy.placement.x).toBeGreaterThan(sconce.placement.x);
+    const placed=updateObject(scene,sconce.item.id,{placement:surfacePlacement(scene,sconce.item.id,desk.item.id)});
+    expect(placed.objects[1].placement).toMatchObject({mount:'free',elevation:.75});
+    expect(parseScene(placed)).toEqual(placed);
+    const freeCopy=duplicateObject(placed,sconce.item.id).objects[2];
+    expect(freeCopy.placement.mount).toBe('free');expect(freeCopy.placement.elevation).toBe(.75);
+  });
+
+  it('detaches ceiling pieces before floor placement without altering previous undo data',()=>{
+    const first=addObject(createScene(),'pendant-light'),id=first.objects[0].item.id,before=structuredClone(first);
+    const free=mountObject(first,id,'free');
+    const lowered=updateObject(free,id,{placement:{elevation:0}});
+    expect(lowered.objects[0].placement).toMatchObject({mount:'free',elevation:0});
+    expect(first).toEqual(before);expect(parseScene(first)).toEqual(before);
+  });
+});
+
+describe('interior metadata restoration',()=>{
+  it('round-trips mounts, independent fixture settings, and surface finishes without retaining unknown fields',()=>{
+    let scene=addObject(createScene(),'wall-sconce');
+    const id=scene.objects[0].item.id;
+    scene=updateObject(scene,id,{item:{light:{enabled:true,temperature:4000,brightness:45}}});
+    scene.finishes={wallColor:'#e5d8c1',floorColor:'#a48761'};
+    const extended=structuredClone(scene) as typeof scene & {worldOrigin:number[]};extended.worldOrigin=[1,2,3];
+    const parsed=parseScene(extended)!;
+    expect(parsed).toEqual(scene);expect(parsed).not.toHaveProperty('worldOrigin');
+    expect(parsed.objects[0].item.light).not.toBe(scene.objects[0].item.light);
+    expect(parsed.finishes).not.toBe(scene.finishes);
+    const store=new Map<string,string>();vi.stubGlobal('localStorage',{getItem:(key:string)=>store.get(key)??null,setItem:(key:string,value:string)=>store.set(key,value)});
+    saveScene(scene);expect(loadScene()).toEqual(scene);
+    expect(parseScene(createStarterScene('living-room'))?.finishes).toBeUndefined();
+  });
+
+  it.each([
+    {model:'unrecognized'}, {model:null}, {light:null}, {light:{enabled:'yes',temperature:2700,brightness:50}},
+    {light:{enabled:true,temperature:2800,brightness:50}}, {light:{enabled:true,temperature:2700,brightness:101}},
+    {light:{enabled:true,temperature:2700,brightness:NaN}}, {light:{enabled:true,temperature:2700,brightness:-1}},
+  ])('rejects malformed model/light metadata %j',patch=>{
+    const scene=addObject(createScene(),'wall-sconce'),object=scene.objects[0];
+    expect(parseScene({...scene,objects:[{...object,item:{...object.item,...patch}}]})).toBeNull();
+  });
+
+  it('rejects inconsistent mounts and malformed surface finishes',()=>{
+    const scene=addObject(createScene(),'wall-art'),object=scene.objects[0];
+    for(const patch of [{mount:'unknown'},{mount:null},{rotation:180},{z:.4},{elevation:2.5}])expect(parseScene({...scene,objects:[{...object,placement:{...object.placement,...patch}}]})).toBeNull();
+    for(const finishes of [null,{wallColor:'red',floorColor:'#123456'},{wallColor:'#123456'},{wallColor:'#123456',floorColor:'javascript:bad'}])expect(parseScene({...scene,finishes})).toBeNull();
+    const ceiling=addObject(createScene(),'ceiling-light'),fixture=ceiling.objects[0];
+    expect(parseScene({...ceiling,objects:[{...fixture,placement:{...fixture.placement,elevation:.5}}]})).toBeNull();
   });
 });
