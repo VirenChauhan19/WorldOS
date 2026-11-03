@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowUpRight, Camera, LoaderCircle } from 'lucide-react';
 import type { FurnitureItem, FurniturePlacement } from './layout';
 import { buildFurnitureUSDZ } from './quickLook';
+import './quick-look.css';
 
 export function useQuickLookAsset(items: readonly FurnitureItem[], placements: readonly FurniturePlacement[], enabled: boolean) {
   const [generation,setGeneration]=useState(0);
@@ -28,14 +29,14 @@ export function useQuickLookAsset(items: readonly FurnitureItem[], placements: r
   return {...(enabled && asset.key === key ? asset : {url:'',error:''}),retry};
 }
 
-export function QuickLookLink({url, onOpen, className='', unavailableReason}: {url: string; onOpen: () => void; className?: string; unavailableReason?: string}) {
-  if(unavailableReason)return <button className={`room-primary ${className}`} disabled><Camera size={17}/>{unavailableReason}</button>;
-  if (!url) return <button className={`room-primary ${className}`} disabled><LoaderCircle size={17}/>Preparing AR preview…</button>;
+export function QuickLookLink({url, onOpen, className='', unavailableReason, label='View in my room'}: {url: string; onOpen: () => void; className?: string; unavailableReason?: string; label?: string}) {
+  if(unavailableReason)return <button className={`room-primary quick-look-unavailable ${className}`} disabled><Camera size={17}/>{unavailableReason}</button>;
+  if (!url) return <button className={`room-primary quick-look-unavailable ${className}`} disabled><LoaderCircle size={17}/>Preparing AR preview…</button>;
   return <div className={`room-quick-look ${className}`}>
     {/* Safari requires a real rel=ar link with exactly one image child. */}
-    <a rel="ar" href={`${url}#allowsContentScaling=0`} download="worldos-furniture.usdz" aria-label="View in my room" onClick={onOpen}>
+    <a rel="ar" href={`${url}#allowsContentScaling=0`} download="worldos-furniture.usdz" aria-label={label} onClick={onOpen}>
       <img src="/icons/icon-192.png" alt="View furniture in your room"/>
     </a>
-    <span aria-hidden="true"><Camera size={18}/><strong>View in my room</strong><ArrowUpRight size={18}/></span>
+    <span aria-hidden="true"><Camera size={18}/><strong>{label}</strong><ArrowUpRight size={18}/></span>
   </div>;
 }

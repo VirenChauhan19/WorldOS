@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 vi.mock('./App',()=>({default:()=> <input aria-label="Desk session" defaultValue="Desk"/>}));
 vi.mock('./simple/Wizard',()=>({default:()=> <input aria-label="Photo check draft" defaultValue=""/>}));
 vi.mock('./live/LiveSpace',()=>({default:({active}:{active:boolean})=> <input aria-label="Live fit dimensions" defaultValue="" data-active={active}/>}));
+vi.mock('./ar/SceneDesigner',()=>({default:({active}:{active:boolean})=> <input aria-label="Interior scene name" defaultValue="" data-active={active}/>}));
 vi.mock('./missions/Mission',()=>({default:()=> <div>Guided workspace task</div>}));
 vi.mock('./missions/api',()=>({listMissions:vi.fn(async()=>({missions:[],routines:[]}))}));
 vi.mock('./inspect/Inspect',()=>({default:({initialInspectionId}:{initialInspectionId?:string})=> <><input aria-label="Inspect session" defaultValue="Inspect"/><span>{initialInspectionId}</span></>}));
@@ -11,6 +12,7 @@ vi.mock('./ConnectionStatus',()=>({default:()=> <div>Technical diagnostics</div>
 vi.mock('./inspect/api',()=>({listTemplates:vi.fn(async()=>({templates:[]})),listDrafts:vi.fn(async()=>({drafts:[]})),templateHistory:vi.fn(async()=>({inspections:[]}))}));
 import WorldOS from './WorldOS';
 import { navigate } from './navigation';
+import { DeviceWorkspaceContext } from './device/context';
 beforeEach(()=>{window.history.replaceState(null,'','/');localStorage.clear();vi.spyOn(window,'scrollTo').mockImplementation(()=>{});});
 afterEach(()=>{cleanup();vi.restoreAllMocks();delete document.documentElement.dataset.motion;});
 it('opens the live camera workspace from the main action and preserves its entered dimensions',async()=>{
@@ -52,4 +54,20 @@ it('persists reduced motion and provides an actionable empty My Spaces screen',a
   const comparisons=screen.getByText('Saved photo comparisons');expect(comparisons.closest('details')?.open).toBe(false);fireEvent.click(comparisons);
   expect(await screen.findByText('A little order starts here.')).toBeTruthy();
   expect(screen.getByRole('button',{name:'Save a new setup'})).toBeTruthy();
+});
+it('opens the AR studio from a direct link and preserves its scene while inactive',async()=>{
+  window.history.replaceState(null,'','#/ar?workspace=connected');
+  render(<DeviceWorkspaceContext.Provider value={true}><WorldOS/></DeviceWorkspaceContext.Provider>);
+  const scene=await screen.findByLabelText('Interior scene name');
+  fireEvent.change(scene,{target:{value:'Quiet reading corner'}});
+  expect(document.title).toBe('AR interior studio · WorldOS');
+  const navigation=screen.getByRole('navigation',{name:'App navigation'});
+  expect(navigation.querySelectorAll('button')).toHaveLength(6);
+  expect(screen.getByRole('button',{name:'AR studio'}).getAttribute('aria-current')).toBe('page');
+  fireEvent.click(screen.getByRole('button',{name:'Settings'}));
+  expect(scene.getAttribute('data-active')).toBe('false');
+  fireEvent.click(screen.getByRole('button',{name:'AR studio'}));
+  expect(location.hash).toBe('#/ar');
+  expect((screen.getByLabelText('Interior scene name') as HTMLInputElement).value).toBe('Quiet reading corner');
+  expect(scene.getAttribute('data-active')).toBe('true');
 });

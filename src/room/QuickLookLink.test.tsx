@@ -34,6 +34,14 @@ it('uses the Safari rel=ar image-link contract and disables content scaling',()=
   fireEvent.click(link);expect(open).toHaveBeenCalledOnce();
 });
 
+it('allows a selected model to have a descriptive accessible action label',()=>{
+  render(<QuickLookLink url="blob:monitor" onOpen={()=>{}} label="View monitor in my room"/>);
+  const link=screen.getByRole('link',{name:'View monitor in my room'});
+  expect(link.children.length).toBe(1);
+  expect(link.firstElementChild?.tagName).toBe('IMG');
+  expect(screen.getByText('View monitor in my room')).toBeTruthy();
+});
+
 it('keeps the package alive during viewer handoff and unrelated page updates',()=>{
   const view=render(<Harness/>);
   settle();

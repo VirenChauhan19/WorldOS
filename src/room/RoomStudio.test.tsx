@@ -59,6 +59,18 @@ async function startAR() {
 }
 
 describe('room furnishing controls', () => {
+  it('stops its camera when opening a new AR studio scene in the device workspace', async () => {
+    window.history.replaceState(null, '', '#/room?workspace=connected');
+    await renderStudio();
+    fireEvent.click(screen.getByRole('button', { name: 'Camera' }));
+    expect(camera.start).toHaveBeenCalledOnce();
+    vi.mocked(camera.stop).mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Open AR studio' }));
+    expect(camera.stop).toHaveBeenCalled();
+    expect(window.location.hash).toBe('#/ar');
+    window.history.replaceState(null, '', '/');
+  });
+
   it('arranges every piece without room dimensions and keeps room fit unconfirmed', async () => {
     await renderStudio();
     expect(screen.getByRole('heading', { name: '4 pieces, one arrangement' })).toBeTruthy();

@@ -103,4 +103,25 @@ describe('shared furniture geometry', () => {
     expect(meshes.length).toBeGreaterThan(0);
     expect(meshes.every(mesh => mesh.color.every(value => value >= 0 && value <= 1))).toBe(true);
   });
+
+  it('raises a model onto a surface without changing its footprint or accepting corrupt elevations', () => {
+    const item = FURNITURE_PRESETS[1], ground = furnitureMeshes(item, placement(item));
+    const elevated = furnitureMeshes(item, { ...placement(item), elevation: .8 });
+    expect(elevated).toHaveLength(ground.length);
+    for (let mesh = 0; mesh < ground.length; mesh++) {
+      expect(elevated[mesh].vertices).toEqual(ground[mesh].vertices.map((value, axis) => axis % 3 === 1 ? value + .8 : value));
+    }
+    for (const elevation of [-.1, 10.1, NaN, Infinity]) expect(furnitureMeshes(item, { ...placement(item), elevation })).toEqual([]);
+  });
+
+  it('keeps capsule-shaped sofa arms free of degenerate seams for solid-model export', () => {
+    const sofa = { ...FURNITURE_PRESETS[0], kind: 'sofa' as const };
+    for (const mesh of furnitureMeshes(sofa, placement(sofa))) {
+      for (let index = 0; index < mesh.vertices.length; index += 9) {
+        const [a, b, c] = [0, 3, 6].map(offset => mesh.vertices.slice(index + offset, index + offset + 3));
+        const u = b.map((value, axis) => value - a[axis]), v = c.map((value, axis) => value - a[axis]);
+        expect(Math.hypot(u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0])).toBeGreaterThan(1e-15);
+      }
+    }
+  });
 });

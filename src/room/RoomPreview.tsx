@@ -51,7 +51,7 @@ function createRenderer(canvas:HTMLCanvasElement){
   const position=gl.getAttribLocation(program,'position'),projection=gl.getUniformLocation(program,'projection'),view=gl.getUniformLocation(program,'view'),color=gl.getUniformLocation(program,'color');
   return {
     begin(p:Float32Array,v:Float32Array){gl.viewport(0,0,canvas.width,canvas.height);gl.clearColor(.933,.925,.902,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.enable(gl.DEPTH_TEST);gl.disable(gl.CULL_FACE);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.useProgram(program);gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.enableVertexAttribArray(position);gl.vertexAttribPointer(position,3,gl.FLOAT,false,0,0);gl.uniformMatrix4fv(projection,false,p);gl.uniformMatrix4fv(view,false,v);},
-    draw(meshes:SceneMesh[],lines=false){for(const mesh of meshes){gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(mesh.vertices),gl.DYNAMIC_DRAW);gl.uniform4fv(color,mesh.color);gl.drawArrays(lines?gl.LINES:gl.TRIANGLES,0,mesh.vertices.length/3);}},
+    draw(meshes:SceneMesh[],lines=false,writeDepth=true){gl.depthMask(writeDepth);for(const mesh of meshes){gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(mesh.vertices),gl.DYNAMIC_DRAW);gl.uniform4fv(color,mesh.color);gl.drawArrays(lines?gl.LINES:gl.TRIANGLES,0,mesh.vertices.length/3);}},
     dispose(){gl.deleteBuffer(buffer);gl.deleteProgram(program);},
   };
 }
@@ -59,9 +59,9 @@ function createRenderer(canvas:HTMLCanvasElement){
 function roomMeshes(room:RoomSize,eye:Vector,showWalls:boolean,features:readonly RoomFeature[]):SceneMesh[]{
   const {width:w,depth:d}=room,h=room.height??2.7,result:SceneMesh[]=[];
   // The cutaway shell and feature sizes are illustrative. Only observed features appear.
-  result.push(...boxMeshes(-.08,-.10,-.08,w+.16,.10,d+.16,material('#a99a83')));
+  result.push(...boxMeshes(-.08,-.10,-.08,w+.16,.087,d+.16,material('#a99a83')));
   const planks=Math.min(90,Math.ceil(w/.20));
-  for(let i=0;i<planks;i++)result.push(...boxMeshes(i*w/planks,.001,0,w/planks-.004,.012,d,material(i%3===0?'#cbb899':i%3===1?'#d3c2a6':'#cdbc9e')));
+  for(let i=0;i<planks;i++)result.push(...boxMeshes(i*w/planks,-.012,0,w/planks-.004,.012,d,material(i%3===0?'#cbb899':i%3===1?'#d3c2a6':'#cdbc9e')));
   if(!showWalls)return result;
   const wallX=eye[0]>w/2?-.07:w,wallZ=eye[2]>d/2?-.07:d;
   const sideWall=boxMeshes(wallX,0,0,.07,h,d,material('#e1dfd9'));
@@ -107,14 +107,14 @@ export default function RoomPreview({room,items,placements,selectedId,onSelect,s
     renderer.begin(projection,view);renderer.draw(batch(roomMeshes(room,eye,showWalls,features)));
     for(const zone of reserved){if([zone.x,zone.z,zone.width,zone.depth].every(Number.isFinite)&&zone.width>0&&zone.depth>0)renderer.draw(boxMeshes(zone.x,.025,zone.z,zone.width,.018,zone.depth,[.67,.40,.23,.6]));}
     // Soft grounding shadows are illustrative, not a light simulation.
-    for(const {item,placement:p} of placed){const w=p.rotation%180===90?item.depth:item.width,d=p.rotation%180===90?item.width:item.depth;renderer.draw([{vertices:[p.x-.025,.016,p.z-.025,p.x+w+.025,.016,p.z-.025,p.x+w+.025,.016,p.z+d+.025,p.x-.025,.016,p.z-.025,p.x+w+.025,.016,p.z+d+.025,p.x-.025,.016,p.z+d+.025],color:[.25,.26,.20,.12]}]);}
+    for(const {item,placement:p} of placed){const w=p.rotation%180===90?item.depth:item.width,d=p.rotation%180===90?item.width:item.depth;renderer.draw([{vertices:[p.x-.025,.016,p.z-.025,p.x+w+.025,.016,p.z-.025,p.x+w+.025,.016,p.z+d+.025,p.x-.025,.016,p.z-.025,p.x+w+.025,.016,p.z+d+.025,p.x-.025,.016,p.z+d+.025],color:[.25,.26,.20,.12]}],false,false);}
     renderer.draw(furniture);
     const nextLabels:Label[]=[],nextPicks:Pick[]=[];
     for(const {item,placement:p} of placed){
       const w=p.rotation%180===90?item.depth:item.width,d=p.rotation%180===90?item.width:item.depth;
-      const center=project([p.x+w/2,item.height+.08,p.z+d/2],view,projection);
+      const center=project([p.x+w/2,item.height+(p.elevation??0)+.08,p.z+d/2],view,projection);
       if(item.id===selectedId&&center.front&&center.x>.02&&center.x<.98&&center.y>.02&&center.y<.94)nextLabels.push({id:item.id,name:item.label,x:center.x*100,y:center.y*100,depth:center.depth});
-      const corners=[0,item.height].flatMap(y=>[[p.x,y,p.z],[p.x+w,y,p.z],[p.x+w,y,p.z+d],[p.x,y,p.z+d]] as Vector[]).map(point=>project(point,view,projection));
+      const corners=[p.elevation??0,item.height+(p.elevation??0)].flatMap(y=>[[p.x,y,p.z],[p.x+w,y,p.z],[p.x+w,y,p.z+d],[p.x,y,p.z+d]] as Vector[]).map(point=>project(point,view,projection));
       if(corners.every(point=>point.front))nextPicks.push({id:item.id,left:Math.min(...corners.map(p=>p.x))*rect.width,right:Math.max(...corners.map(p=>p.x))*rect.width,top:Math.min(...corners.map(p=>p.y))*rect.height,bottom:Math.max(...corners.map(p=>p.y))*rect.height,depth:center.depth});
       if(item.id===selectedId){const x=p.x-.025,z=p.z-.025,W=w+.05,D=d+.05;renderer.draw([{vertices:[x,.025,z,x+W,.025,z,x+W,.025,z,x+W,.025,z+D,x+W,.025,z+D,x,.025,z+D,x,.025,z+D,x,.025,z],color:[.68,.30,.20,1]}],true);}
     }

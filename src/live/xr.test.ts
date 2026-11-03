@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { isWorldARSupported, rectangleFromPoints, roomVerticesToWorld, startWorldAR } from './xr';
+import { isWorldARSupported, rectangleFromPoints, roomVerticesToWorld, sceneVerticesToWorld, selectARObjectByRay, startWorldAR } from './xr';
 import { inscribedPlaneRectangle, observedMeshBounds, planeRectangleToWorld } from './xr-plane';
-import type { WorldARMeasurement, WorldARState } from './xr';
+import type { WorldARMeasurement, WorldARSceneObject, WorldARState } from './xr';
 import type { XRFrameLike, XRMeshLike, XRPlaneLike, XRPoint } from './xr-types';
 
 const identity = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
@@ -66,6 +66,22 @@ function runtime({ domOverlay = true, fallback = false, shaderFailure = false } 
 
 beforeEach(() => { vi.stubGlobal('isSecureContext', true); });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); Reflect.deleteProperty(navigator, 'xr'); });
+
+it('keeps taps on complete AR control panels from selecting through the overlay', async () => {
+  const r = runtime();
+  const ar = await startWorldAR({ ...r.options, interactionMode: 'place' });
+  const panel = document.createElement('section'), caption = document.createElement('span');
+  panel.dataset.xrUi = '';
+  panel.append(caption);
+  r.options.overlay.append(panel);
+  const panelTap = new Event('beforexrselect', { bubbles: true, cancelable: true });
+  caption.dispatchEvent(panelTap);
+  expect(panelTap.defaultPrevented).toBe(true);
+  const cameraTap = new Event('beforexrselect', { bubbles: true, cancelable: true });
+  r.options.overlay.dispatchEvent(cameraTap);
+  expect(cameraTap.defaultPrevented).toBe(false);
+  await ar.end();
+});
 
 it('measures a rectangle in world meters using perpendicular depth, independent of camera orientation', () => {
   const measured = rectangleFromPoints({ x: 2, y: .8, z: 3 }, { x: 2, y: .81, z: 6 }, { x: -2, y: .8, z: 5 });
@@ -546,4 +562,137 @@ it('expires scan candidates when frames stop and cancels their accumulated sampl
   expect(r.states.at(-1)?.detectedSurface).toBeUndefined(); expect(ar.useDetectedSurface()).toBe(false);
   r.tick(scannedFloor[0]); expect(r.states.at(-1)?.scan?.sampleCount).toBe(1);
   await ar.end();
+});
+
+const sceneObject = (id = 'sofa'): WorldARSceneObject => ({
+  id, item: { id, kind: 'sofa', label: 'Sofa', width: 2, depth: 1, height: 1, color: '#779977' },
+  position: { x: 0, y: 0, z: -3 }, rotation: 0,
+});
+
+it('uses surface hits for placement without requesting or processing optional scene geometry', async () => {
+  vi.spyOn(performance, 'now').mockReturnValue(1000);
+  const r = runtime();
+  const ar = await startWorldAR({ ...r.options, interactionMode: 'place' });
+  expect(r.xr.requestSession).toHaveBeenCalledWith('immersive-ar', expect.objectContaining({
+    requiredFeatures: ['local', 'hit-test', 'dom-overlay'], optionalFeatures: ['local-floor'],
+  }));
+  const point = { x: 1, y: .75, z: -2 };
+  const frame = detectedFrame([nativePlane('floor')], [nativeMesh()]);
+  const planes = frame.detectedPlanes, meshes = frame.detectedMeshes;
+  const readPlanes = vi.fn(() => planes), readMeshes = vi.fn(() => meshes);
+  Object.defineProperties(frame, { detectedPlanes: { get: readPlanes }, detectedMeshes: { get: readMeshes } });
+  const getPose = vi.spyOn(frame, 'getPose');
+  frame.getHitTestResults = () => [{ getPose: () => ({ transform: transform(point) }) }];
+  for (const time of [1000, 1250, 1750]) {
+    vi.mocked(performance.now).mockReturnValue(time);
+    r.tickFrame(frame);
+  }
+  expect(ar.getPlacementPose!()?.position).toEqual(point);
+  expect(r.states.at(-1)).toMatchObject({ phase: 'ready', canSelect: true });
+  expect(r.states.at(-1)?.detectedSurfaces).toBeUndefined();
+  expect(r.states.at(-1)?.detectedObjects).toBeUndefined();
+  expect(readPlanes).not.toHaveBeenCalled(); expect(readMeshes).not.toHaveBeenCalled();
+  expect(getPose).not.toHaveBeenCalled();
+  await ar.end();
+});
+
+it('places multiple independent models on a fresh horizontal surface without measuring a room', async () => {
+  const r = runtime(), onPlace = vi.fn();
+  const ar = await startWorldAR({ ...r.options, interactionMode: 'place', onPlace });
+  ar.setPlacementPreview!(sceneObject().item, 45);
+  r.tick({ x: 1, y: .8, z: -2 });
+  expect(r.states.at(-1)).toMatchObject({ phase: 'ready', points: 0, canSelect: true });
+  expect(r.measurements).toEqual([]);
+  expect(ar.selectPoint()).toBe(false); expect(ar.useDetectedSurface()).toBe(false);
+  expect(ar.getPlacementPose!()).toEqual({ position: { x: 1, y: .8, z: -2 }, rotation: 45 });
+  const copied = ar.getPlacementPose!()!; copied.position.x = 30;
+  expect(ar.getPlacementPose!()!.position.x).toBe(1);
+  r.session.dispatchEvent(new Event('select'));
+  expect(onPlace).toHaveBeenCalledWith({ position: { x: 1, y: .8, z: -2 }, rotation: 45 });
+  const sofa = sceneObject(), plant = { ...sceneObject('plant'), item: { ...sceneObject('plant').item, kind: 'plant' as const }, position: { x: 3, y: 0, z: -3 } };
+  ar.setScene!([sofa, plant], 'sofa'); ar.setPlacementPreview!(null);
+  r.gl.drawArrays.mockClear(); r.tick(null);
+  const solidCalls = r.gl.drawArrays.mock.calls.filter(call => call[0] === r.gl.TRIANGLES);
+  expect(solidCalls.length).toBeGreaterThan(1);
+  expect(r.states.at(-1)).toMatchObject({ phase: 'searching', points: 0, canSelect: false });
+  expect(r.measurements).toEqual([]);
+  ar.setScene!([]); r.gl.drawArrays.mockClear(); r.tick(null);
+  expect(r.gl.drawArrays.mock.calls.some(call => call[0] === r.gl.TRIANGLES)).toBe(false);
+  await ar.end();
+});
+
+it('selects the nearest aimed virtual object and suppresses native measurement in placement mode', async () => {
+  const r = runtime(), onObjectSelect = vi.fn(), onPlace = vi.fn();
+  const ar = await startWorldAR({ ...r.options, interactionMode: 'place', onObjectSelect, onPlace });
+  const near = sceneObject('near'), far = { ...sceneObject('far'), position: { x: 0, y: 0, z: -6 } };
+  near.item.height = 2;
+  ar.setScene!([far, near]);
+  r.tick({ x: 0, y: 0, z: -2 });
+  r.session.dispatchEvent(new Event('select'));
+  expect(onObjectSelect).toHaveBeenLastCalledWith('near');
+  expect(onPlace).not.toHaveBeenCalled(); expect(r.measurements).toEqual([]);
+  ar.setScene!([far]); r.session.dispatchEvent(new Event('select'));
+  expect(onObjectSelect).toHaveBeenLastCalledWith(null);
+  await ar.end();
+  onObjectSelect.mockClear(); r.session.dispatchEvent(new Event('select'));
+  expect(onObjectSelect).not.toHaveBeenCalled(); expect(ar.getPlacementPose!()).toBeNull();
+});
+
+it('uses the native touch ray for object selection rather than always selecting in the screen center', async () => {
+  const r = runtime(), onObjectSelect = vi.fn();
+  const ar = await startWorldAR({ ...r.options, interactionMode: 'place', onObjectSelect });
+  const object = { ...sceneObject('right'), position: { x: 3, y: 0, z: -3 } }; object.item.height = 2;
+  ar.setScene!([object]); r.tick(null);
+  const nativeRay = new Float32Array(identity); nativeRay[8] = -Math.SQRT1_2; nativeRay[10] = Math.SQRT1_2;
+  const frame = { ...detectedFrame(), getPose: () => ({ transform: transform({ x: 0, y: 1.6, z: 0 }, nativeRay) }) };
+  r.session.dispatchEvent(Object.assign(new Event('select'), { frame, inputSource: { targetRaySpace: new EventTarget() } }));
+  expect(onObjectSelect).toHaveBeenLastCalledWith('right');
+  await ar.end();
+});
+
+it('rejects invalid transforms atomically and keeps placed geometry independent of later source mutations', async () => {
+  const r = runtime(); const ar = await startWorldAR({ ...r.options, interactionMode: 'place' });
+  const object = sceneObject(); ar.setScene!([object]);
+  object.position.x = 40; object.item.width = 40;
+  expect(() => ar.setScene!([{ ...sceneObject(), position: { x: NaN, y: 0, z: 0 } }])).toThrow();
+  expect(() => ar.setScene!([sceneObject(), sceneObject()])).toThrow();
+  expect(() => ar.setScene!([{ ...sceneObject(), rotation: Infinity }])).toThrow();
+  expect(() => ar.setPlacementPreview!(sceneObject().item, NaN)).toThrow();
+  expect(() => ar.setPlacementPreview!({ ...sceneObject().item, color: 'invalid' })).toThrow();
+  r.tick(null);
+  const geometry = r.gl.bufferData.mock.calls.filter(call => call[1] instanceof Float32Array && (call[1] as Float32Array).length > 9).flatMap(call => Array.from(call[1] as Float32Array));
+  expect(geometry.every(Number.isFinite)).toBe(true);
+  expect(Math.max(...geometry.filter((_, index) => index % 3 === 0))).toBeLessThan(2);
+  await ar.end();
+});
+
+it('invalidates placement on stale or lost tracking and clears session coordinates on reference reset', async () => {
+  vi.spyOn(performance, 'now').mockReturnValue(1000);
+  const r = runtime(), onSceneReset = vi.fn(), onPlace = vi.fn();
+  const ar = await startWorldAR({ ...r.options, interactionMode: 'place', onSceneReset, onPlace });
+  ar.setPlacementPreview!(sceneObject().item);
+  ar.setScene!([sceneObject()]);
+  r.tick({ x: 0, y: 0, z: -2 }); expect(ar.getPlacementPose!()).not.toBeNull();
+  vi.mocked(performance.now).mockReturnValue(1400);
+  expect(ar.getPlacementPose!()).toBeNull();
+  r.session.dispatchEvent(new Event('select')); expect(onPlace).not.toHaveBeenCalled();
+  r.tick({ x: 0, y: 0, z: -2 }, { horizontal: false }); expect(ar.getPlacementPose!()).toBeNull();
+  r.tick({ x: 0, y: 0, z: -2 }, { hitEmulated: true }); expect(ar.getPlacementPose!()).toBeNull();
+  r.tick({ x: 0, y: 0, z: -2 }, { tracked: false }); expect(r.states.at(-1)?.phase).toBe('tracking-lost');
+  r.reference.dispatchEvent(new Event('reset'));
+  expect(onSceneReset).toHaveBeenCalledOnce(); expect(ar.getPlacementPose!()).toBeNull();
+  ar.setPlacementPreview!(null); r.gl.drawArrays.mockClear(); r.tick(null);
+  expect(r.gl.drawArrays.mock.calls.some(call => call[0] === r.gl.TRIANGLES)).toBe(false);
+  await ar.end();
+});
+
+it('rotates object triangles around their bottom center and selects rotated finite footprints', () => {
+  const object = sceneObject(); object.position = { x: 3, y: 2, z: 4 }; object.rotation = 90;
+  const mesh = sceneVerticesToWorld([0, 0, 0, 2, 1, 0, 0, 0, 1], object);
+  expect(Array.from(mesh)).toEqual([3.5, 2, 3, 3.5, 3, 5, 2.5, 2, 3]);
+  expect(selectARObjectByRay([object], { x: 3, y: 2.5, z: 0 }, { x: 0, y: 0, z: 1 })).toBe(object.id);
+  expect(selectARObjectByRay([object], { x: 0, y: 2.5, z: 0 }, { x: 0, y: 0, z: 1 })).toBeNull();
+  expect(selectARObjectByRay([object], { x: NaN, y: 0, z: 0 }, { x: 0, y: 0, z: 1 })).toBeNull();
+  expect(() => sceneVerticesToWorld([0, 0, 0], object)).toThrow();
+  expect(() => sceneVerticesToWorld([0, 0, NaN, 0, 0, 0, 0, 0, 0], object)).toThrow();
 });

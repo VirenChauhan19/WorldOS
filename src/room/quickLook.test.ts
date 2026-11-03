@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FURNITURE_PRESETS, orientedSize } from './layout';
-import type { FurnitureItem, FurniturePlacement } from './layout';
+import { FURNITURE_KINDS, FURNITURE_PRESETS, orientedSize } from './layout';
+import type { FurnitureItem, FurnitureKind, FurniturePlacement } from './layout';
 import { buildFurnitureUSDZ, buildPreviewArrangement, supportsQuickLook } from './quickLook';
+import { AR_CATALOG } from '../ar/catalog';
 
 const at = (item: FurnitureItem, rotation: 0 | 90 | 180 | 270 = 0): FurniturePlacement => ({ itemId: item.id, x: 0, z: 0, rotation });
 const decode = new TextDecoder();
@@ -114,6 +115,39 @@ describe('AR Quick Look USDZ export', () => {
     expect(source).not.toContain('Bad');
   });
 
+  it.each(FURNITURE_KINDS)('exports the shared %s model with finite geometry and materials', async kind => {
+    const item = { ...FURNITURE_PRESETS[0], kind: kind as FurnitureKind };
+    const { source } = await unpack(buildFurnitureUSDZ([item], [at(item)]));
+    const meshes = geometry(source);
+    expect(meshes.length).toBeGreaterThan(0);
+    expect(meshes.flatMap(mesh => mesh.points.flat()).every(Number.isFinite)).toBe(true);
+    expect(source).toContain('info:id = "UsdPreviewSurface"');
+    expect(source).not.toMatch(/NaN|Infinity/);
+  });
+
+  it('exports every designer catalog object at its configured size', async () => {
+    for (const { item } of AR_CATALOG) {
+      const { source } = await unpack(buildFurnitureUSDZ([item], [at(item)]));
+      const points = geometry(source).flatMap(mesh => mesh.points);
+      expect(points.length, item.label).toBeGreaterThan(0);
+      for (const [axis, min, max] of [[0, -item.width / 2, item.width / 2], [1, 0, item.height], [2, -item.depth / 2, item.depth / 2]]) {
+        const values = points.map(point => point[axis]);
+        expect(Math.min(...values), item.label).toBeGreaterThanOrEqual(min - 1e-8);
+        expect(Math.max(...values), item.label).toBeLessThanOrEqual(max + 1e-8);
+      }
+    }
+  });
+
+  it('preserves object elevation, including a desktop model resting above the floor', async () => {
+    const item: FurnitureItem = { ...FURNITURE_PRESETS[0], kind: 'monitor', height: .4 };
+    const { source } = await unpack(buildFurnitureUSDZ([item], [{ ...at(item), elevation: .75 }]));
+    const heights = geometry(source).flatMap(mesh => mesh.points.map(point => point[1]));
+    expect(Math.min(...heights)).toBeCloseTo(.75, 8);
+    expect(Math.max(...heights)).toBeCloseTo(1.15, 8);
+    const { source: highSource } = await unpack(buildFurnitureUSDZ([item], [{ ...at(item), elevation: 10 }]));
+    expect(Math.min(...geometry(highSource).flatMap(mesh => mesh.points.map(point => point[1])))).toBeCloseTo(10, 8);
+  });
+
   it('rejects invalid values, incomplete arrangements, duplicate and unknown placements', () => {
     const item = FURNITURE_PRESETS[0];
     for (const dimension of [0, -.1, .001, NaN, Infinity, 30.1]) {
@@ -126,6 +160,7 @@ describe('AR Quick Look USDZ export', () => {
     expect(() => buildFurnitureUSDZ([item], [{ ...at(item), itemId: 'missing' }])).toThrow(/placements/);
     expect(() => buildFurnitureUSDZ(FURNITURE_PRESETS.slice(0, 2), [at(item), at(item)])).toThrow(/placements/);
     for (const invalid of [NaN, Infinity, 1e10]) expect(() => buildFurnitureUSDZ([item], [{ ...at(item), x: invalid }])).toThrow(/placements/);
+    for (const elevation of [NaN, Infinity, -.1, 10.01, null]) expect(() => buildFurnitureUSDZ([item], [{ ...at(item), elevation: elevation as number }])).toThrow(/elevations/);
     expect(() => buildFurnitureUSDZ([item], [{ ...at(item), rotation: 45 as 0 }])).toThrow(/rotations/);
   });
 
@@ -163,10 +198,10 @@ describe('automatic preview arrangement', () => {
     return result;
   }
 
-  it('includes all 12 mixed items with gaps, deterministically, without mutating inputs', async () => {
-    const items = Array.from({ length: 12 }, (_, index) => ({ ...FURNITURE_PRESETS[index % 5], id: `item-${index}` }));
+  it('includes all 24 mixed items with gaps, deterministically, without mutating inputs', async () => {
+    const items = Array.from({ length: 24 }, (_, index) => ({ ...FURNITURE_PRESETS[index % 5], id: `item-${index}`, kind: FURNITURE_KINDS[index % FURNITURE_KINDS.length] as FurnitureKind }));
     const result = verify(items, .3), blob = buildFurnitureUSDZ(items, result.placements), { source } = await unpack(blob);
-    expect(source.match(/def Xform "Item_\d+"/g)).toHaveLength(12);
+    expect(source.match(/def Xform "Item_\d+"/g)).toHaveLength(24);
     expect(blob.size).toBeLessThan(4_000_000);
   });
 
@@ -180,8 +215,8 @@ describe('automatic preview arrangement', () => {
   it('handles an empty selection and rejects invalid gap or excessive selections', () => {
     expect(buildPreviewArrangement([])).toEqual({ room: { width: 0, depth: 0 }, placements: [] });
     for (const gap of [-1, NaN, Infinity, 31]) expect(() => buildPreviewArrangement(FURNITURE_PRESETS, gap)).toThrow(/gap/);
-    const many = Array.from({ length: 13 }, (_, index) => ({ ...FURNITURE_PRESETS[0], id: String(index) }));
-    expect(() => buildPreviewArrangement(many)).toThrow(/12/);
-    expect(() => buildFurnitureUSDZ(many, many.map(item => at(item)))).toThrow(/12/);
+    const many = Array.from({ length: 25 }, (_, index) => ({ ...FURNITURE_PRESETS[0], id: String(index) }));
+    expect(() => buildPreviewArrangement(many)).toThrow(/24/);
+    expect(() => buildFurnitureUSDZ(many, many.map(item => at(item)))).toThrow(/24/);
   });
 });

@@ -1,16 +1,16 @@
 import { furnitureMeshes } from './furnitureGeometry';
-import { orientedSize } from './layout';
+import { FURNITURE_KINDS, orientedSize } from './layout';
 import type { FurnitureItem, FurniturePlacement, RoomSize } from './layout';
 
-const MAX_ITEMS = 12;
+const MAX_ITEMS = 24;
 const MAX_DIMENSION = 30;
 const MAX_POSITION = MAX_ITEMS * MAX_DIMENSION * 2;
-const KINDS = new Set(['bed', 'desk', 'table', 'wardrobe', 'chair', 'sofa', 'shelf', 'plant', 'custom']);
+const KINDS = new Set(FURNITURE_KINDS);
 const EPS = 1e-9;
 const encoder = new TextEncoder();
 
 function validateItems(items: readonly FurnitureItem[]): void {
-  if (!Array.isArray(items) || items.length > MAX_ITEMS) throw new Error('Choose at most 12 furniture items.');
+  if (!Array.isArray(items) || items.length > MAX_ITEMS) throw new Error('Choose at most 24 furniture items.');
   const ids = new Set<string>();
   for (const item of items) {
     if (!item || typeof item.id !== 'string' || !item.id.trim() || ids.has(item.id)) throw new Error('Furniture items must have unique, non-empty IDs.');
@@ -161,8 +161,9 @@ function scene(items: readonly FurnitureItem[], placements: readonly FurniturePl
   let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
   for (const placement of placements) {
     const item = placement && byId.get(placement.itemId);
-    if (!item || placed.has(item.id) || ![placement.x, placement.z].every(value => Number.isFinite(value) && Math.abs(value) <= MAX_POSITION) || ![0, 90, 180, 270].includes(placement.rotation)) {
-      throw new Error('AR placements need unique item IDs, bounded finite coordinates, and quarter-turn rotations.');
+    const elevation = placement?.elevation === undefined ? 0 : placement.elevation;
+    if (!item || placed.has(item.id) || ![placement.x, placement.z].every(value => Number.isFinite(value) && Math.abs(value) <= MAX_POSITION) || ![0, 90, 180, 270].includes(placement.rotation) || !Number.isFinite(elevation) || elevation < 0 || elevation > 10) {
+      throw new Error('AR placements need unique item IDs, bounded finite coordinates, elevations from 0 to 10 metres, and quarter-turn rotations.');
     }
     placed.set(item.id, placement);
     const size = orientedSize(item, placement.rotation);

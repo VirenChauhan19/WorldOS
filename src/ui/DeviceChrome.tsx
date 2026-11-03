@@ -2,9 +2,10 @@ import { ChevronRight } from 'lucide-react';
 import WorldIcon from './WorldIcon';
 import { navigate } from '../navigation';
 import type { Page } from '../navigation';
+import './device-chrome.css';
 
-const destinations=[{page:'home',label:'Home',icon:'home'},{page:'live',label:'Camera',icon:'camera'},{page:'room',label:'Room',icon:'room'},{page:'history',label:'My Spaces',icon:'spaces'},{page:'settings',label:'Settings',icon:'settings'}] as const;
-const names:Partial<Record<Page,string>>={home:'Overview',prepare:'Get ready',live:'Camera',room:'Room planner',history:'My Spaces',settings:'Settings',mission:'Setup',inspect:'Setup'};
+const destinations=[{page:'home',label:'Home',icon:'home'},{page:'live',label:'Camera',icon:'camera'},{page:'room',label:'Room',icon:'room'},{page:'ar',label:'AR studio',icon:'scan'},{page:'history',label:'My Spaces',icon:'spaces'},{page:'settings',label:'Settings',icon:'settings'}] as const;
+const names:Partial<Record<Page,string>>={home:'Overview',prepare:'Get ready',live:'Camera',room:'Room planner',ar:'AR interior studio',history:'My Spaces',settings:'Settings',mission:'Setup',inspect:'Setup'};
 
 export default function DeviceChrome({page}:{page:Page}){
   const name=names[page]??'Tools';
@@ -16,7 +17,7 @@ export default function DeviceChrome({page}:{page:Page}){
       </button>
       <span className="device-mobile-page-name">{name}</span>
       <div className="device-navigation-heading">YOUR WORKSPACE</div>
-      <nav className="consumer-navigation" aria-label="App navigation">{destinations.map(({page:target,label,icon})=><button key={target} data-destination={icon} aria-current={page===target||target==='history'&&['mission','inspect'].includes(page)?'page':undefined} onClick={()=>navigate(target)}><span className="device-tab-icon"><WorldIcon name={icon} size={23}/></span><span className="device-tab-label">{label}</span></button>)}</nav>
+      <nav className="consumer-navigation" aria-label="App navigation">{destinations.map(({page:target,label,icon})=><button key={target} data-destination={icon} aria-current={page===target||target==='history'&&['mission','inspect'].includes(page)?'page':undefined} onClick={()=>navigate(target,target==='ar'?{workspace:''}:{})}><span className="device-tab-icon"><WorldIcon name={icon} size={23}/></span><span className="device-tab-label">{label}</span></button>)}</nav>
       <div className="device-sidebar-bottom">
         <div className="device-local-note"><span className="device-local-icon"><WorldIcon name="privacy" size={23}/></span><strong>Your space. Your device.</strong><p>Setups and room plans stay in this browser, ready when you are.</p></div>
         <div className="device-sidebar-edition"><span>Made for the real world</span><span>v1.3</span></div>

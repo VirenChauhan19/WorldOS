@@ -36,6 +36,12 @@ export default function DeviceHome({active=true}:{active?:boolean}) {
       </aside>
     </section>
 
+    <section className="dh-ar-entry" aria-labelledby="dh-ar-title">
+      <span className="dh-ar-icon" aria-hidden="true"><WorldIcon name="scan" size={29}/></span>
+      <div><span className="dh-ar-eyebrow">AR INTERIOR STUDIO</span><h2 id="dh-ar-title">Your next idea, in 3D.</h2><p>Arrange furniture, explore finishes, and preview a scene in your space.</p></div>
+      <button onClick={()=>navigate('ar',{workspace:''})}>Open AR studio<ArrowUpRight size={18} aria-hidden="true"/></button>
+    </section>
+
     <section className="dh-tools-section" aria-labelledby="dh-tools-title">
       <div className="dh-section-heading"><h2 id="dh-tools-title">Make it your space.</h2><p>Three ways to get started.</p></div>
       <div className="dh-tools" aria-label="Room and setup tools">

@@ -31,8 +31,15 @@ function rounded(x: number,y: number,z: number,w: number,h: number,d: number,r: 
   r = Math.min(r,w/2,d/2);
   const outline: [number,number][] = [];
   for(const [cx,cz,start] of [[x+w-r,z+r,-Math.PI/2],[x+w-r,z+d-r,0],[x+r,z+d-r,Math.PI/2],[x+r,z+r,Math.PI]]) {
-    for(let i=0;i<=8;i++){const angle=start+i*Math.PI/16;outline.push([cx+Math.cos(angle)*r,cz+Math.sin(angle)*r]);}
+    for(let i=0;i<=8;i++){
+      const angle=start+i*Math.PI/16,point:[number,number]=[cx+Math.cos(angle)*r,cz+Math.sin(angle)*r];
+      const previous=outline[outline.length-1];
+      // A capsule has no straight edge between two semicircles. Keep one seam
+      // vertex so its closed mesh has no zero-area side or cap triangles.
+      if(!previous||Math.hypot(point[0]-previous[0],point[1]-previous[1])>1e-12)outline.push(point);
+    }
   }
+  if(outline.length>1&&Math.hypot(outline[0][0]-outline[outline.length-1][0],outline[0][1]-outline[outline.length-1][1])<=1e-12)outline.pop();
   const meshes:SceneMesh[]=[];
   const top:SceneMesh={vertices:[],color},bottom:SceneMesh={vertices:[],color:tint(color,.6)};
   for(let i=0;i<outline.length;i++){
@@ -71,7 +78,8 @@ function foliage(x:number,y:number,z:number,rx:number,ry:number,rz:number,color:
 
 /** Shared by the WebXR and room renderers. The oriented footprint starts at placement.x/z. */
 export function furnitureMeshes(item: FurnitureItem, placement: FurniturePlacement): SceneMesh[] {
-  if(![item.width,item.depth,item.height,placement.x,placement.z].every(Number.isFinite)||Math.min(item.width,item.depth,item.height)<=0||![0,90,180,270].includes(placement.rotation))return [];
+  const elevation=placement.elevation??0;
+  if(![item.width,item.depth,item.height,placement.x,placement.z,elevation].every(Number.isFinite)||Math.min(item.width,item.depth,item.height)<=0||elevation<0||elevation>10||![0,90,180,270].includes(placement.rotation))return [];
   const w=item.width,d=item.depth,h=item.height,meshes:SceneMesh[]=[];
   const wood=material('#b69a77'),lightWood=material('#c8ae8a'),dark=material('#414a40'),fabric=material(item.color),cream=material('#eee9dc');
   const box=(x:number,y:number,z:number,width:number,height:number,depth:number,color:Color)=>meshes.push(...boxMeshes(x,y,z,width,height,depth,color));
@@ -127,6 +135,10 @@ export function furnitureMeshes(item: FurnitureItem, placement: FurniturePlaceme
     for(const x of [w*.12,w*.505])softBack(x,h*.57,d*.16,w*.375,h*.39,d*.13,h*.06,tint(fabric,1.08));
     for(const x of [0,w*.89])soft(x,h*.4,d*.1,w*.11,h*.35,d*.9,d*.05,fabric);
     for(const x of [w*.12,w*.505])soft(x,h*.48,d*.23,w*.375,h*.12,d*.72,d*.06,tint(fabric,1.1));
+  } else if(item.kind==='ottoman'){
+    for(const x of [w*.10,w*.84])for(const z of [d*.12,d*.82])box(x,0,z,w*.06,h*.17,d*.06,wood);
+    soft(0,h*.13,0,w,h*.74,d,Math.min(w,d)*.12,fabric);
+    soft(w*.02,h*.84,d*.02,w*.96,h*.16,d*.96,Math.min(w,d)*.12,tint(fabric,1.08));
   } else if(item.kind==='shelf'){
     box(0,0,0,w*.06,h,d,wood);box(w*.94,0,0,w*.06,h,d,wood);
     box(0,0,0,w,h,d*.06,tint(fabric,.8));
@@ -137,6 +149,43 @@ export function furnitureMeshes(item: FurnitureItem, placement: FurniturePlaceme
     meshes.push(...cylinder(w/2,h*.298,d/2,w*.25,d*.25,h*.009,material('#4d4635')));
     meshes.push(...cylinder(w/2,h*.3,d/2,w*.025,d*.025,h*.63,wood));
     for(const [x,y,z,rx,ry,rz] of [[.3,.43,.5,.28,.12,.21],[.65,.5,.4,.3,.13,.2],[.4,.56,.7,.25,.13,.25],[.3,.64,.35,.28,.13,.25],[.7,.7,.5,.28,.13,.22],[.5,.78,.7,.25,.12,.26],[.35,.84,.45,.27,.12,.24],[.55,.92,.4,.25,.08,.25]])meshes.push(...foliage(w*x,h*y,d*z,w*rx,h*ry,d*rz,fabric));
+  } else if(item.kind==='lamp'){
+    meshes.push(...cylinder(w/2,0,d/2,w*.34,d*.34,h*.035,dark));
+    meshes.push(...cylinder(w/2,h*.035,d/2,w*.027,d*.027,h*.77,dark));
+    meshes.push(...cylinder(w/2,h*.77,d/2,w/2,d/2,h*.23,fabric));
+    meshes.push(...cylinder(w/2,h*.992,d/2,w*.41,d*.41,h*.008,cream));
+  } else if(item.kind==='rug'){
+    soft(0,0,0,w,h*.65,d,Math.min(w,d)*.035,fabric);
+    soft(w*.055,h*.65,d*.045,w*.89,h*.25,d*.91,Math.min(w,d)*.025,tint(fabric,1.13));
+    for(const x of [.13,.84])box(w*x,h*.92,d*.09,w*.025,h*.08,d*.82,tint(fabric,.83));
+  } else if(item.kind==='monitor'){
+    soft(w*.18,0,d*.05,w*.64,h*.045,d*.95,Math.min(w,d)*.06,dark);
+    box(w*.46,h*.045,d*.10,w*.08,h*.36,d*.16,dark);
+    softBack(0,h*.32,0,w,h*.68,d*.15,Math.min(w,h)*.035,fabric);
+    box(w*.035,h*.365,d*.15,w*.93,h*.59,d*.012,material('#24363c'));
+    box(w*.09,h*.77,d*.163,w*.55,h*.012,d*.003,material('#789f9b'));
+    box(w*.09,h*.69,d*.163,w*.32,h*.01,d*.003,material('#526f75'));
+  } else if(item.kind==='laptop'){
+    soft(0,0,0,w,h*.055,d,Math.min(w,d)*.035,fabric);
+    softBack(0,h*.055,0,w,h*.945,d*.055,Math.min(w,h)*.025,fabric);
+    box(w*.035,h*.105,d*.055,w*.93,h*.85,d*.01,material('#25383f'));
+    box(w*.09,h*.66,d*.065,w*.57,h*.012,d*.003,material('#84a8a3'));
+    box(w*.09,h*.59,d*.065,w*.36,h*.01,d*.003,material('#56767a'));
+    box(w*.08,h*.055,d*.14,w*.84,h*.009,d*.43,dark);
+    soft(w*.36,h*.055,d*.67,w*.28,h*.008,d*.21,Math.min(w,d)*.02,tint(fabric,.87));
+    for(let row=0;row<3;row++)box(w*.10,h*.064,d*(.20+row*.12),w*.80,h*.003,d*.012,tint(fabric,1.13));
+  } else if(item.kind==='speaker'){
+    soft(0,0,0,w,h,d,Math.min(w,d)*.06,fabric);
+    const frontDisc=(cx:number,cy:number,rx:number,ry:number,color:Color)=>{
+      for(const mesh of cylinder(cx,d*.99,cy,rx,ry,d*.01,color)){
+        const vertices:number[]=[];
+        for(let i=0;i<mesh.vertices.length;i+=9)for(const offset of [0,6,3])vertices.push(mesh.vertices[i+offset],mesh.vertices[i+offset+2],mesh.vertices[i+offset+1]);
+        meshes.push({vertices,color:mesh.color});
+      }
+    };
+    frontDisc(w*.5,h*.34,w*.34,h*.22,dark);
+    frontDisc(w*.5,h*.34,w*.21,h*.135,tint(fabric,.65));
+    frontDisc(w*.5,h*.78,w*.18,h*.115,dark);
   } else if(item.kind==='custom'){
     soft(0,0,0,w,h,d,Math.min(w,d)*.03,fabric);
   } else if(item.kind==='chair'){
@@ -148,7 +197,7 @@ export function furnitureMeshes(item: FurnitureItem, placement: FurniturePlaceme
     soft(0,h*.67,0,w,h*.30,d*.12,Math.min(w,d)*.04,fabric);
   }
   return meshes.map(mesh=>({color:mesh.color,vertices:mesh.vertices.map((value,index)=>{
-    if(index%3===1)return value;
+    if(index%3===1)return value+elevation;
     const start=index-index%3,x=mesh.vertices[start],z=mesh.vertices[start+2];
     const rotated=placement.rotation===90?[d-z,x]:placement.rotation===180?[w-x,d-z]:placement.rotation===270?[z,w-x]:[x,z];
     return index%3===0?placement.x+rotated[0]:placement.z+rotated[1];

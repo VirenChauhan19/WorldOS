@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-export const PAGES = ['home','prepare','mission','live','room','inspect','history','studio','settings','advanced','advanced-inspect','history-detail'] as const;
+export const PAGES = ['home','prepare','mission','live','room','ar','inspect','history','studio','settings','advanced','advanced-inspect','history-detail'] as const;
 export type Page = typeof PAGES[number];
 export type WorkspaceMode = 'device'|'private'|'connected';
 export function workspaceMode(hash=window.location.hash):WorkspaceMode {

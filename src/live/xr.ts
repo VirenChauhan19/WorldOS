@@ -1,5 +1,6 @@
 import type { XRFrameLike, XRHitTestSourceLike, XRLayerConstructor, XRLayerLike, XRMeshLike, XRPlaneLike, XRPoint, XRSpaceLike, XRSystemLike } from './xr-types';
 import type { FurnitureItem, FurniturePlacement } from '../room/layout';
+import { FURNITURE_KINDS } from '../room/layout';
 import { furnitureMeshes } from '../room/furnitureGeometry';
 import type { SceneMesh } from '../room/furnitureGeometry';
 import { inscribedPlaneRectangle, observedMeshBounds, planeRectangleToWorld, supportedObjectLabel } from './xr-plane';
@@ -35,6 +36,10 @@ export interface WorldARMeasurement {
 }
 export interface WorldARFootprint { width: number; length: number; clearance: number; rotated?: boolean }
 export interface WorldARRoomLayout { items: readonly FurnitureItem[]; placements: readonly FurniturePlacement[] }
+/** Independent objects use bottom-center positions in the active XR reference
+ * space. Those coordinates are valid only for this session, never persisted. */
+export interface WorldARSceneObject { id: string; item: FurnitureItem; position: XRPoint; rotation: number }
+export interface WorldARPlacementPose { position: XRPoint; rotation: number }
 export interface WorldARController {
   setFootprint(value: WorldARFootprint | null): void;
   setRoomLayout(value: WorldARRoomLayout | null): void;
@@ -42,12 +47,19 @@ export interface WorldARController {
   selectPoint(): boolean;
   reset(): void;
   end(): Promise<void>;
+  setScene?(objects: readonly WorldARSceneObject[], selectedId?: string | null): void;
+  setPlacementPreview?(item: FurnitureItem | null, rotation?: number): void;
+  getPlacementPose?(): WorldARPlacementPose | null;
 }
 export interface WorldAROptions {
   canvas: HTMLCanvasElement;
   overlay: HTMLElement;
   signal?: AbortSignal;
   measurementMode?: 'manual' | 'scan';
+  interactionMode?: 'measure' | 'place';
+  onObjectSelect?: (id: string | null) => void;
+  onPlace?: (pose: WorldARPlacementPose) => void;
+  onSceneReset?: () => void;
   onState: (state: WorldARState) => void;
   onMeasurement: (measurement: WorldARMeasurement | null) => void;
 }
@@ -55,7 +67,7 @@ export interface WorldAROptions {
 const MAX_EXTENT = 50;
 const MIN_EXTENT = .05;
 const MAX_HEIGHT_DIFFERENCE = .06;
-const finitePoint = (point: XRPoint) => [point.x, point.y, point.z].every(Number.isFinite);
+const finitePoint = (point: XRPoint) => !!point && [point.x, point.y, point.z].every(Number.isFinite);
 const distance = (a: XRPoint, b: XRPoint) => Math.hypot(a.x - b.x, a.z - b.z);
 const system = () => (navigator as Navigator & { xr?: XRSystemLike }).xr;
 
@@ -111,8 +123,67 @@ export function roomVerticesToWorld(vertices: readonly number[], measurement: Wo
 }
 
 interface WorldRoomMesh { vertices: Float32Array; color: Color; center: XRPoint }
+const normalizedRotation = (degrees: number) => ((degrees % 360) + 360) % 360;
+function validSceneObject(object: WorldARSceneObject) {
+  return !!object && typeof object.id === 'string' && !!object.id.trim() && !!object.item &&
+    FURNITURE_KINDS.includes(object.item.kind) && [object.item.width, object.item.depth, object.item.height].every(n => Number.isFinite(n) && n > 0 && n <= MAX_EXTENT) &&
+    !!object.position && finitePoint(object.position) && [object.position.x, object.position.y, object.position.z].every(n => Math.abs(n) <= MAX_EXTENT) && Number.isFinite(object.rotation);
+}
+
+/** Rotate geometry around an object's bottom-center, independent of a room. */
+export function sceneVerticesToWorld(vertices: readonly number[], object: WorldARSceneObject): Float32Array {
+  if (!validSceneObject(object) || vertices.length % 9 !== 0 || !vertices.every(Number.isFinite)) throw new Error('AR objects need a finite position, rotation and triangle geometry.');
+  const radians = normalizedRotation(object.rotation) * Math.PI / 180, cosine = Math.cos(radians), sine = Math.sin(radians);
+  const result = new Float32Array(vertices.length);
+  for (let i = 0; i < vertices.length; i += 3) {
+    const x = vertices[i] - object.item.width / 2, z = vertices[i + 2] - object.item.depth / 2;
+    result[i] = object.position.x + cosine * x - sine * z;
+    result[i + 1] = object.position.y + vertices[i + 1];
+    result[i + 2] = object.position.z + sine * x + cosine * z;
+  }
+  return result;
+}
+
+/** Nearest virtual object along a native controller/touch ray. Physical hit
+ * tests locate surfaces; virtual selection is explicitly computed here. */
+export function selectARObjectByRay(objects: readonly WorldARSceneObject[], origin: XRPoint, direction: XRPoint): string | null {
+  if (!finitePoint(origin) || !finitePoint(direction) || Math.hypot(direction.x, direction.y, direction.z) < .0001) return null;
+  let selected: string | null = null, nearest = Infinity;
+  for (const object of objects) {
+    if (!validSceneObject(object)) continue;
+    const radians = normalizedRotation(object.rotation) * Math.PI / 180, c = Math.cos(radians), s = Math.sin(radians);
+    const x = origin.x - object.position.x, z = origin.z - object.position.z;
+    const localOrigin = [c * x + s * z, origin.y - object.position.y, -s * x + c * z];
+    const localDirection = [c * direction.x + s * direction.z, direction.y, -s * direction.x + c * direction.z];
+    const low = [-object.item.width / 2 - .02, -.02, -object.item.depth / 2 - .02];
+    const high = [object.item.width / 2 + .02, object.item.height + .02, object.item.depth / 2 + .02];
+    let entry = 0, exit = Infinity;
+    for (let axis = 0; axis < 3; axis++) {
+      const d = localDirection[axis], p = localOrigin[axis];
+      if (Math.abs(d) < .000001) { if (p < low[axis] || p > high[axis]) { exit = -1; break; } continue; }
+      const a = (low[axis] - p) / d, b = (high[axis] - p) / d;
+      entry = Math.max(entry, Math.min(a, b)); exit = Math.min(exit, Math.max(a, b));
+      if (entry > exit) break;
+    }
+    if (entry <= exit && exit >= 0 && entry < nearest) { selected = object.id; nearest = entry; }
+  }
+  return selected;
+}
+
+function sceneMeshes(object: WorldARSceneObject, alpha = 1): WorldRoomMesh[] {
+  return prepareRoomMeshes({ items: [{ ...object.item, id: object.id }], placements: [{ itemId: object.id, x: 0, z: 0, rotation: 0 }] }).map(mesh => {
+    const vertices = sceneVerticesToWorld(mesh.vertices, object);
+    return { vertices, color: [mesh.color[0], mesh.color[1], mesh.color[2], mesh.color[3] * alpha], center: { ...object.position, y: object.position.y + object.item.height / 2 } };
+  });
+}
+
+function objectOutline(object: WorldARSceneObject): XRPoint[] {
+  const c = Math.cos(object.rotation * Math.PI / 180), s = Math.sin(object.rotation * Math.PI / 180), w = object.item.width / 2 + .025, d = object.item.depth / 2 + .025;
+  return [[-w, -d], [w, -d], [w, d], [-w, d], [-w, -d]].map(([x, z]) => ({ x: object.position.x + c * x - s * z, y: object.position.y, z: object.position.z + s * x + c * z }));
+}
+
 function prepareRoomMeshes(value: WorldARRoomLayout): SceneMesh[] {
-  const allowedKinds = new Set(['bed', 'desk', 'table', 'wardrobe', 'chair']);
+  const allowedKinds = new Set(FURNITURE_KINDS);
   if (value.items.length > 32 || value.placements.length > value.items.length) throw new Error('The AR room supports up to 32 distinct furniture items.');
   const items = new Map<string, FurnitureItem>();
   for (const item of value.items) {
@@ -218,26 +289,31 @@ function centeredFootprint(measurement: WorldARMeasurement, width: number, lengt
 
 /** Must be called directly from a user action so the native AR permission prompt
  * is tied to that action. No camera frames are sent to a server by this engine. */
-export async function startWorldAR({ canvas, overlay, signal, measurementMode = 'manual', onState, onMeasurement }: WorldAROptions): Promise<WorldARController> {
+export async function startWorldAR({ canvas, overlay, signal, measurementMode = 'manual', interactionMode = 'measure', onState, onMeasurement, onObjectSelect, onPlace, onSceneReset }: WorldAROptions): Promise<WorldARController> {
   if (signal?.aborted) throw new DOMException('The AR start was cancelled.', 'AbortError');
   const xr = system();
   if (!window.isSecureContext || !xr) throw new Error('World-tracked AR is unavailable here. Use an AR-capable browser over HTTPS.');
   const Layer = (window as Window & { XRWebGLLayer?: XRLayerConstructor }).XRWebGLLayer;
   if (!Layer) throw new Error('This browser does not provide the graphics needed for world-tracked AR.');
+  const placing = interactionMode === 'place';
   // Request before any awaited feature check to retain the user's activation.
   const session = await xr.requestSession('immersive-ar', {
-    requiredFeatures: ['local', 'hit-test', 'dom-overlay'], optionalFeatures: ['local-floor', 'plane-detection', 'mesh-detection'], domOverlay: { root: overlay },
+    requiredFeatures: ['local', 'hit-test', 'dom-overlay'], optionalFeatures: placing ? ['local-floor'] : ['local-floor', 'plane-detection', 'mesh-detection'], domOverlay: { root: overlay },
   });
   let ended = false, handle = 0, watchdog = 0, lastFrameAt = performance.now(), lastHitAt = -Infinity, endMessage = 'AR session ended.';
   let reference: XRSpaceLike | null = null, source: XRHitTestSourceLike | null = null, gl: XRGL | null = null, layer: XRLayerLike | null = null;
   let graphics: ReturnType<typeof renderer> | null = null;
   let hit: XRPoint | null = null, points: XRPoint[] = [], measurement: WorldARMeasurement | null = null, footprint: WorldARFootprint | null = null;
   let roomMeshes: SceneMesh[] | null = null, worldRoomMeshes: WorldRoomMesh[] | null = null;
+  let scene: WorldARSceneObject[] = [], sceneSelectedId: string | null = null, worldSceneMeshes: WorldRoomMesh[] = [];
+  let previewItem: FurnitureItem | null = null, previewRotation = 0, previewLocalMeshes: SceneMesh[] = [];
+  let previewWorldMeshes: WorldRoomMesh[] = [], previewKey = '';
+  let lastRay: { origin: XRPoint; direction: XRPoint } | null = null;
   type SurfaceTrack = { changedAt: number; local: WorldARMeasurement['corners'] | null; anchor: WorldARMeasurement | null; current: WorldARMeasurement | null; label: string; since: number; seen: number; frames: number };
   type ObjectTrack = { changedAt: number; bounds: WorldARObject; anchorBounds: WorldARObject; basis: number[]; anchor: XRPoint; since: number; seen: number; frames: number };
   const planeTracks = new Map<XRPlaneLike, SurfaceTrack>(), meshTracks = new Map<XRMeshLike, ObjectTrack>();
   let surfaces: SurfaceTrack[] = [], objects: ObjectTrack[] = [];
-  const scanning = measurementMode === 'scan', floorScan = createFloorScan();
+  const scanning = !placing && measurementMode === 'scan', floorScan = createFloorScan();
   const measurementSupport = { planes: session.enabledFeatures?.includes('plane-detection') ?? false, meshes: session.enabledFeatures?.includes('mesh-detection') ?? false, hitTest: true as const };
   let knownFloorHeight: number | null = null, excludedFloorHeights: number[] = [], scanStartedAt = performance.now();
   let stateKey = '';
@@ -284,12 +360,29 @@ export async function startWorldAR({ canvas, overlay, signal, measurementMode = 
     const key = JSON.stringify(state);
     if (key !== stateKey) { stateKey = key; onState(state); }
   }
+  function clearScene() { scene = []; worldSceneMeshes = []; sceneSelectedId = null; lastRay = null; previewWorldMeshes = []; previewKey = ''; onSceneReset?.(); }
+  function placementPose(): WorldARPlacementPose | null {
+    if (!placing || ended || !hit || performance.now() - lastHitAt > 300 || session.visibilityState !== 'visible') return null;
+    return { position: { ...hit }, rotation: previewRotation };
+  }
+  function selectScene(event: Event) {
+    if (!placing || ended || session.visibilityState !== 'visible' || performance.now() - lastFrameAt > 300) return;
+    if (previewItem) { const pose = placementPose(); if (pose) onPlace?.(pose); return; }
+    const input = event as Event & { frame?: XRFrameLike; inputSource?: { targetRaySpace?: XRSpaceLike } };
+    const pose = input.frame?.getPose && input.inputSource?.targetRaySpace && reference ? input.frame.getPose(input.inputSource.targetRaySpace, reference) : null;
+    const matrix = pose?.transform.matrix;
+    const ray = pose && !pose.emulatedPosition && matrix?.length === 16 && Array.from(matrix).every(Number.isFinite)
+      ? { origin: pose.transform.position, direction: { x: -matrix[8], y: -matrix[9], z: -matrix[10] } } : lastRay;
+    if (ray) onObjectSelect?.(selectARObjectByRay(scene, ray.origin, ray.direction));
+  }
   function clearMeasurement() { hit = null; lastHitAt = -Infinity; points = []; measurement = null; roomMeshes = null; worldRoomMeshes = null; clearDetection(); clearScan(); onMeasurement(null); }
   function cleanup() {
     if (ended) return;
     ended = true; hit = null; clearDetection(); clearScan();
+    scene = []; worldSceneMeshes = []; lastRay = null; previewItem = null; previewLocalMeshes = []; previewWorldMeshes = [];
     session.cancelAnimationFrame(handle); window.clearInterval(watchdog); source?.cancel(); source = null;
     session.removeEventListener('end', cleanup); session.removeEventListener('visibilitychange', visibilityChanged);
+    session.removeEventListener('select', selectScene);
     reference?.removeEventListener('reset', originChanged); canvas.removeEventListener('webglcontextlost', graphicsLost);
     overlay.removeEventListener('beforexrselect', preventUISelection);
     signal?.removeEventListener('abort', cancelStart);
@@ -298,9 +391,9 @@ export async function startWorldAR({ canvas, overlay, signal, measurementMode = 
     graphics?.dispose(); graphics = null; roomMeshes = null; worldRoomMeshes = null; onMeasurement(null);
     publish('ended', endMessage, false);
   }
-  function originChanged() { clearMeasurement(); publish('searching', scanning ? 'Tracking origin changed. Scan the floor again.' : 'Tracking origin changed. Measure the space again.', false); }
+  function originChanged() { clearMeasurement(); if (placing) clearScene(); publish('searching', placing ? 'Tracking origin changed. Place your objects again.' : scanning ? 'Tracking origin changed. Scan the floor again.' : 'Tracking origin changed. Measure the space again.', false); }
   function visibilityChanged() {
-    if (session.visibilityState !== 'visible') { hit = null; clearDetection(); clearScan(); publish('tracking-lost', 'AR is paused. Return to the camera to continue.', false); }
+    if (session.visibilityState !== 'visible') { hit = null; lastRay = null; clearDetection(); clearScan(); publish('tracking-lost', 'AR is paused. Return to the camera to continue.', false); }
   }
   async function stopSession(message = 'AR session ended.') {
     if (ended) return;
@@ -314,8 +407,9 @@ export async function startWorldAR({ canvas, overlay, signal, measurementMode = 
   function graphicsLost(event: Event) { event.preventDefault(); void stopSession('AR graphics were interrupted. Restart AR to measure again.'); }
   function cancelStart() { void stopSession('AR session stopped.'); }
   function documentVisibilityChanged() { if (document.hidden) cancelStart(); }
-  function preventUISelection(event: Event) { if (event.target instanceof Element && event.target.closest('button,input,select,textarea,a,label,[role="button"]')) event.preventDefault(); }
+  function preventUISelection(event: Event) { if (event.target instanceof Element && event.target.closest('button,input,select,textarea,a,label,[role="button"],[data-xr-ui]')) event.preventDefault(); }
   session.addEventListener('end', cleanup); session.addEventListener('visibilitychange', visibilityChanged);
+  if (placing) session.addEventListener('select', selectScene);
   canvas.addEventListener('webglcontextlost', graphicsLost); overlay.addEventListener('beforexrselect', preventUISelection);
   signal?.addEventListener('abort', cancelStart, { once: true });
   document.addEventListener('visibilitychange', documentVisibilityChanged); window.addEventListener('pagehide', cancelStart);
@@ -441,11 +535,16 @@ export async function startWorldAR({ canvas, overlay, signal, measurementMode = 
       handle = session.requestAnimationFrame(frame);
       gl.bindFramebuffer(gl.FRAMEBUFFER, layer.framebuffer); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       const pose = xrFrame.getViewerPose(reference);
-      if (!pose || !pose.views.length || pose.emulatedPosition || session.visibilityState !== 'visible' || scanning && (!Number.isFinite(time) || Math.abs(lastFrameAt - time) > 300 || !finitePoint(pose.views[0].transform.position))) {
-        hit = null; clearDetection(); clearScan(); publish('tracking-lost', scanning ? 'Tracking paused. Move slowly and point back at the floor to scan again.' : 'Tracking paused. Move slowly and point back at the measured surface.', false); return;
+      if (!pose || !pose.views.length || pose.emulatedPosition || session.visibilityState !== 'visible' || (scanning || placing) && (!Number.isFinite(time) || Math.abs(lastFrameAt - time) > 300 || !finitePoint(pose.views[0].transform.position))) {
+        hit = null; lastRay = null; clearDetection(); clearScan(); publish('tracking-lost', placing ? 'Tracking paused. Move slowly until your space is visible again.' : scanning ? 'Tracking paused. Move slowly and point back at the floor to scan again.' : 'Tracking paused. Move slowly and point back at the measured surface.', false); return;
       }
       const viewerPosition = pose.views[0].transform.position;
-      updateDetection(xrFrame, lastFrameAt, viewerPosition);
+      if (placing) {
+        const matrix = pose.views[0].transform.matrix;
+        lastRay = matrix.length === 16 && Array.from(matrix).every(Number.isFinite) ? { origin: { ...viewerPosition }, direction: { x: -matrix[8], y: -matrix[9], z: -matrix[10] } } : null;
+      }
+      // Placement needs a surface hit, not measured plane polygons or meshes.
+      if (!placing) updateDetection(xrFrame, lastFrameAt, viewerPosition);
       hit = null;
       let hitCount = 0;
       for (const result of xrFrame.getHitTestResults(source)) {
@@ -456,13 +555,15 @@ export async function startWorldAR({ canvas, overlay, signal, measurementMode = 
         const point = candidate.transform.position;
         // A hit on a wall cannot provide the horizontal footprint being measured.
         if (!finitePoint(point) || !Number.isFinite(matrix[5]) || Math.abs(matrix[5]) < .94) continue;
+        if (placing && (matrix.length !== 16 || !Array.from(matrix).every(Number.isFinite) || [point.x, point.y, point.z].some(value => Math.abs(value) > MAX_EXTENT))) continue;
         if (scanning && (matrix.length !== 16 || !Array.from(matrix).every(Number.isFinite) || Math.abs(matrix[5]) < .995 || !isPlausibleFloorHit(point, viewerPosition) || !matchesFloorLevel(point.y))) continue;
         if (points.length && Math.abs(point.y - points[0].y) > MAX_HEIGHT_DIFFERENCE) continue;
         hit = { x: point.x, y: point.y, z: point.z }; lastHitAt = time;
         if (scanning && !measurement) floorScan.add(hit, viewerPosition, lastFrameAt);
         break;
       }
-      if (measurement) publish('ready', scanning ? 'Scanned floor area stays anchored as you move.' : 'Measured rectangle stays anchored as you move.', false);
+      if (placing) publish(hit ? 'ready' : 'searching', hit ? previewItem ? 'Move the phone to aim, then place your object.' : 'Choose another object, or aim at one you placed to select it.' : 'Move slowly and aim at a floor or tabletop to find a placement.', !!hit);
+      else if (measurement) publish('ready', scanning ? 'Scanned floor area stays anchored as you move.' : 'Measured rectangle stays anchored as you move.', false);
       else if (scanning) {
         const scan = scanState(lastFrameAt);
         publish(scan.phase === 'finding-floor' || scan.phase === 'limited' ? 'searching' : 'measuring', scan.message, false);
@@ -477,6 +578,29 @@ export async function startWorldAR({ canvas, overlay, signal, measurementMode = 
         gl.disable(gl.DEPTH_TEST); gl.depthMask(true);
         graphics.prepare(view.projectionMatrix, view.transform.inverse.matrix);
         if (hit && points.length < 3) graphics.draw(ring(hit, .06), LIME);
+        if (placing) {
+          gl.enable(gl.DEPTH_TEST); gl.depthMask(true);
+          for (const mesh of worldSceneMeshes) if (mesh.color[3] >= .999) graphics.drawMesh(mesh);
+          const eye = view.transform.position;
+          const squaredDistance = (point: XRPoint) => (point.x - eye.x) ** 2 + (point.y - eye.y) ** 2 + (point.z - eye.z) ** 2;
+          const transparent = worldSceneMeshes.filter(mesh => mesh.color[3] < .999).sort((a, b) => squaredDistance(b.center) - squaredDistance(a.center));
+          gl.depthMask(false);
+          for (const mesh of transparent) graphics.drawMesh(mesh);
+          if (previewItem && hit) {
+            const previewPosition = { ...hit };
+            const object = { id: 'placement-preview', item: previewItem, position: previewPosition, rotation: previewRotation };
+            const key = [previewPosition.x, previewPosition.y, previewPosition.z, previewRotation].join(',');
+            if (previewKey !== key) {
+              previewKey = key;
+              previewWorldMeshes = previewLocalMeshes.map(mesh => ({ vertices: sceneVerticesToWorld(mesh.vertices, object), color: [mesh.color[0], mesh.color[1], mesh.color[2], mesh.color[3] * .32], center: { ...previewPosition, y: previewPosition.y + previewItem!.height / 2 } }));
+            }
+            for (const mesh of previewWorldMeshes) graphics.drawMesh(mesh);
+          }
+          gl.depthMask(true); gl.disable(gl.DEPTH_TEST);
+          const selected = scene.find(object => object.id === sceneSelectedId);
+          if (selected) graphics.draw(objectOutline(selected), LIME);
+          continue;
+        }
         points.forEach(point => graphics!.draw(ring(point, .025), WHITE));
         if (points.length && !measurement) graphics.draw([...points, ...(hit ? [hit] : [])], WHITE);
         const candidate = !points.length && detectedCandidate(lastFrameAt);
@@ -522,19 +646,33 @@ export async function startWorldAR({ canvas, overlay, signal, measurementMode = 
     }
   }
 
-  const startingMessage = scanning ? 'Aim down at a textured floor and move the phone slowly to start mapping.' : 'Move slowly over a textured, level surface to find a plane.';
+  const startingMessage = placing ? 'Move slowly and aim at a floor or tabletop to find a placement.' : scanning ? 'Aim down at a textured floor and move the phone slowly to start mapping.' : 'Move slowly over a textured, level surface to find a plane.';
   publish('searching', startingMessage, false);
   try {
     handle = session.requestAnimationFrame(frame);
     watchdog = window.setInterval(() => {
       const elapsed = performance.now() - lastFrameAt;
-      if (!ended && (elapsed > 1500 || ((surfaces.length || objects.length || scanning && floorScan.snapshot(performance.now()).measurement) && elapsed > 300))) {
-        hit = null; clearDetection(); clearScan();
+      if (!ended && (elapsed > 1500 || ((placing || surfaces.length || objects.length || scanning && floorScan.snapshot(performance.now()).measurement) && elapsed > 300))) {
+        hit = null; lastRay = null; clearDetection(); clearScan();
         publish('tracking-lost', 'No recent tracking update. Wait for the camera to recover.', false);
       }
     }, 500);
   } catch (error) { await stopSession(); throw error; }
   return {
+    setScene(value, selectedId = null) {
+      if (ended) return;
+      if (value.length > 32 || new Set(value.map(object => object.id)).size !== value.length || value.some(object => !validSceneObject(object))) throw new Error('Place up to 32 objects with unique IDs, valid sizes and finite session coordinates.');
+      const next = value.map(object => ({ id: object.id, item: { ...object.item }, position: { ...object.position }, rotation: normalizedRotation(object.rotation) }));
+      const meshes = next.flatMap(object => sceneMeshes(object));
+      scene = next; sceneSelectedId = selectedId && next.some(object => object.id === selectedId) ? selectedId : null; worldSceneMeshes = meshes;
+    },
+    setPlacementPreview(item, rotation = 0) {
+      if (ended) return;
+      if (!Number.isFinite(rotation)) throw new Error('Choose a finite object rotation.');
+      const meshes = item ? prepareRoomMeshes({ items: [{ ...item, id: 'placement-preview' }], placements: [{ itemId: 'placement-preview', x: 0, z: 0, rotation: 0 }] }) : [];
+      previewItem = item ? { ...item } : null; previewRotation = normalizedRotation(rotation); previewLocalMeshes = meshes; previewWorldMeshes = []; previewKey = '';
+    },
+    getPlacementPose: placementPose,
     setFootprint(value) {
       if (value && (![value.width, value.length, value.clearance].every(Number.isFinite) || value.width <= 0 || value.length <= 0 || value.clearance < 0 || Math.max(value.width, value.length, value.clearance) > MAX_EXTENT)) throw new Error('Enter finite dimensions up to 50 meters and a non-negative clearance up to 50 meters.');
       footprint = value ? { ...value } : null;
@@ -546,6 +684,7 @@ export async function startWorldAR({ canvas, overlay, signal, measurementMode = 
       if (value) footprint = null;
     },
     useDetectedSurface() {
+      if (placing) return false;
       const candidate = detectedCandidate(performance.now());
       if (ended || measurement || points.length || !candidate || session.visibilityState !== 'visible') return false;
       const current = candidate.current;
@@ -557,7 +696,7 @@ export async function startWorldAR({ canvas, overlay, signal, measurementMode = 
       return true;
     },
     selectPoint() {
-      if (scanning || ended || !hit || points.length >= 3 || performance.now() - lastHitAt > 300 || session.visibilityState !== 'visible') return false;
+      if (placing || scanning || ended || !hit || points.length >= 3 || performance.now() - lastHitAt > 300 || session.visibilityState !== 'visible') return false;
       if (points.length === 1 && (distance(points[0], hit) < MIN_EXTENT || distance(points[0], hit) > MAX_EXTENT)) { publish('measuring', 'Choose a width edge between 5 cm and 50 m.', true); return false; }
       if (points.length === 2) {
         const next = rectangleFromPoints(points[0], points[1], hit);
@@ -568,7 +707,7 @@ export async function startWorldAR({ canvas, overlay, signal, measurementMode = 
       points.push({ ...hit }); hit = null;
       publish('searching', points.length === 1 ? 'First corner set. Aim at the end of the width edge.' : 'Width set. Aim at the opposite side.', false); return true;
     },
-    reset() { if (ended) return; clearMeasurement(); publish('searching', startingMessage, false); },
+    reset() { if (ended) return; clearMeasurement(); if (placing) clearScene(); publish('searching', startingMessage, false); },
     async end() { await stopSession(); },
   };
 }

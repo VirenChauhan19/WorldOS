@@ -1,0 +1,18 @@
+.device-app .device-sidebar .consumer-navigation [data-destination=scan] {
+  --tab-ink: #785a77;
+  --tab-soft: #f4edf3;
+  --tab-tile: #ecdfeb;
+}
+
+@media (max-width: 1000px) {
+  .device-app .device-sidebar .consumer-navigation {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  .device-app .device-sidebar .consumer-navigation button { max-width: none; }
+}
+
+@media (max-width: 390px) {
+  .device-app .device-sidebar .consumer-navigation { gap: 1px; padding-inline: 5px; }
+  .device-app .device-sidebar .consumer-navigation .device-tab-label { font-size: 9px; letter-spacing: -.15px; }
+}

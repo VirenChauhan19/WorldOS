@@ -26,6 +26,13 @@ it('opens the clearly labeled camera example through the demo route',()=>{
   expect(window.location.hash).toBe('#/live?demo=1');
   expect(screen.getByText('Recorded example',{exact:true})).toBeTruthy();
 });
+it('opens the AR interior studio in the device workspace',()=>{
+  window.history.replaceState(null,'','#/home?workspace=connected');
+  open();
+  fireEvent.click(screen.getByRole('button',{name:'Open AR studio'}));
+  expect(window.location.hash).toBe('#/ar');
+  expect(listTemplates).not.toHaveBeenCalled();
+});
 
 it('keeps the recorded preview interactive on the home screen',()=>{
   open();const preview=screen.getByRole('figure',{name:'Explore a recorded desk scan'});

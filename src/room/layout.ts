@@ -2,7 +2,7 @@
 export interface RoomSize { width: number; depth: number; height?: number }
 /** Measured floor rectangles reserved for existing objects or access. */
 export interface ReservedZone { id:string; label:string; kind:'obstacle'|'access'; x:number; z:number; width:number; depth:number }
-export type FurnitureKind = 'bed' | 'desk' | 'table' | 'wardrobe' | 'chair' | 'sofa' | 'shelf' | 'plant' | 'custom';
+export type FurnitureKind = 'bed' | 'desk' | 'table' | 'wardrobe' | 'chair' | 'sofa' | 'ottoman' | 'shelf' | 'plant' | 'lamp' | 'rug' | 'monitor' | 'laptop' | 'speaker' | 'custom';
 export interface FurnitureItem {
   id: string;
   kind: FurnitureKind;
@@ -14,7 +14,7 @@ export interface FurnitureItem {
 }
 /** x/z locate the minimum corner of the rotated, axis-aligned footprint. */
 export type FurnitureRotation = 0 | 90 | 180 | 270;
-export interface FurniturePlacement { itemId: string; x: number; z: number; rotation: FurnitureRotation }
+export interface FurniturePlacement { itemId: string; x: number; z: number; rotation: FurnitureRotation; elevation?: number }
 export interface RoomLayoutIssue { type: string; itemIds: string[]; message: string }
 export interface RoomLayout {
   status: 'fits' | 'partial' | 'unknown' | 'conflict';
@@ -42,7 +42,7 @@ const MAX_ITEMS = 12;
 const MAX_SEARCH_NODES = 1800;
 const MAX_CANDIDATE_CHECKS = 60000;
 const EPS = 1e-9; // Floating-point tolerance only; this does not cover measurement error.
-export const FURNITURE_KINDS: readonly string[] = ['bed', 'desk', 'table', 'wardrobe', 'chair', 'sofa', 'shelf', 'plant', 'custom'];
+export const FURNITURE_KINDS: readonly string[] = ['bed', 'desk', 'table', 'wardrobe', 'chair', 'sofa', 'ottoman', 'shelf', 'plant', 'lamp', 'rug', 'monitor', 'laptop', 'speaker', 'custom'];
 
 export function orientedSize(item: FurnitureItem, rotation: FurnitureRotation): { width: number; depth: number } {
   return rotation % 180 === 90 ? { width: item.depth, depth: item.width } : { width: item.width, depth: item.depth };
@@ -191,7 +191,7 @@ function uniqueCoordinates(values: number[], max: number): number[] {
   return [...new Set(values.filter(value => value >= -EPS && value <= max + EPS).map(value => Math.max(0, Math.min(max, value))))].sort((a, b) => a - b);
 }
 
-const furnishingOrder: Record<FurnitureKind, number> = { bed: 0, sofa: 1, wardrobe: 2, shelf: 2, custom: 2, desk: 3, table: 4, chair: 5, plant: 6 };
+const furnishingOrder: Record<FurnitureKind, number> = { bed: 0, sofa: 1, wardrobe: 2, shelf: 2, custom: 2, desk: 3, table: 4, chair: 5, ottoman: 5, plant: 6, lamp: 6, rug: 6, monitor: 6, laptop: 6, speaker: 6 };
 interface Candidate { placement: FurniturePlacement; footprint: Rect; preference: number[] }
 
 /** Preferences only order the search; every valid orientation and edge remains available.

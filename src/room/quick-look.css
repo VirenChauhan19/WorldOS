@@ -1,0 +1,9 @@
+.room-quick-look{position:relative;height:52px;min-width:min(220px,100%);border-radius:10px;background:#284f3d;color:#f3f7eb;overflow:hidden}
+.room-quick-look>a{display:block;width:100%;height:100%;outline-offset:-4px!important}
+.room-quick-look>a:focus-visible{outline:2px solid #d5f580}
+.room-quick-look>a>img{width:100%;height:100%;object-fit:contain;opacity:.01}
+.room-quick-look>span{position:absolute;inset:0;display:flex;align-items:center;gap:12px;padding:0 18px;pointer-events:none}
+.room-quick-look strong{font-size:12px;font-weight:550}
+.room-quick-look>span>svg:last-child{margin-left:auto}
+.room-quick-look:hover{background:#365e48}
+.quick-look-unavailable{display:flex;align-items:center;justify-content:center;gap:10px;min-height:52px;border:1px solid #b7c8a1;border-radius:10px;background:#e0e9d1;color:#546d42;padding:12px 15px;font-size:12px}
