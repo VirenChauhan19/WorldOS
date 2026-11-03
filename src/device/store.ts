@@ -63,7 +63,7 @@ export function parseDeviceBackup(input: unknown): DeviceSpace {
   const value = input as { format?: string; space?: DeviceSpace } | null;
   const s = value?.space;
   const image = (v: unknown) => typeof v === 'string' && v.length <= 9*1024*1024 && (v === '' || /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(v));
-  if (value?.format !== 'worldos-device-space-v1' || !s || typeof s.name !== 'string' || !s.name.trim() || s.name.length > 120 || typeof s.notes !== 'string' || s.notes.length > 4000 || !image(s.photo) || !image(s.after) || !Array.isArray(s.steps) || s.steps.length > 30 || s.steps.some(step => !step || typeof step.text !== 'string' || !step.text.trim() || step.text.length > 300 || typeof step.done !== 'boolean')) {
+  if (value?.format !== 'worldos-device-space-v1' || !s || typeof s.name !== 'string' || !s.name.trim() || s.name.length > 120 || typeof s.notes !== 'string' || s.notes.length > 4000 || !image(s.photo) || !image(s.after) || !Array.isArray(s.steps) || s.steps.length > 30 || s.steps.some(step => !step || typeof step.text !== 'string' || !step.text.trim() || step.text.length > 500 || typeof step.done !== 'boolean')) {
     throw new Error('Choose a valid WorldOS device setup backup.');
   }
   // Imports always get new identities, so restoring never overwrites existing work.

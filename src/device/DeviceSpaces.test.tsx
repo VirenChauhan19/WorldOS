@@ -6,6 +6,8 @@ import { listDeviceSpaces, loadRoomReference } from './store';
 import { loadRoomDraft } from './roomDraft';
 import type { DeviceSpace } from './store';
 import type { RoomReference } from '../room/photoPlane';
+import { listRoomProjects } from './roomProjects';
+vi.mock('./roomProjects',async original=>({...await original<typeof import('./roomProjects')>(),listRoomProjects:vi.fn(async()=>[])}));
 
 vi.mock('./store',async original=>({...await original<typeof import('./store')>(),listDeviceSpaces:vi.fn(),loadRoomReference:vi.fn()}));
 vi.mock('./roomDraft',()=>({loadRoomDraft:vi.fn()}));
@@ -17,9 +19,15 @@ function deferred<T>() {
 }
 const saved:DeviceSpace={id:'desk',name:'Evening desk',notes:'',photo:'',after:'',steps:[],updatedAt:'2026-11-02T10:00:00Z'};
 beforeEach(()=>{
+  vi.mocked(listRoomProjects).mockResolvedValue([]);
   vi.mocked(listDeviceSpaces).mockResolvedValue([]);
   vi.mocked(loadRoomReference).mockResolvedValue(undefined);
   vi.mocked(loadRoomDraft).mockReturnValue(null);
+});
+it('shows a project storage error instead of claiming saved rooms are absent',async()=>{
+  vi.mocked(listRoomProjects).mockRejectedValueOnce(new Error('Storage unavailable.'));
+  render(<DeviceSpaces/>);expect((await screen.findByRole('alert')).textContent).toContain('Room projects could not be opened');
+  expect(screen.queryByText('Nothing saved yet')).toBeNull();
 });
 afterEach(()=>{cleanup();vi.resetAllMocks();});
 

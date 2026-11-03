@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, SplitSquareHorizontal } from 'lucide-react';
+import { Download, SplitSquareHorizontal, X } from 'lucide-react';
 import { footprintPolygon, validFloorCorners } from './photoPlane';
 import type { RoomReference } from './photoPlane';
 import { orientedSize } from './layout';
@@ -8,7 +8,7 @@ import { buildPhotoScene, drawPhotoScene } from './photoFurniture';
 import PhotoFurniture from './ProjectedFurniture';
 
 const corners=['Back left','Back right','Front right','Front left'];
-export default function RoomPhoto({reference,onChange,room,items,placements,zones,selectedId,onSelect,onReserve,automatic=false}:{reference:RoomReference;onChange:(value:RoomReference)=>void;room:RoomSize|null;items:readonly FurnitureItem[];placements:readonly FurniturePlacement[];zones:readonly ReservedZone[];selectedId:string;onSelect:(id:string)=>void;onReserve:(label:string)=>void;automatic?:boolean}){
+export default function RoomPhoto({reference,onChange,room,items,placements,zones,selectedId,onSelect,onReserve,automatic=false,reasons=[]}:{reference:RoomReference;onChange:(value:RoomReference)=>void;room:RoomSize|null;items:readonly FurnitureItem[];placements:readonly FurniturePlacement[];zones:readonly ReservedZone[];selectedId:string;onSelect:(id:string)=>void;onReserve:(label:string)=>void;automatic?:boolean;reasons?:{itemId:string;reason:string}[]}){
   const [showPlan,setShowPlan]=useState(true),[compare,setCompare]=useState(false),[split,setSplit]=useState(50),[guides,setGuides]=useState(false),[exportError,setExportError]=useState('');
   const svg=useRef<SVGSVGElement>(null),photo=useRef<HTMLImageElement>(null),valid=validFloorCorners(reference.corners);
   const scene=useMemo(()=>room?buildPhotoScene(reference,room,items,placements):{faces:[],shadows:[],pins:[]},[reference,room,items,placements]);
@@ -44,6 +44,7 @@ export default function RoomPhoto({reference,onChange,room,items,placements,zone
     </div>
     {compare&&<label className="room-compare-slider"><span>Furnished</span><input aria-label="Compare original and furnished room" type="range" min="0" max="100" value={split} onChange={e=>setSplit(Number(e.target.value))}/><span>Original</span></label>}
     <div className="room-photo-caption"><p>{automatic?'Furniture concepts follow the estimated floor perspective. Scale and camera angle are approximate.':reference.corners.length<4?`Tap the ${corners[reference.corners.length].toLowerCase()} floor corner. (${reference.corners.length+1}/4)`:'Furniture concepts use the dimensions and floor outline you provided.'}</p><button aria-pressed={guides} onClick={()=>setGuides(v=>!v)}>{guides?'Hide guides':'Show floor & clearances'}</button></div>
+    {selectedId&&items.some(i=>i.id===selectedId)&&<aside className="room-photo-selected" aria-label="Selected furniture details"><div><strong>{items.find(i=>i.id===selectedId)?.label}</strong><p>{reasons.find(r=>r.itemId===selectedId)?.reason??'Select this piece in the floor plan to adjust its position.'}</p><small>Concept dimensions: {items.find(i=>i.id===selectedId)?.width} × {items.find(i=>i.id===selectedId)?.depth} m. Check your actual furniture.</small></div><button aria-label="Close furniture details" onClick={()=>onSelect('')}><X size={18}/></button></aside>}
     {exportError&&<p role="alert">{exportError}</p>}
     {valid&&room&&placements.length>0&&<div className="room-photo-legend" role="group" aria-label="Furniture in your photo plan">{placements.map(p=>{const item=items.find(i=>i.id===p.itemId);return item&&<button key={item.id} aria-pressed={item.id===selectedId} onClick={()=>onSelect(item.id)}>Select {item.label} in photo <small>{item.width} × {item.depth} m</small></button>;})}</div>}
     <details className="room-photo-adjust"><summary>Adjust floor outline (optional)</summary><div className="room-photo-actions"><button className="room-secondary" disabled={!reference.corners.length} onClick={()=>onChange({...reference,corners:reference.corners.slice(0,-1)})}>Undo corner</button><button className="room-secondary" onClick={()=>onChange({...reference,corners:[{x:.2,y:.2},{x:.8,y:.2},{x:.8,y:.8},{x:.2,y:.8}]})}>Set corners with controls</button></div>

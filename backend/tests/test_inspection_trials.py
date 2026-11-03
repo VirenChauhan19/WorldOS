@@ -151,7 +151,7 @@ def test_migrates_v2_and_preserves_templates_and_records(tmp_path):
         db.execute('DROP TABLE evaluation_captures');db.execute('DROP TABLE evaluation_trials');db.execute('PRAGMA user_version=2')
     upgraded=InspectionStore(path)
     assert upgraded.template(t['id'])==t and upgraded.inspection(record['id'])==record
-    with upgraded.connect() as db:assert db.execute('PRAGMA user_version').fetchone()[0]==5
+    with upgraded.connect() as db:assert db.execute('PRAGMA user_version').fetchone()[0]==6
 
 
 def test_reference_inference_is_retained_separately_from_template_corrections(client):

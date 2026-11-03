@@ -1,3 +1,4 @@
+import { startRoomJob } from './jobs';
 import { request } from '../api';
 import { FURNITURE_KINDS } from './layout';
 import type { FurnitureItem, FurniturePlacement, ReservedZone, RoomSize } from './layout';
@@ -26,8 +27,11 @@ export function validDesign(value:unknown):value is RoomDesign {
     Array.isArray(v.tradeoffs)&&v.tradeoffs.every(s=>typeof s==='string');
 }
 
-export async function surveyRoom(image_url:string,signal:AbortSignal):Promise<SurveyResponse>{
-  const v=await request<SurveyResponse>('ai/room/survey',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image_url}),signal},130000);
+export async function surveyRoom(image_url:string,signal:AbortSignal,jobId?:string,onStatus?:(status:string)=>void):Promise<SurveyResponse>{
+  const v=jobId?await startRoomJob<SurveyResponse>(jobId,{image_url},signal,onStatus):await request<SurveyResponse>('ai/room/survey',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image_url}),signal},130000);
+  return validateSurvey(v);
+}
+export function validateSurvey(v:SurveyResponse):SurveyResponse{
   if(!['ready','needs_photo'].includes(v.status)||typeof v.summary!=='string'||typeof v.uncertainty!=='string'||!['low','medium'].includes(v.confidence)||
     !Array.isArray(v.evidence)||!v.evidence.every(s=>typeof s==='string')||!Array.isArray(v.ideas)||!v.ideas.every(s=>typeof s==='string')||
     !Array.isArray(v.features)||!v.features.every(f=>f&&typeof f.label==='string'&&typeof f.observation==='string'&&['window','door','fixed','light'].includes(f.kind)&&[f.x,f.z].every(n=>Number.isFinite(n)&&n>=0&&n<=1))||
@@ -45,8 +49,8 @@ export async function surveyRoom(image_url:string,signal:AbortSignal):Promise<Su
   }else if(v.room!==null||!Array.isArray(v.floor_corners)||v.floor_corners.length||v.zones.length||v.features.length)throw new Error('The room analysis was incomplete. Try a wider photo.');
   return v;
 }
-export async function designRoom(body:{image_url:string;goal:string;style:DesignStyle;room:RoomSize;zones:ReservedZone[];features:RoomFeature[];items:FurnitureItem[];placements?:FurniturePlacement[];gap:number},signal:AbortSignal):Promise<RoomDesign>{
-  const value=await request<RoomDesign>('ai/room/design',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal},130000);
+export async function designRoom(body:{image_url:string;goal:string;style:DesignStyle;room:RoomSize;zones:ReservedZone[];features:RoomFeature[];items:FurnitureItem[];placements?:FurniturePlacement[];gap:number},signal:AbortSignal,jobId?:string,onStatus?:(status:string)=>void):Promise<RoomDesign>{
+  const value=jobId?await startRoomJob<RoomDesign>(jobId,body,signal,onStatus):await request<RoomDesign>('ai/room/design',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal},130000);
   if(!validDesign(value))throw new Error('The design response was incomplete. Your current arrangement is unchanged; try again.');
   return value;
 }

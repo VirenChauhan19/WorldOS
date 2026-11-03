@@ -19,11 +19,16 @@ import type { WorldARController, WorldAROptions } from '../live/xr';
 import { loadRoomReference, saveRoomReference } from '../device/store';
 import { roomDraftKey } from '../device/roomDraft';
 import RoomStudio from './RoomStudio';
+vi.mock('./jobs',async original=>({...await original<typeof import('./jobs')>(),cancelRoomJob:vi.fn(async()=>({})),watchRoomJob:vi.fn()}));
+import { RoomJobFailure, watchRoomJob } from './jobs';
+import { APIError } from '../api';
+import { emptyRoom } from '../device/roomProjects';
 import { surveyRoom, designRoom } from './design';
 import type { SurveyResponse, RoomDesign } from './design';
 
 const survey:SurveyResponse={status:'ready',summary:'An open room with a window on the left.',room:{width:4,depth:5,width_min:3.2,width_max:4.8,depth_min:4,depth_max:6},floor_corners:[{x:.2,y:.4},{x:.8,y:.4},{x:.95,y:.95},{x:.05,y:.95}],evidence:['Assuming a typical door size.'],uncertainty:'Hidden space is unknown.',confidence:'low',features:[{label:'Left window',kind:'window',x:0,z:.3,observation:'A visible window on the left wall.'}],zones:[{id:'door',label:'Door access',kind:'access',x:3,z:4,width:1,depth:1}],ideas:['Add a reading corner'],image_url:'data:image/jpeg;base64,cGhvdG8=',image_width:1280,image_height:720};
 const design:RoomDesign={title:'A little room to read',summary:'A reading corner beside the window.',items:[{id:'sofa',kind:'sofa',label:'Compact sofa',width:1.8,depth:.85,height:.8,color:'#718b65'}],placements:[{itemId:'sofa',x:0,z:1,rotation:90,reason:'Near the window for reading light.'}],tradeoffs:['Example furniture sizes.']};
+const projectFixture=()=>({kind:'room-project' as const,id:'project',name:'Office',updatedAt:'now',draft:{...emptyRoom(),roomFields:{width:'4',depth:'5',height:''},source:'photo' as const,goal:'Reading corner',designStyle:'open' as const},reference:{image_url:survey.image_url,width:survey.image_width,height:survey.image_height,corners:survey.floor_corners,labels:[],survey},versions:[]});
 let camera:ReturnType<typeof CameraHook>;
 beforeEach(()=>{
   localStorage.clear();
@@ -47,6 +52,33 @@ function enterArea(width='2',length='2'){
 }
 function review(){fireEvent.click(screen.getByLabelText('I checked the dimensions and reserved areas'));}
 function preview():PreviewProps{return JSON.parse(screen.getByTestId('room-preview').textContent!);}
+
+it('retains an accepted request when polling requires sign-in again',async()=>{
+  const project=projectFixture(),job={id:'accepted',stage:'design' as const},changed=vi.fn();
+  project.draft.roomJob=job;vi.mocked(watchRoomJob).mockRejectedValueOnce(new APIError('Session expired',401));
+  render(<DeviceWorkspaceContext.Provider value={true}><RoomStudio initialProject={project} onProjectChange={changed}/></DeviceWorkspaceContext.Provider>);
+  await screen.findByRole('button',{name:'Sign in for AI design'});
+  expect(changed.mock.lastCall?.[0].roomJob).toEqual(job);expect(designRoom).not.toHaveBeenCalled();
+});
+it('persists the job before inference and keeps the restored design priority',async()=>{
+  const checkpoint=vi.fn(async()=>{});
+  render(<DeviceWorkspaceContext.Provider value={true}><RoomStudio initialProject={projectFixture()} onBeforeJob={checkpoint}/></DeviceWorkspaceContext.Provider>);
+  fireEvent.click(screen.getByRole('button',{name:'Design my room'}));await screen.findByText(design.title);
+  expect(checkpoint.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(designRoom).mock.invocationCallOrder[0]);
+  expect(vi.mocked(designRoom).mock.calls[0][0].style).toBe('open');
+});
+it('does not start inference when its recovery ID cannot be saved',async()=>{
+  const checkpoint=vi.fn(async()=>{throw new Error('Storage full');});
+  render(<DeviceWorkspaceContext.Provider value={true}><RoomStudio initialProject={projectFixture()} onBeforeJob={checkpoint}/></DeviceWorkspaceContext.Provider>);
+  fireEvent.click(screen.getByRole('button',{name:'Design my room'}));await screen.findByText('Storage full');expect(designRoom).not.toHaveBeenCalled();
+});
+it('keeps a completed survey when a queued design fails, so retry only designs',async()=>{
+  const base=projectFixture(),project={...base,draft:{...base.draft,roomFields:{width:'',depth:'',height:''},roomJob:{id:'child',stage:'design' as const,surveyId:'parent'},designQueued:true},reference:{...base.reference,survey:undefined}};
+  vi.mocked(watchRoomJob).mockRejectedValueOnce(new RoomJobFailure('Design unavailable',{survey}));
+  render(<DeviceWorkspaceContext.Provider value={true}><RoomStudio initialProject={project}/></DeviceWorkspaceContext.Provider>);
+  fireEvent.click(await screen.findByRole('button',{name:'Try design again'}));await screen.findByText(design.title);
+  expect(surveyRoom).not.toHaveBeenCalled();expect(designRoom).toHaveBeenCalledTimes(1);
+});
 
 it('starts with an empty device plan and waits for dimensions and review before offering furniture',async()=>{
   await open();
@@ -110,7 +142,7 @@ async function capturePhoto(){
 it('analyzes a capture automatically, reserves visible access, and never asks for measurements or corner marking',async()=>{
   await capturePhoto();
   await screen.findByText(survey.summary);
-  expect(surveyRoom).toHaveBeenCalledWith('data:image/jpeg;base64,cGhvdG8=',expect.any(AbortSignal));
+  expect(surveyRoom).toHaveBeenCalledWith('data:image/jpeg;base64,cGhvdG8=',expect.any(AbortSignal),expect.any(String),expect.any(Function));
   expect(camera.stop).toHaveBeenCalled();
   expect(screen.queryByLabelText('Room width')).toBeNull();
   expect(screen.queryByLabelText('I checked the dimensions and reserved areas')).toBeNull();
@@ -133,7 +165,7 @@ it('turns a wish list into a checked arrangement with explanations and can undo 
   fireEvent.click(screen.getByRole('button',{name:'More open space'}));
   fireEvent.click(screen.getByRole('button',{name:'Design my room'}));
   await screen.findByText(design.title);
-  expect(designRoom).toHaveBeenCalledWith(expect.objectContaining({goal:'A sofa near the window',style:'open',zones:survey.zones,features:survey.features}),expect.any(AbortSignal));
+  expect(designRoom).toHaveBeenCalledWith(expect.objectContaining({goal:'A sofa near the window',style:'open',zones:survey.zones,features:survey.features}),expect.any(AbortSignal),expect.any(String),expect.any(Function));
   expect(screen.getByLabelText('Furniture concept projected into your room photo')).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:'3D room'}));
   expect(preview().items[0].kind).toBe('sofa');expect(preview().placements[0]).toEqual({itemId:'sofa',x:0,z:1,rotation:90});
@@ -146,7 +178,7 @@ it('turns a wish list into a checked arrangement with explanations and can undo 
 it('does not apply an old photo estimate after reset, even if transport ignores abort',async()=>{
   let resolve!:(value:SurveyResponse)=>void;
   vi.mocked(surveyRoom).mockReturnValue(new Promise(r=>{resolve=r;}));
-  await capturePhoto();await screen.findByText('Reading your room…');
+  await capturePhoto();await screen.findByText('Preparing your request');
   fireEvent.click(screen.getByRole('button',{name:'Start a fresh arrangement'}));
   await act(async()=>{resolve(survey);});
   expect(screen.queryByText(survey.summary)).toBeNull();

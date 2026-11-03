@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-vi.mock('../api',()=>({request:vi.fn()}));
+vi.mock('../api',async original=>({...await original<typeof import('../api')>(),request:vi.fn()}));
 import { request } from '../api';
 import { assessRoomLayout, planRoom } from './layout';
 import type { FurnitureItem } from './layout';

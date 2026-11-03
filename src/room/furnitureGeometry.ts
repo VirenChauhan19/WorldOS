@@ -31,7 +31,7 @@ function rounded(x: number,y: number,z: number,w: number,h: number,d: number,r: 
   r = Math.min(r,w/2,d/2);
   const outline: [number,number][] = [];
   for(const [cx,cz,start] of [[x+w-r,z+r,-Math.PI/2],[x+w-r,z+d-r,0],[x+r,z+d-r,Math.PI/2],[x+r,z+r,Math.PI]]) {
-    for(let i=0;i<=4;i++){const angle=start+i*Math.PI/8;outline.push([cx+Math.cos(angle)*r,cz+Math.sin(angle)*r]);}
+    for(let i=0;i<=8;i++){const angle=start+i*Math.PI/16;outline.push([cx+Math.cos(angle)*r,cz+Math.sin(angle)*r]);}
   }
   const meshes:SceneMesh[]=[];
   const top:SceneMesh={vertices:[],color},bottom:SceneMesh={vertices:[],color:tint(color,.6)};
@@ -131,11 +131,12 @@ export function furnitureMeshes(item: FurnitureItem, placement: FurniturePlaceme
     box(0,0,0,w*.06,h,d,wood);box(w*.94,0,0,w*.06,h,d,wood);
     box(0,0,0,w,h,d*.06,tint(fabric,.8));
     for(const y of [0,h*.24,h*.49,h*.74,h*.96])box(0,y,0,w,h*.04,d,fabric);
+    for(const [x,y,color] of [[.14,.04,'#8f6c50'],[.23,.04,'#b7b29b'],[.32,.04,'#6d7b6d'],[.55,.53,'#b7b29b'],[.64,.53,'#8f6c50']] as const)box(w*x,h*y,d*.2,w*.07,h*.17,d*.55,material(color));
   } else if(item.kind==='plant'){
     meshes.push(...cylinder(w/2,0,d/2,w*.28,d*.28,h*.3,material('#c28e70')));
     meshes.push(...cylinder(w/2,h*.298,d/2,w*.25,d*.25,h*.009,material('#4d4635')));
     meshes.push(...cylinder(w/2,h*.3,d/2,w*.025,d*.025,h*.63,wood));
-    for(const [x,y,z,rx,ry,rz] of [[.3,.43,.5,.28,.07,.21],[.65,.5,.4,.3,.07,.2],[.4,.56,.7,.25,.08,.25],[.3,.64,.35,.28,.08,.25],[.7,.7,.5,.28,.08,.22],[.5,.78,.7,.25,.08,.26],[.35,.84,.45,.27,.08,.24],[.55,.92,.4,.25,.08,.25]])meshes.push(...foliage(w*x,h*y,d*z,w*rx,h*ry,d*rz,fabric));
+    for(const [x,y,z,rx,ry,rz] of [[.3,.43,.5,.28,.12,.21],[.65,.5,.4,.3,.13,.2],[.4,.56,.7,.25,.13,.25],[.3,.64,.35,.28,.13,.25],[.7,.7,.5,.28,.13,.22],[.5,.78,.7,.25,.12,.26],[.35,.84,.45,.27,.12,.24],[.55,.92,.4,.25,.08,.25]])meshes.push(...foliage(w*x,h*y,d*z,w*rx,h*ry,d*rz,fabric));
   } else if(item.kind==='custom'){
     soft(0,0,0,w,h,d,Math.min(w,d)*.03,fabric);
   } else if(item.kind==='chair'){

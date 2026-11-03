@@ -6,8 +6,10 @@ import AppEntry from './AppEntry';
 import { configureBackend } from './backend';
 import { connectRoomDesigner } from './device/context';
 import { roomDraftKey } from './device/roomDraft';
-vi.mock('./device/store',async original=>({...await original<typeof import('./device/store')>(),listDeviceSpaces:vi.fn(async()=>[])}));
-beforeEach(()=>{window.history.replaceState(null,'','/');configureBackend('');vi.spyOn(window,'scrollTo').mockImplementation(()=>{});});
+vi.mock('./device/store',async original=>({...await original<typeof import('./device/store')>(),listDeviceSpaces:vi.fn(async()=>[]),loadRoomReference:vi.fn(async()=>undefined)}));
+const records=vi.hoisted(()=>new Map<string,unknown>());
+vi.mock('./device/workspaceStore',()=>({workspaceRecord:async(key:string)=>structuredClone(records.get(key)),updateWorkspaceRecord:async(key:string,update:(value:unknown)=>unknown)=>{const value=update(structuredClone(records.get(key)));records.set(key,structuredClone(value));return structuredClone(value);},workspaceRecords:async()=>[...records.values()].map(value=>structuredClone(value))}));
+beforeEach(()=>{records.clear();window.history.replaceState(null,'','/');configureBackend('');vi.spyOn(window,'scrollTo').mockImplementation(()=>{});});
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals();localStorage.clear();});
 
 it('opens the real home and recorded example without any authentication or private API request',async()=>{
@@ -36,6 +38,15 @@ it('offers installation instructions from device settings without connecting to 
   fireEvent.click(await screen.findByRole('button',{name:'Add to home screen'}));
   expect(screen.getByRole('dialog',{name:'Add WorldOS to your home screen'})).toBeTruthy();
   expect(fetcher).not.toHaveBeenCalled();
+});
+
+it('restores a private task link through authentication after reload',async()=>{
+  history.replaceState(null,'','/#/mission?id=saved-task');
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response('{"required":true,"authenticated":false}')));
+  render(<AppEntry/>);
+  expect(await screen.findByLabelText('Workspace passphrase')).toBeTruthy();
+  expect(window.location.hash).toContain('id=saved-task');
+  expect(screen.queryByRole('heading',{name:'Save a setup'})).toBeNull();
 });
 
 it('connects the room designer without losing the room route or device wish list',async()=>{

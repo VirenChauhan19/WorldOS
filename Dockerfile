@@ -5,7 +5,7 @@ RUN npm ci
 COPY index.html vite.config.ts tsconfig.json ./
 COPY src ./src
 COPY public ./public
-COPY scripts/prepare_vision.mjs ./scripts/prepare_vision.mjs
+COPY scripts/prepare_vision.mjs scripts/offline_plugin.mjs ./scripts/
 COPY docs/v18-live-recognition.json ./docs/v18-live-recognition.json
 RUN npm run build
 

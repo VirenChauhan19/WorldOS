@@ -6,7 +6,7 @@ import type { RoomReference } from './photoPlane';
 
 type Vec=[number,number,number];
 export interface PhotoVertex {x:number;y:number;depth:number}
-export interface PhotoFace {points:PhotoVertex[];color:[number,number,number,number];depth:number}
+export interface PhotoFace {points:PhotoVertex[];color:[number,number,number,number];depth:number;grain?:number}
 export interface PhotoScene {faces:PhotoFace[];shadows:PhotoVertex[][];pins:{id:string;label:string;number:number;point:PhotoVertex}[]}
 /** Extend the estimated floor into an upright concept camera. A photo-derived
  * quadrilateral is generally not a calibrated metric homography. Recovering a
@@ -47,19 +47,27 @@ export function photoProjection(reference:Pick<RoomReference,'corners'|'width'|'
 export function buildPhotoScene(reference:RoomReference,room:RoomSize,items:readonly FurnitureItem[],placements:readonly FurniturePlacement[]):PhotoScene{
   const result:PhotoScene={faces:[],shadows:[],pins:[]},project=photoProjection(reference,room);
   if(!project)return result;
+  const window=reference.survey?.features.find(f=>f.kind==='window');
+  const light:Vec=window?[(window.x-.5)*2,1.4,(window.z-.5)*2]:[-.7,1.4,-.4];
+  const lightLength=Math.hypot(...light);
   for(const placement of placements){
     const item=items.find(i=>i.id===placement.itemId);if(!item)continue;
     const size=orientedSize(item,placement.rotation),x=placement.x,z=placement.z;
     const shadow=[[x,z],[x+size.width,z],[x+size.width,z+size.depth],[x,z+size.depth]].map(([xx,zz])=>project(xx,0,zz));
     if(shadow.every(p=>p))result.shadows.push(shadow as PhotoVertex[]);
     for(const mesh of furnitureMeshes(item,placement)){
-      const color=mesh.color.map(c=>Math.round(c*255)) as PhotoFace['color'];
       for(let i=0;i<mesh.vertices.length;i+=9){
+        const [ax,ay,az,bx,by,bz,cx,cy,cz]=mesh.vertices.slice(i,i+9);
+        const u=[bx-ax,by-ay,bz-az],v=[cx-ax,cy-ay,cz-az];
+        const normal=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]];
+        const length=Math.hypot(...normal)||1;
+        const illumination=.78+.27*Math.max(0,(normal[0]*light[0]+Math.abs(normal[1])*light[1]+normal[2]*light[2])/length/lightLength);
+        const color=mesh.color.map((c,index)=>Math.round(Math.min(1,c*(index===3?1:illumination))*255)) as PhotoFace['color'];
         const points=[0,3,6].map(offset=>project(mesh.vertices[i+offset],mesh.vertices[i+offset+1],mesh.vertices[i+offset+2]));
         if(points.some(p=>!p))continue;
         const tri=points as PhotoVertex[];
         if(tri.every(p=>p.x<0)||tri.every(p=>p.x>1)||tri.every(p=>p.y<0)||tri.every(p=>p.y>1))continue;
-        result.faces.push({points:tri,color,depth:tri.reduce((sum,p)=>sum+p.depth,0)/3});
+        result.faces.push({points:tri,color,depth:tri.reduce((sum,p)=>sum+p.depth,0)/3,grain:['sofa','bed','chair'].includes(item.kind)?1.8:.7});
       }
     }
     const point=project(x+size.width/2,item.height,z+size.depth/2);
@@ -71,8 +79,10 @@ export function buildPhotoScene(reference:RoomReference,room:RoomSize,items:read
 
 export function drawPhotoScene(context:CanvasRenderingContext2D,scene:PhotoScene,width:number,height:number){
   const path=(points:PhotoVertex[])=>{context.beginPath();points.forEach((p,i)=>{if(i)context.lineTo(p.x*width,p.y*height);else context.moveTo(p.x*width,p.y*height);});context.closePath();};
-  context.save();context.fillStyle='rgba(30,25,19,.2)';context.shadowColor='rgba(25,23,18,.3)';context.shadowBlur=width*.009;
+  context.save();context.fillStyle='rgba(30,25,19,.14)';context.shadowColor='rgba(25,23,18,.25)';context.shadowBlur=width*.014;
   for(const points of scene.shadows){path(points);context.fill();}
+  context.shadowBlur=width*.003;context.fillStyle='rgba(25,23,18,.12)';
+  for(const points of scene.shadows){const cx=points.reduce((sum,p)=>sum+p.x,0)/points.length,cy=points.reduce((sum,p)=>sum+p.y,0)/points.length;path(points.map(p=>({...p,x:cx+(p.x-cx)*.86,y:cy+(p.y-cy)*.86})));context.fill();}
   context.restore();
   if(!scene.faces.length)return;
   const frame=context.getImageData(0,0,width,height);
@@ -98,7 +108,8 @@ export function rasterizePhotoFaces(pixels:Uint8ClampedArray,faces:readonly Phot
       const inverse=u*a.z+v*b.z+w*c.z,index=y*width+x;
       if(inverse<=depth[index]+1e-5)continue;
       depth[index]=inverse;const offset=index*4;
-      pixels[offset]=face.color[0];pixels[offset+1]=face.color[1];pixels[offset+2]=face.color[2];pixels[offset+3]=face.color[3];
+      const texture=(face.grain??0)*Math.sin(x*1.7+y*2.3)*Math.cos(y*.8-x*.6);
+      pixels[offset]=face.color[0]+texture;pixels[offset+1]=face.color[1]+texture;pixels[offset+2]=face.color[2]+texture;pixels[offset+3]=face.color[3];
     }
   }
 }

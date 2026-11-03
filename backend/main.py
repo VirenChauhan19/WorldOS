@@ -26,6 +26,7 @@ from .imaging import prepare_image
 from .inspect_routes import build_inspect_router
 from .consumer_routes import build_consumer_router
 from .missions import build_mission_router
+from .room_jobs import build_room_jobs_router, stop_room_jobs
 from .models import AIAnalysisRequest, LiveAnalysisRequest, PlanRequest, PlanResponse, ReasonRequest, VerifyRequest, SceneQuestionRequest
 from .planner import generate_plan, verify_positions
 from .providers import AISettings, ProviderError, ProviderHTTP, capabilities, logger
@@ -46,6 +47,7 @@ async def lifespan(_app):
         if os.getenv('WORLDOS_BACKUPS_ENABLED','1') == '1':
             worker = asyncio.create_task(backup_loop(data_directory()))
     yield
+    await stop_room_jobs()
     if worker:
         worker.cancel()
         with suppress(asyncio.CancelledError): await worker
@@ -282,6 +284,7 @@ def verify(request: VerifyRequest):
 app.include_router(build_inspect_router(get_ai_service, run_ai))
 app.include_router(build_consumer_router())
 app.include_router(build_mission_router(get_ai_service, run_ai))
+app.include_router(build_room_jobs_router(get_ai_service, run_ai))
 
 
 @app.middleware("http")

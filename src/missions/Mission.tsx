@@ -10,6 +10,10 @@ import type { Mission as MissionData, MissionStep, Routine } from './types';
 import { GOALS } from './types';
 import * as api from './api';
 import './missions.css';
+import { getTaskCapture, saveTaskCapture } from '../device/taskCapture';
+import type { TaskCapture } from '../device/taskCapture';
+import { saveDeviceSpace } from '../device/store';
+import { recordStudyEvent } from '../study/events';
 
 export default function Mission({active=true}:{active?:boolean}) {
   const route=useRoute();
@@ -36,7 +40,8 @@ function MissionScreen() {
   const [busy,setBusy]=useState(''),[error,setError]=useState(''),[loading,setLoading]=useState(!!id||!!routineId),[selected,setSelected]=useState('');
   const [view,setView]=useState<'guide'|'check'>('guide'),[feedback,setFeedback]=useState(''),[adapting,setAdapting]=useState(false),[editing,setEditing]=useState(false);
   const [routineName,setRoutineName]=useState('My focus setup'),[exported,setExported]=useState(false),[showSteps,setShowSteps]=useState(false);
-  const request=useRef<AbortController|null>(null),epoch=useRef(0),creationId=useRef(crypto.randomUUID()),mounted=useRef(true),started=useRef(false);
+  const request=useRef<AbortController|null>(null),epoch=useRef(0),creationId=useRef<string>(crypto.randomUUID()),mounted=useRef(true),started=useRef(false);
+  const capture=useRef<TaskCapture|null>(null);
   const heading=useRef<HTMLHeadingElement>(null),workspace=useRef<HTMLDivElement>(null),focusNext=useRef(false);
 
   function adopt(value:MissionData){setTask(value);setProtectedIds(value.protected_ids);setFeedback(value.feedback??'');}
@@ -50,7 +55,9 @@ function MissionScreen() {
       setView(value.review||value.after||finished?'check':'guide');
     }).catch(reason=>{if(!controller.signal.aborted)setError(reason.message);}).finally(()=>{if(!controller.signal.aborted){setLoading(false);request.current=null;}});}
     else if(routineId){void api.getRoutine(routineId,controller.signal).then(value=>{if(controller.signal.aborted)return;setRoutine(value);setGoal(value.goal);setConstraints(value.constraints);setRoutineName(value.name);}).catch(reason=>{if(!controller.signal.aborted)setError(reason.message);}).finally(()=>{if(!controller.signal.aborted){setLoading(false);request.current=null;}});}
-    else{request.current=null;setLoading(false);}
+    else if(route.params.get('capture')==='1'){
+      setLoading(true);void getTaskCapture().then(value=>{if(controller.signal.aborted||!value)return;capture.current=value;creationId.current=value.id;setGoal(value.goal);setConstraints(value.constraints);setPhoto(value.photo);if(value.reference)setRoutineName(value.reference.name);}).catch(reason=>{if(!controller.signal.aborted)setError(reason.message);}).finally(()=>{if(!controller.signal.aborted){request.current=null;setLoading(false);}});
+    }else{request.current=null;setLoading(false);}
     return()=>{mounted.current=false;epoch.current++;controller.abort();request.current?.abort();request.current=null;};
   },[id,routineId]);
 
@@ -70,14 +77,30 @@ function MissionScreen() {
   },[task,view,editing,selected,showSteps]);
 
   async function choosePhoto(file:File){await action('Opening your photo…',()=>analyze(file),value=>{setPhoto(value);creationId.current=crypto.randomUUID();});}
-  async function begin(){if(!photo)return;await action('Saving your photo…',signal=>api.createMission({id:creationId.current,goal:goal.trim(),constraints:constraints.trim(),image_url:photo.image_url,...(routine?{routine_id:routine.id}:{})},signal),value=>navigate('mission',{id:value.id,observe:'1'}));}
-  async function makePlan(){if(!task)return;await action('Finding a few useful steps…',signal=>api.planMission(task,protectedIds,feedback,signal),value=>{advance();adopt(value);setSelected(value.plan?.steps[0]?.id??'');setEditing(false);setView('guide');setRoutineName(value.plan?.title??'My focus setup');});}
-  async function freshPhoto(file:File,check:boolean){if(!task)return;await action(check?'Comparing your photos…':'Looking at your updated space…',async signal=>{const image=await analyze(file);if(signal.aborted)throw new DOMException('Cancelled','AbortError');return check?api.checkMission(task,image.image_url,signal):api.observeMission(task,image.image_url,signal);},value=>{advance();adopt(value);setSelected('');setAdapting(false);setEditing(false);setView(check?'check':'guide');});}
+  async function begin(){if(!photo)return;await action('Saving your photo...',async signal=>{
+    if(capture.current){capture.current={...capture.current,id:creationId.current,goal:goal.trim(),constraints:constraints.trim(),photo};await saveTaskCapture(capture.current);}
+    let routine_id=routine?.id??capture.current?.routineId;
+    if(capture.current?.reference&&!routine_id){
+      const reference=capture.current.reference;
+      const imported=await api.importRoutine({name:reference.name.slice(0,100),goal:goal.trim(),constraints:constraints.trim(),image_url:reference.image_url,keep_preferences:[]});
+      routine_id=imported.id;capture.current={...capture.current,routineId:routine_id};await saveTaskCapture(capture.current);
+    }
+    const value=await api.createMission({id:creationId.current,goal:goal.trim(),constraints:constraints.trim(),image_url:photo.image_url,...(routine_id?{routine_id}:{})},signal);
+    if(capture.current){capture.current={...capture.current,missionId:value.id};await saveTaskCapture(capture.current);}
+    return value;
+  },value=>navigate('mission',{id:value.id,observe:'1'}));}
+  async function makePlan(){if(!task)return;await action('Finding a few useful steps…',signal=>api.planMission(task,protectedIds,feedback,signal),value=>{recordStudyEvent('first_step');advance();adopt(value);setSelected(value.plan?.steps[0]?.id??'');setEditing(false);setView('guide');setRoutineName(value.plan?.title??'My focus setup');});}
+  async function freshPhoto(file:File,check:boolean){if(!task)return;await action(check?'Comparing your photos…':'Looking at your updated space…',async signal=>{const image=await analyze(file);if(signal.aborted)throw new DOMException('Cancelled','AbortError');return check?api.checkMission(task,image.image_url,signal):api.observeMission(task,image.image_url,signal);},value=>{if(check)recordStudyEvent('photo_checked');advance();adopt(value);setSelected('');setAdapting(false);setEditing(false);setView(check?'check':'guide');});}
   async function mark(step:MissionStep,done:boolean){if(!task)return;await action('Saving your progress…',signal=>api.progressMission(task,step.id,done,signal),value=>{
-    advance();adopt(value);const next=value.plan?.steps.find(s=>!value.completed_ids.includes(s.id));
+    if(done)recordStudyEvent('step_done');advance();adopt(value);const next=value.plan?.steps.find(s=>!value.completed_ids.includes(s.id));
     setSelected(next?.id??step.id);if(!next&&done)setView('check');
   });}
-  async function remember(){if(!task)return;await action('Saving your setup…',signal=>api.saveRoutine(task,routineName.trim(),signal),value=>adopt(value.mission));}
+  async function remember(){if(!task)return;await action('Saving your setup...',async signal=>{
+    const value=await api.saveRoutine(task,routineName.trim(),signal);
+    try{await saveDeviceSpace({id:`routine-${value.routine.id}`,name:value.routine.name,notes:value.routine.constraints,photo:value.routine.image.image_url,after:'',steps:(task.plan?.steps??[]).map(s=>({id:s.id,text:s.instruction,done:false})),updatedAt:new Date().toISOString()});}
+    catch{setError('Your setup is saved in the private workspace. The device copy could not be saved; export a backup before leaving.');}
+    recordStudyEvent('routine_saved');return value;
+  },value=>adopt(value.mission));}
   async function download(){if(!task)return;await action('Preparing your export…',async()=>{await exportJSON({format:'worldos-task-v1',task},`worldos-task-${task.id}.json`);return true;},()=>setExported(true));}
   const steps=task?.plan?.steps??[],done=task?.completed_ids??[],allDone=!!steps.length&&done.length===steps.length;
   const step=steps.find(s=>s.id===selected)??steps.find(s=>!done.includes(s.id))??steps[0];
@@ -94,11 +117,11 @@ function MissionScreen() {
       {error&&<div className="mission-error" role="alert"><strong>Let’s pick up from here.</strong><p>{error}</p>{id&&<button disabled={blocked} onClick={()=>void action('Loading your saved progress…',signal=>api.getMission(id,signal),adopt)}>Reload saved task</button>}</div>}
       {!!busy&&<div className="mission-busy" role="status"><LoaderCircle size={18} className="spin"/><span>{busy}<small>{task?'Your photo and progress stay saved.':'This may take a moment.'}</small></span></div>}
       {!loading&&!task&&(!routineId||routine)&&<section className="mission-start">
-        <h1>{routine?`Back to ${routine.name}.`:'Show your space.'}</h1><p className="mission-lead">{routine?'Take a photo of your space today. We’ll help you get back to your saved setup.':'Take a photo. We’ll help you get ready, one small step at a time.'}</p>
+        <h1>{capture.current?'Ready for your next step.':routine?`Back to ${routine.name}.`:'Show your space.'}</h1><p className="mission-lead">{capture.current?goal:routine?'Take a photo of your space today. We’ll help you get back to your saved setup.':'Take a photo. We’ll help you get ready, one small step at a time.'}</p>
         <div className="mission-capture">{photo?<><figure className="mission-start-photo"><img src={photo.image_url} alt="Your selected starting photograph"/></figure><details className="mission-disclosure"><summary>Change photo</summary>{captureActions}</details></>:<>{captureActions}<p>Show the whole surface in good light.</p></>}</div>
-        {!routine&&<fieldset className="mission-goals"><legend>What would you like to do?</legend>{GOALS.map((value,index)=><button disabled={blocked} key={value.id} aria-pressed={goal===value.goal} onClick={()=>{setGoal(value.goal);creationId.current=crypto.randomUUID();}}>{['Focus','Create','Tidy up'][index]}</button>)}</fieldset>}
+        {!routine&&!capture.current&&<fieldset className="mission-goals"><legend>What would you like to do?</legend>{GOALS.map((value,index)=><button disabled={blocked} key={value.id} aria-pressed={goal===value.goal} onClick={()=>{setGoal(value.goal);creationId.current=crypto.randomUUID();}}>{['Focus','Create','Tidy up'][index]}</button>)}</fieldset>}
         <details className="mission-disclosure"><summary>Change the goal or add a note <span>Optional</span></summary><label className="mission-field">What do you want to do?<textarea disabled={blocked} maxLength={500} rows={3} value={goal} onChange={e=>{setGoal(e.target.value);creationId.current=crypto.randomUUID();}}/></label><label className="mission-field">Anything that should stay?<textarea disabled={blocked} maxLength={600} rows={2} value={constraints} placeholder="Keep my monitor in place." onChange={e=>{setConstraints(e.target.value);creationId.current=crypto.randomUUID();}}/></label></details>
-        {photo&&<button className="mission-primary" disabled={blocked||goal.trim().length<3} onClick={()=>void begin()}>Use this photo<ArrowRight size={18}/></button>}
+        {photo&&<button className="mission-primary" disabled={blocked||goal.trim().length<3} onClick={()=>void begin()}>{capture.current?'Get my guided steps':'Use this photo'}<ArrowRight size={18}/></button>}
         <p className="mission-footnote">Your photo is saved in your workspace. Continuing sends it to AI to help with your goal.</p>
         {routine&&<details className="mission-reference"><summary>See my saved setup</summary><img src={routine.image.image_url} alt="Your saved preferred setup"/></details>}
       </section>}

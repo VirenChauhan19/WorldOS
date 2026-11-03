@@ -10,16 +10,17 @@ export default function DeviceHome({active=true}:{active?:boolean}) {
       <div className="dh-main">
         <div className="dh-intro">
           <h1 id="device-home-title">Your space,<br/> in focus.</h1>
-          <p>Explore objects, plan a room, or save a setup.</p>
+          <p>Get ready to work, make room to create, or return to a setup you love.</p>
           <div className="dh-start-actions">
-            <button className="dh-primary" onClick={()=>navigate('live')}><Camera size={20} strokeWidth={1.6}/><span>Open live camera</span></button>
+            <button className="dh-primary" onClick={()=>navigate('prepare')}><Camera size={20} strokeWidth={1.6}/><span>Get my space ready</span></button>
+            <button className="dh-example-button" onClick={()=>navigate('live')}>Open live camera</button>
             <button className="dh-example-button" onClick={()=>navigate('live',{demo:'1'})}>Try the camera example</button>
           </div>
         </div>
 
         <section className="dh-tools" aria-label="Room and setup tools">
           <button className="dh-tool" onClick={()=>navigate('room')}>
-            <span className="dh-tool-copy"><strong>Plan a room</strong><span>Measure your space and arrange furniture.</span></span>
+            <span className="dh-tool-copy"><strong>Plan a room</strong><span>Try furniture in your photo and compare saved layouts.</span></span>
             <ArrowUpRight size={21} strokeWidth={1.6}/>
           </button>
           <button className="dh-tool" onClick={()=>navigate('mission')}>

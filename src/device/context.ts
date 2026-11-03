@@ -5,3 +5,4 @@ export const useDeviceWorkspace = () => useContext(DeviceWorkspaceContext);
 export const openPrivateWorkspace = () => window.dispatchEvent(new Event('worldos:open-private'));
 /** Authenticate the room designer while retaining its device draft and photo. */
 export const connectRoomDesigner = () => window.dispatchEvent(new CustomEvent('worldos:open-private',{detail:{room:true}}));
+export const connectGuidedTask = (id?:string) => window.dispatchEvent(new CustomEvent('worldos:open-private',{detail:{task:true,id}}));

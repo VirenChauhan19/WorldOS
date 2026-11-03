@@ -2,6 +2,8 @@
 
 **Make room. Get going.**
 
+The latest local update fixes AI recovery, cross-tab conflicts, reset draft recovery, and saved design priorities. It also brings guided capture to Home, **Reset this space**, named room projects with saved alternatives, resumable room AI, and offline access to saved device work. Read [the workspace upgrade](docs/WORKSPACE_UPGRADE.md) and [the real-phone study guide](docs/PHONE_USABILITY_STUDY.md). Physical-device and participant testing still need to be performed; these changes have not been deployed.
+
 Get your space ready to study, work, or create. WorldOS turns a photo and a goal into a short, practical sequence, then helps you check the result and remember the setup that worked for you.
 
 Built for the Meta AI Hackathon with **Muse Spark and SAM 3.1**.
@@ -12,7 +14,7 @@ Built for the Meta AI Hackathon with **Muse Spark and SAM 3.1**.
 - **Check and reuse:** compare before/after photos, review uncertainty, and save a named setup to guide the next reset. Export and restore routines when needed.
 - **Go deeper:** live camera questions, measured fit, Room Studio, and the advanced geometry editor remain available.
 
-Open **http://127.0.0.1:5173** and choose **Open live camera**. The app opens immediately without a login. Tap an object to hold and explore the view, try the recorded example, or save photos, notes, checklists, and room layouts on your device. **Open private workspace** is optional for server-backed AI guidance and inspections. Read [device storage and interactive camera behavior](docs/V25_DEVICE_WORKSPACE.md).
+Open **http://127.0.0.1:5173** and choose **Get my space ready** to pick a goal and photo. The app opens immediately without a login and keeps this draft on your device; continuing to guided steps connects to the private workspace. **Open live camera**, the recorded example, local checklists, and saved room layouts remain available from the device app. Read [device storage and interactive camera behavior](docs/V25_DEVICE_WORKSPACE.md).
 
 Home offers camera, room, and setup actions with navigation available throughout the device app. Camera controls stay beside the preview, room planning guides the next step, and setup changes save automatically. Read [the consumer experience and checks](docs/V27_CONSUMER_EXPERIENCE.md). Read [the visual design system](docs/V28_VISUAL_DESIGN.md) for the shared palette, navigation, typography, and screen treatments.
 
@@ -32,7 +34,7 @@ Open **Room planner**, capture or choose a room photo, and let AI estimate its f
 
 ## Validation and status
 
-**444 frontend tests and 396 backend tests pass**, with 2 optional backend live tests skipped. The room designer also passed production browser checks at 320, 390, and 1440 pixels, live-provider analysis/design on two real room photographs, and a follow-up bookshelf request that preserved the existing arrangement. Browser photo checks replay the recorded provider results; metric accuracy is unverified. The production build passes. Chromium checks cover 320, 390, 768, and 1440 pixel layouts, persisted progress, reusable routines, export/restore, portrait overlays, and the camera/question flow. Camera memory checks cover looking away and returning, finding an earlier item, and clearing memory at 390 and 1440 pixels. Most browser checks use synthetic model output. The separate local-detector check runs the real bundled model on a synthetic camera feed with cloud inference blocked; it is not a physical-phone or general-accuracy benchmark.
+**471 frontend tests and 403 backend tests pass**, with 2 optional backend live tests skipped. The room designer also passed production browser checks at 320, 390, and 1440 pixels, live-provider analysis/design on two real room photographs, and a follow-up bookshelf request that preserved the existing arrangement. Browser photo checks replay the recorded provider results; metric accuracy is unverified. The production build passes. Chromium checks cover 320, 390, 768, and 1440 pixel layouts, persisted progress, reusable routines, export/restore, portrait overlays, and the camera/question flow. Camera memory checks cover looking away and returning, finding an earlier item, and clearing memory at 390 and 1440 pixels. Most browser checks use synthetic model output. The separate local-detector check runs the real bundled model on a synthetic camera feed with cloud inference blocked; it is not a physical-phone or general-accuracy benchmark.
 
 Separate real-provider checks on one public desk photo returned **17 detections in 20.3 seconds** (12 displayed), a scene answer in **6.1 seconds**, and a three-step task plan in **23.3 seconds**. These are individual integration observations, not benchmarks. See [recognition](docs/v18-live-recognition.json), [question](docs/v19-scene-question.json), and [task-plan evidence](docs/v20-mission-plan.json).
 

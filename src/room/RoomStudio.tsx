@@ -14,6 +14,8 @@ import { QuickLookLink, useQuickLookAsset } from './QuickLookLink';
 import { connectRoomDesigner, useDeviceWorkspace } from '../device/context';
 import { APIError } from '../api';
 import { loadRoomDraft, roomDraftKey } from '../device/roomDraft';
+import type { RoomDraft } from '../device/roomDraft';
+import type { RoomProject } from '../device/roomProjects';
 import { loadRoomReference, readPhoto, saveRoomReference } from '../device/store';
 import PhotoActions from '../PhotoActions';
 import { validFloorCorners } from './photoPlane';
@@ -22,7 +24,11 @@ import RoomPhoto from './RoomPhoto';
 import RoomOptions from './RoomOptions';
 import type { RoomSuggestion } from './recommendations';
 import RoomCopilot from './RoomCopilot';
-import { designRoom, surveyRoom } from './design';
+import { designRoom, surveyRoom, validateSurvey, validDesign } from './design';
+import type { SurveyResponse } from './design';
+import { cancelRoomJob, RoomJobFailure, RoomJobRejected, startRoomJob, watchRoomJob } from './jobs';
+import type { RoomJob } from './jobs';
+import { recordStudyEvent } from '../study/events';
 import type { DesignStyle, RoomDesign } from './design';
 import './room-planning.css';
 import './room.css';
@@ -68,17 +74,21 @@ function FloorPlan({room,items,placements,selectedId,onSelect,onMove,conflictIds
   </svg><p><Move size={14}/>Drag to arrange. Arrow keys move the selected piece 10 cm.</p></div>;
 }
 
-export default function RoomStudio({active=true}:{active?:boolean}) {
+export default function RoomStudio({active=true,initialProject,onProjectChange,onBeforeJob}:{active?:boolean;initialProject?:RoomProject;onProjectChange?:(draft:RoomDraft,reference:RoomReference|null)=>void;onBeforeJob?:(draft:RoomDraft,reference:RoomReference|null)=>Promise<void>}) {
   const device=useDeviceWorkspace();
-  const [draft]=useState(()=>device?loadRoomDraft():null),[saveError,setSaveError]=useState('');
+  const [draft]=useState(()=>initialProject?.draft??(device?loadRoomDraft():null)),[saveError,setSaveError]=useState('');
   const [goal,setGoal]=useState(draft?.goal??''),[design,setDesign]=useState<RoomDesign|null>(draft?.design??null);
-  const [designStyle,setDesignStyle]=useState<DesignStyle>('balanced'),[aiBusy,setAiBusy]=useState<'survey'|'design'|null>(null),[aiError,setAiError]=useState(''),[aiNeedsLogin,setAiNeedsLogin]=useState(false);
+  const [designStyle,setDesignStyle]=useState<DesignStyle>(draft?.designStyle??'balanced'),[aiBusy,setAiBusy]=useState<'survey'|'design'|null>(null),[aiError,setAiError]=useState(''),[aiNeedsLogin,setAiNeedsLogin]=useState(false);
   const aiAbort=useRef<AbortController|null>(null),aiEpoch=useRef(0);
   const [retryDesign,setRetryDesign]=useState(false);
+  const [roomJob,setRoomJob]=useState<RoomJob|undefined>(draft?.roomJob),[jobStatus,setJobStatus]=useState('');
+  const [designQueued,setDesignQueued]=useState(draft?.designQueued===true);
+  const jobRef=useRef(roomJob);
+  function rememberJob(value:RoomJob|undefined){jobRef.current=value;setRoomJob(value);}
   const [undoDesign,setUndoDesign]=useState<{items:FurnitureItem[];manual:FurniturePlacement[]|null;design:RoomDesign|null}|null>(null);
-  const cancelAI=useCallback(()=>{aiEpoch.current++;aiAbort.current?.abort();setAiBusy(null);},[]);
+  const cancelAI=useCallback(()=>{setDesignQueued(false);aiEpoch.current++;aiAbort.current?.abort();setAiBusy(null);const pending=jobRef.current;jobRef.current=undefined;setRoomJob(undefined);if(pending){void cancelRoomJob(pending.id).catch(()=>{});if(pending.surveyId)void cancelRoomJob(pending.surveyId).catch(()=>{});}},[]);
   useEffect(()=>()=>{aiEpoch.current++;aiAbort.current?.abort();},[]);
-  useEffect(()=>{if(!active)cancelAI();},[active,cancelAI]);
+  // Leaving a screen pauses the camera, but an accepted room job keeps running.
   const [roomFields,setRoomFields]=useState<RoomFields>(draft?.roomFields??{width:'',depth:'',height:''});
   const [source,setSource]=useState<Source>(draft?.source??'unmeasured'),[view,setView]=useState<View>(draft?.source==='photo'?'photo':'3d');
   const [quickLookSupported]=useState(supportsQuickLook);
@@ -89,17 +99,18 @@ export default function RoomStudio({active=true}:{active?:boolean}) {
   const [gap,setGap]=useState(draft?.gap??'0.3');
   const [manual,setManual]=useState<FurniturePlacement[]|null>(draft?.manual??null);
   const [zones,setZones]=useState<ReservedZone[]>(draft?.zones??[]),[reviewed,setReviewed]=useState(draft?.reviewed??false);
-  const [reference,setReference]=useState<RoomReference|null>(null),[referenceReady,setReferenceReady]=useState(!device),[captureError,setCaptureError]=useState('');
+  const [reference,setReference]=useState<RoomReference|null>(initialProject?.reference??null),[referenceReady,setReferenceReady]=useState(!!initialProject||!device),[captureError,setCaptureError]=useState('');
   const referenceChanged=useRef(false),referenceWrites=useRef<Promise<unknown>>(Promise.resolve());
   const photoRequest=useRef(0);
   useEffect(()=>()=>{photoRequest.current++;},[]);
-  useEffect(()=>{if(!device)return;let live=true;void loadRoomReference().then(value=>{if(live&&!referenceChanged.current&&value)setReference(value);}).catch(()=>{if(live)setCaptureError('The saved room photo could not be opened. You can take a new photo.');}).finally(()=>{if(live)setReferenceReady(true);});return()=>{live=false;};},[device]);
-  useEffect(()=>{if(!device||!referenceReady||!referenceChanged.current)return;let live=true;referenceWrites.current=referenceWrites.current.catch(()=>{}).then(()=>saveRoomReference(reference));void referenceWrites.current.catch(()=>{if(live)setCaptureError('The room photo could not be saved. Browser storage may be full or unavailable.');});return()=>{live=false;};},[device,referenceReady,reference]);
+  useEffect(()=>{if(!device||initialProject)return;let live=true;void loadRoomReference().then(value=>{if(live&&!referenceChanged.current&&value)setReference(value);}).catch(()=>{if(live)setCaptureError('The saved room photo could not be opened. You can take a new photo.');}).finally(()=>{if(live)setReferenceReady(true);});return()=>{live=false;};},[device]);
+  useEffect(()=>{if(!device||initialProject||!referenceReady||!referenceChanged.current)return;let live=true;referenceWrites.current=referenceWrites.current.catch(()=>{}).then(()=>saveRoomReference(reference));void referenceWrites.current.catch(()=>{if(live)setCaptureError('The room photo could not be saved. Browser storage may be full or unavailable.');});return()=>{live=false;};},[device,referenceReady,reference]);
   useEffect(()=>{
-    if(!device)return;
-    try{localStorage.setItem(roomDraftKey,JSON.stringify({roomFields,source,items,gap,manual,zones,reviewed,design,goal}));setSaveError('');}
+    if(!device||initialProject)return;
+    try{localStorage.setItem(roomDraftKey,JSON.stringify({roomFields,source,items,gap,manual,zones,reviewed,design,goal,roomJob,designQueued,designStyle}));setSaveError('');}
     catch{setSaveError('Your room layout could not be saved on this device. Browser storage may be full or unavailable.');}
-  },[device,roomFields,source,items,gap,manual,zones,reviewed,design,goal]);
+  },[device,roomFields,source,items,gap,manual,zones,reviewed,design,goal,roomJob,designQueued,designStyle]);
+  useEffect(()=>{if(referenceReady)onProjectChange?.({roomFields,source,items,gap,manual,zones,reviewed,design,goal,roomJob,designQueued,designStyle},reference);},[referenceReady,roomFields,source,items,gap,manual,zones,reviewed,design,goal,roomJob,designQueued,designStyle,reference,onProjectChange]);
   const [measurementOpen,setMeasurementOpen]=useState(false),[catalogOpen,setCatalogOpen]=useState(false),[customizeOpen,setCustomizeOpen]=useState(!device);
   const [xrSupported,setXrSupported]=useState<boolean|null>(null),[xrRunning,setXrRunning]=useState(false),[xrStarting,setXrStarting]=useState(false),[xrState,setXrState]=useState<WorldARState|null>(null),[xrError,setXrError]=useState('');
   const [arHasMeasurement,setArHasMeasurement]=useState(false);
@@ -196,36 +207,101 @@ export default function RoomStudio({active=true}:{active?:boolean}) {
   function moveZone(id:string,x:number,z:number){const zone=zones.find(v=>v.id===id);if(!room||!zone)return;editZones(zones.map(v=>v.id===id?{...v,x:Math.round(Math.max(0,Math.min(room.width-v.width,x))*100)/100,z:Math.round(Math.max(0,Math.min(room.depth-v.depth,z))*100)/100}:v));}
   function reserveObject(label:string){if(!room){setMeasurementOpen(true);setCaptureError('Enter the area width and length, then mark the floor used by this object.');return;}if(zones.length>=12){setCaptureError('Up to 12 reserved areas can be marked.');return;}editZones([...zones,{id:crypto.randomUUID(),label,kind:'obstacle',x:0,z:0,width:NaN,depth:NaN}]);setView('plan');setCaptureError('');}
   function updateReference(value:RoomReference){cancelAI();referenceChanged.current=true;setReference(value);setReviewed(false);}
-  function reportAIError(error:unknown){setAiNeedsLogin(error instanceof APIError&&(error.status===401||error.status===403));setAiError(error instanceof Error?error.message:'The room designer could not finish. Try again.');}
+  function reportAIError(error:unknown){
+    if(error instanceof RoomJobFailure||error instanceof RoomJobRejected){rememberJob(undefined);setDesignQueued(false);}
+    if(error instanceof RoomJobFailure&&error.result&&typeof error.result==='object'&&'survey' in error.result){try{applySurvey((error.result as {survey:SurveyResponse}).survey);}catch{/* Keep the last usable photo. */}}
+    setAiNeedsLogin(error instanceof APIError&&(error.status===401||error.status===403));setAiError(error instanceof Error?error.message:'The room designer could not finish. Try again.');
+  }
+  function applySurvey(value:SurveyResponse){
+    const {image_url,image_width,image_height,...survey}=validateSurvey(value);
+    setReference({image_url,width:image_width,height:image_height,corners:survey.floor_corners,labels:[],survey});
+    if(survey.room){setRoomFields({width:String(survey.room.width),depth:String(survey.room.depth),height:survey.room.height?String(survey.room.height):''});setSource('photo');setZones(survey.zones);}
+    return survey;
+  }
+  function applyQueuedDesign(value:{survey:SurveyResponse;design:RoomDesign}){
+    const survey=applySurvey(value.survey);if(!survey.room||!validDesign(value.design))throw new RoomJobFailure('The queued design could not be used. Retry the design stage.');
+    const arranged=planRoom(survey.room,value.design.items,clearance,survey.zones,value.design.placements);
+    if(arranged.status==='unknown')throw new RoomJobFailure('The queued layout could not be arranged. Check the room and retry.');
+    setItems(value.design.items);setManual(arranged.placements);setDesign(value.design);setSelectedId(value.design.items[0]?.id??'');setView('photo');setToolsOpen(false);setCustomizeOpen(false);setDesignQueued(false);recordStudyEvent('room_result');
+  }
+  async function queueAfterSurvey(){
+    const parent=jobRef.current;if(parent?.stage!=='survey'||!reference)return;
+    if(!Number.isFinite(clearance)||clearance<0||clearance>3){setDesignQueued(false);setAiError('Choose a furniture gap from 0 to 3 m.');return;}
+    const job={id:crypto.randomUUID(),stage:'design' as const,surveyId:parent.id};
+    const request=++aiEpoch.current;aiAbort.current?.abort();const controller=new AbortController();aiAbort.current=controller;
+    rememberJob(job);setAiBusy('design');setRetryDesign(true);setAiError('');setJobStatus('preparing');
+    try{
+      await checkpointJob({roomFields,source,items,gap,manual,zones,reviewed,design,goal,roomJob:job,designQueued:true,designStyle},reference);
+      if(controller.signal.aborted||request!==aiEpoch.current)return;
+      const value=await startRoomJob<{survey:SurveyResponse;design:RoomDesign}>(job.id,{survey_job_id:parent.id,goal,style:designStyle,gap:clearance},controller.signal,setJobStatus);
+      if(request!==aiEpoch.current)return;applyQueuedDesign(value);rememberJob(undefined);reveal('room-plan-stage');
+    }catch(error){if(request===aiEpoch.current&&!controller.signal.aborted)reportAIError(error);}
+    finally{if(request===aiEpoch.current)setAiBusy(null);}
+  }
+  async function checkpointJob(value:RoomDraft,photo:RoomReference|null){
+    try{if(onBeforeJob)await onBeforeJob(value,photo);else if(device){localStorage.setItem(roomDraftKey,JSON.stringify(value));await saveRoomReference(photo);}}
+    catch(error){rememberJob(undefined);throw error;}
+  }
   async function analyzePhoto(value:RoomReference,fresh=true){
     cancelAI();setRetryDesign(false);camera.stop();endAR();setAiError('');setAiNeedsLogin(false);setDesign(null);setUndoDesign(null);
     referenceChanged.current=true;setReference({...value,corners:[],survey:undefined});setRoomFields({width:'',depth:'',height:''});setSource('unmeasured');setZones([]);setManual(null);setReviewed(false);setMeasurementOpen(false);setView('photo');
     if(fresh){setItems([]);setSelectedId('');}
     const request=++aiEpoch.current,controller=new AbortController();aiAbort.current=controller;setAiBusy('survey');
     try{
-      const result=await surveyRoom(value.image_url,controller.signal);
-      if(request!==aiEpoch.current||!activeRef.current)return;
-      const {image_url,image_width,image_height,...survey}=result;
+      const job={id:crypto.randomUUID(),stage:'survey' as const};rememberJob(job);setJobStatus('preparing');
+      await checkpointJob({roomFields:{width:'',depth:'',height:''},source:'unmeasured',items:fresh?[]:items,gap,manual:null,zones:[],reviewed:false,design:null,goal,roomJob:job,designQueued:false,designStyle},{...value,corners:[],survey:undefined});
+      if(controller.signal.aborted||request!==aiEpoch.current)return;
+      const result=await surveyRoom(value.image_url,controller.signal,job.id,setJobStatus);
+      if(request!==aiEpoch.current)return;
+      rememberJob(undefined);const {image_url,image_width,image_height,...survey}=result;
       setReference({image_url,width:image_width,height:image_height,corners:survey.floor_corners,labels:[],survey});
       if(survey.room){setRoomFields({width:String(survey.room.width),depth:String(survey.room.depth),height:survey.room.height?String(survey.room.height):''});setSource('photo');setZones(survey.zones);}
     }catch(error){if(request===aiEpoch.current)reportAIError(error);}
     finally{if(request===aiEpoch.current)setAiBusy(null);}
   }
   async function createDesign(requestedGoal=goal){
-    if(!room||!reference||!requestedGoal.trim()||aiBusy)return;
+    if(aiBusy==='survey'&&requestedGoal.trim()){setGoal(requestedGoal);setDesignQueued(true);return;}
+    if(!room||!reference||!requestedGoal.trim()||aiBusy||jobRef.current?.stage==='design')return;
     if(!Number.isFinite(clearance)||clearance<0||clearance>3){setAiError('Choose a furniture gap from 0 to 3 m in the spacing controls.');return;}
     cancelAI();setRetryDesign(true);setAiError('');setAiNeedsLogin(false);setAiBusy('design');
     const request=++aiEpoch.current,controller=new AbortController();aiAbort.current=controller;
     try{
-      const result=await designRoom({image_url:reference.image_url,goal:requestedGoal,style:designStyle,room,zones,features:reference.survey?.features??[],items,placements:visiblePlacements,gap:clearance},controller.signal);
-      if(request!==aiEpoch.current||!activeRef.current)return;
-      const arranged=planRoom(room,result.items,clearance,zones,result.placements);
+      const job={id:crypto.randomUUID(),stage:'design' as const};rememberJob(job);setJobStatus('preparing');
+      await checkpointJob({roomFields,source,items,gap,manual,zones,reviewed,design,goal:requestedGoal,roomJob:job,designQueued:false,designStyle},reference);
+      if(controller.signal.aborted||request!==aiEpoch.current)return;
+      const result=await designRoom({image_url:reference.image_url,goal:requestedGoal,style:designStyle,room,zones,features:reference.survey?.features??[],items,placements:visiblePlacements,gap:clearance},controller.signal,job.id,setJobStatus);
+      if(request!==aiEpoch.current)return;
+      rememberJob(undefined);recordStudyEvent('room_result');const arranged=planRoom(room,result.items,clearance,zones,result.placements);
       if(arranged.status==='unknown')throw new Error('This design could not be arranged. Check the reserved areas and try again.');
       setUndoDesign({items,manual,design});setItems(result.items);setManual(arranged.placements);setDesign(result);setSelectedId(result.items[0]?.id??'');setView('photo');setToolsOpen(false);setCustomizeOpen(false);
       reveal('room-plan-stage');
     }catch(error){if(request===aiEpoch.current)reportAIError(error);}
     finally{if(request===aiEpoch.current)setAiBusy(null);}
   }
+  async function resumeRoomJob(){
+    const job=jobRef.current;if(!job)return;
+    const request=++aiEpoch.current,controller=new AbortController();aiAbort.current?.abort();aiAbort.current=controller;setAiBusy(job.stage);setAiError('');setRetryDesign(job.stage==='design');
+    try{
+      const result=await watchRoomJob<SurveyResponse|RoomDesign|{survey:SurveyResponse;design:RoomDesign}>(job.id,controller.signal,setJobStatus);
+      if(request!==aiEpoch.current)return;
+      if(job.surveyId){applyQueuedDesign(result as {survey:SurveyResponse;design:RoomDesign});}
+      else if(job.stage==='survey'){
+        const {image_url,image_width,image_height,...survey}=validateSurvey(result as SurveyResponse);
+        setReference({image_url,width:image_width,height:image_height,corners:survey.floor_corners,labels:[],survey});
+        if(survey.room){setRoomFields({width:String(survey.room.width),depth:String(survey.room.depth),height:survey.room.height?String(survey.room.height):''});setSource('photo');setZones(survey.zones);}
+      }else{
+        if(!room||!validDesign(result))throw new RoomJobFailure('This saved design could not be used. Retry the design stage.');
+        const arranged=planRoom(room,result.items,clearance,zones,result.placements);
+        if(arranged.status==='unknown')throw new RoomJobFailure('The saved design could not be arranged. Check the room and retry.');
+        setUndoDesign({items,manual,design});setItems(result.items);setManual(arranged.placements);setDesign(result);setView('photo');setSelectedId(result.items[0]?.id??'');recordStudyEvent('room_result');
+      }
+      rememberJob(undefined);
+    }catch(error){if(request===aiEpoch.current&&!controller.signal.aborted)reportAIError(error);}
+    finally{if(request===aiEpoch.current)setAiBusy(null);}
+  }
+  useEffect(()=>{if(draft?.roomJob)void resumeRoomJob();},[]);
+  useEffect(()=>{if(designQueued&&aiBusy==='survey'&&jobRef.current?.stage==='survey'&&['queued','running'].includes(jobStatus))void queueAfterSurvey();},[designQueued,aiBusy,jobStatus]);
+  useEffect(()=>{if(designQueued&&!aiBusy&&!jobRef.current&&room&&reference?.survey?.status==='ready'){setDesignQueued(false);void createDesign();}},[designQueued,aiBusy,roomJob,room,reference]);
   function restoreDesign(){if(!undoDesign)return;cancelAI();setItems(undoDesign.items);setManual(undoDesign.manual);setDesign(undoDesign.design);setSelectedId(undoDesign.items[0]?.id??'');setUndoDesign(null);}
   function captureRoom(){
     photoRequest.current++;
@@ -296,7 +372,7 @@ export default function RoomStudio({active=true}:{active?:boolean}) {
         <div id="room-plan-stage" className="room-stage" hidden={device&&!planningRoom&&!reference&&view!=='camera'}>
           <div className="room-stage-toolbar"><div className="room-view-tabs" role="group" aria-label="Room view"><button aria-pressed={view==='3d'} onClick={()=>{camera.stop();setView('3d');}}><Layers3 size={15}/>3D room</button><button aria-pressed={view==='plan'} onClick={()=>{camera.stop();setView('plan');}}><Grid2X2 size={15}/>Floor plan</button><button aria-pressed={view==='camera'} onClick={openCamera}><Camera size={15}/>Camera</button>{reference&&<button aria-pressed={view==='photo'} onClick={()=>{camera.stop();setView('photo');}}>Photo plan</button>}</div><span className="room-scale-label">{sourceLabel} · {planningRoom?`${fmt(planningRoom.width)} × ${fmt(planningRoom.depth)} m`:'NOT MEASURED'}</span></div>
           <canvas className="room-xr-canvas" ref={canvasRef} aria-label="Furniture placed in the measured physical room"/>
-          {!xrRunning&&view==='photo'&&reference&&<RoomPhoto automatic={source==='photo'||aiBusy==='survey'||(!room&&!!reference)} reference={reference} onChange={updateReference} room={room} items={validItems} placements={visiblePlacements} zones={zones} selectedId={selectedId} onSelect={selectFurniture} onReserve={reserveObject}/>}
+          {!xrRunning&&view==='photo'&&reference&&<RoomPhoto reasons={design?.placements.map(p=>({itemId:p.itemId,reason:`Design intent: ${p.reason}`}))} automatic={source==='photo'||aiBusy==='survey'||(!room&&!!reference)} reference={reference} onChange={updateReference} room={room} items={validItems} placements={visiblePlacements} zones={zones} selectedId={selectedId} onSelect={selectFurniture} onReserve={reserveObject}/>}
           {!xrRunning&&view==='3d'&&planningRoom&&<RoomPreview room={planningRoom} showWalls={!!room} items={validItems} placements={visiblePlacements} selectedId={selectedId} onSelect={selectFurniture} reserved={zones} features={reference?.survey?.features}/>}
           {!xrRunning&&view==='plan'&&planningRoom&&<FloorPlan room={planningRoom} items={validItems} placements={visiblePlacements} selectedId={selectedId} onSelect={selectFurniture} onMove={moveItem} conflictIds={conflictIds} zones={zones} onMoveZone={moveZone}/>}
           {!xrRunning&&view!=='camera'&&view!=='photo'&&!planningRoom&&<div className="room-preview-empty"><Layers3 size={32}/><strong>{!items.length?'Choose your furniture':source==='entered'?'Complete your room measurements':'Check furniture sizes'}</strong><p>{!items.length?'Add a piece to see your arrangement.':source==='entered'?'Add both width and length, or start a fresh arrangement without room measurements.':'Use valid furniture dimensions to prepare the preview.'}</p></div>}
@@ -314,7 +390,7 @@ export default function RoomStudio({active=true}:{active?:boolean}) {
       </section>
 
       <aside className="room-sidebar" aria-label="Room furnishing controls">
-        <RoomCopilot survey={reference?.survey} busy={aiBusy} error={aiError} hasPhoto={!!reference} ready={!!room&&!!reference&&validFloorCorners(reference.corners)} goal={goal} onGoal={setGoal} style={designStyle} onStyle={setDesignStyle} onDesign={value=>void createDesign(value)} retryDesign={retryDesign} onRetry={()=>{if(retryDesign&&room)void createDesign();else if(reference)void analyzePhoto(reference,false);}} onCancel={cancelAI} design={design} items={items} placements={visiblePlacements} onSelect={id=>{selectFurniture(id);reveal('room-plan-stage');}} onUndo={restoreDesign} canUndo={!!undoDesign} onSignIn={aiNeedsLogin?connectRoomDesigner:undefined}/>
+        <RoomCopilot survey={reference?.survey} busy={aiBusy} jobStatus={jobStatus} designQueued={designQueued} resumable={!!roomJob} error={aiError} hasPhoto={!!reference} ready={!!room&&!!reference&&validFloorCorners(reference.corners)} goal={goal} onGoal={setGoal} style={designStyle} onStyle={setDesignStyle} onDesign={value=>void createDesign(value)} retryDesign={retryDesign} onRetry={()=>{if(roomJob){void resumeRoomJob();return;}if(retryDesign&&room)void createDesign();else if(reference)void analyzePhoto(reference,false);}} onCancel={cancelAI} design={design} items={items} placements={visiblePlacements} onSelect={id=>{selectFurniture(id);reveal('room-plan-stage');}} onUndo={restoreDesign} canUndo={!!undoDesign} onSignIn={aiNeedsLogin?connectRoomDesigner:undefined}/>
         <details className="room-manual-tools" open={toolsOpen} onToggle={event=>setToolsOpen(event.currentTarget.open)}><summary>Furniture & fine adjustments<ChevronDown size={16}/></summary><fieldset disabled={!!aiBusy}>
         <section id="room-measured-area" className="room-measure-section"><div className="room-section-heading"><h2><ScanLine size={17}/>Your space</h2><span>{source==='photo'?'AI estimate':source==='unmeasured'?'Photo first':source==='ar'?'AR estimate':'Entered'}</span></div>
           {room?<p>{fmt(room.width)} × {fmt(room.depth)} m{room.height?` · ${fmt(room.height)} m high`:''}{source==='ar'?' · observed floor area, not a full room scan':''}</p>:<p>{device?'Choose a room photo. AI estimates the dimensions for you.':quickLookSupported?'Apple’s AR viewer finds a surface and places the furniture at its configured size.':'Start with the furniture. The arrangement is prepared automatically.'}</p>}

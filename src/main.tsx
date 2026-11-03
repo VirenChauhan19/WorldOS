@@ -10,6 +10,7 @@ import './consumer.css';
 import './spatial.css';
 import './consumer-app.css';
 import './design-system.css';
+import './room/workspace.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><AppEntry/></React.StrictMode>);
 registerServiceWorker();
