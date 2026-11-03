@@ -1,1 +1,48 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>WorldOS - Reconnect once</title><style>body{padding:10vh 24px;max-width:480px;margin:auto;background:#f8f7f3;color:#282b24;font:17px/1.7 system-ui}a{color:#a34b33}</style><h1>Reconnect once to prepare WorldOS.</h1><p>The app files have not finished downloading for offline use. Your saved device work stays in this browser.</p><p>Connect to the internet, reopen the app, and let it finish loading. You can then open saved photos, checklists and room layouts offline. AI guidance needs a connection.</p><a href="/">Open WorldOS</a></html>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+    <meta name="theme-color" content="#f6f7f9"/>
+    <link rel="icon" href="/icons/icon-192.png"/>
+    <title>WorldOS — A moment offline</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100svh; display: flex; flex-direction: column; background: #f6f7f9; color: #172522; font: 15px/1.75 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 36px; }
+      header { display: flex; align-items: center; gap: 11px; max-width: 1100px; width: 100%; margin: 0 auto; font-size: 23px; font-weight: 650; letter-spacing: -.8px; }
+      header > span > span { font-weight: 400; }
+      .mark { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 13px; background: #213d35; color: #d5ef85; }
+      .mark svg { width: 32px; height: 32px; }
+      main { width: min(100%, 600px); margin: auto; padding: 60px 0 85px; }
+      .connection { display: inline-flex; align-items: center; gap: 8px; padding: 6px 11px; border: 1px solid #dfe7d9; border-radius: 30px; background: #edf3e5; color: #5b6d4e; font-size: 11px; font-weight: 500; }
+      .connection i { width: 6px; height: 6px; border-radius: 50%; background: #869a6a; }
+      h1 { margin: 23px 0; font-size: clamp(37px, 7vw, 61px); line-height: 1.07; font-weight: 500; letter-spacing: -2.8px; }
+      h1 span { color: #617b5f; }
+      .intro { max-width: 44ch; margin: 0; color: #66736e; font-size: 16px; line-height: 1.8; }
+      .intro + .intro { margin-top: 14px; font-size: 14px; }
+      a { display: inline-flex; align-items: center; justify-content: center; gap: 22px; min-height: 51px; margin-top: 29px; padding: 12px 23px; border: 1px solid #213d35; border-radius: 11px; color: #f6f8f0; background: #213d35; text-decoration: none; font-size: 13px; font-weight: 600; }
+      a:hover { background: #315346; }
+      a:focus-visible { outline: 3px solid #8eab69; outline-offset: 5px; }
+      .storage { display: flex; align-items: flex-start; gap: 13px; padding-top: 25px; border-top: 1px solid #e1e7e3; margin-top: 38px; color: #78857c; font-size: 12px; line-height: 1.8; max-width: 420px; }
+      .storage svg { color: #718365; flex-shrink: 0; margin-top: 3px; }
+      .storage p { margin: 0; }
+      footer { max-width: 1100px; width: 100%; margin: 0 auto; color: #869087; font-size: 10px; letter-spacing: 1.5px; }
+      @media (max-width: 480px) { body { padding: 26px; } main { padding: 55px 0; } h1 { letter-spacing: -1.6px; } .intro { font-size: 14px; } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span class="mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="m5 10 6 14 5-10 5 10 6-14M11 8l5 6 5-6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <span>World<span>OS</span></span>
+    </header>
+    <main>
+      <span class="connection"><i aria-hidden="true"></i>Getting ready for offline</span>
+      <h1>Reconnect once.<br/><span>Then back to your space.</span></h1>
+      <p class="intro">WorldOS has not finished downloading for offline use. Reconnect, open the app, and let it finish loading.</p>
+      <p class="intro">Then your saved photos, checklists, and room layouts can open offline. AI guidance still needs a connection.</p>
+      <a href="/">Open WorldOS <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+      <div class="storage"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6l-8-3Zm-4 9 3 3 5-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><p>Device setups and room plans are stored in this browser. This screen hasn't changed them.</p></div>
+    </main>
+    <footer>SPACE FOR POSSIBILITY</footer>
+  </body>
+</html>

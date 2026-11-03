@@ -1,6 +1,6 @@
 import { Component, lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Home as HomeIcon, ScanLine, FolderHeart, Settings2 } from 'lucide-react';
+import WorldIcon from './ui/WorldIcon';
 import Home from './screens/Home';
 import { navigate, PAGES, useRoute } from './navigation';
 import type { Page } from './navigation';
@@ -23,7 +23,7 @@ const Advanced=lazy(()=>import('./screens/Advanced'));
 const Settings=lazy(()=>import('./screens/Settings'));
 const titles={home:'Home',prepare:'Get my space ready',mission:'My task',live:'Live space',room:'Room studio',inspect:'Photo comparison',history:'My Spaces',studio:'Spatial Studio',settings:'Settings',advanced:'Advanced','advanced-inspect':'Advanced inspection','history-detail':'Inspection history'};
 const mainPages=['home','history','settings'] as const;
-const icons={home:HomeIcon,history:FolderHeart,settings:Settings2};
+const icons={home:'home',history:'spaces',settings:'settings'} as const;
 
 class ScreenBoundary extends Component<{children:ReactNode},{failed:boolean}> {
   state={failed:false};
@@ -49,8 +49,8 @@ export default function WorldOS() {
   return <div className={`worldos-app ${device?'device-app':''} ${route.page==='live'||route.page==='room'?'live-workspace':''}`}>
     {device&&<OfflineStatus/>}
     <a className="skip-link" href="#main-content" onClick={event=>{event.preventDefault();document.getElementById(`screen-${route.page}`)?.focus();}}>Skip to content</a>
-    {device?<DeviceChrome page={route.page}/>:route.page!=='live'&&route.page!=='room'&&route.page!=='mission'&&<header className="app-header"><button className="app-brand" onClick={()=>navigate('home')} aria-label="WorldOS home"><span className="brand-symbol"><ScanLine size={23}/></span>world<span>os</span><small>A SPACE READY FOR YOU</small></button>
-      {route.page!=='inspect'&&<nav className="app-navigation" aria-label="Main navigation">{mainPages.map(page=>{const Icon=icons[page];return <button key={page} aria-current={route.page===page?'page':undefined} onClick={()=>navigate(page)}><Icon size={18} aria-hidden="true"/><span>{titles[page]}</span></button>;})}</nav>}
+    {device?<DeviceChrome page={route.page}/>:route.page!=='live'&&route.page!=='room'&&route.page!=='mission'&&<header className="app-header"><button className="app-brand" onClick={()=>navigate('home')} aria-label="WorldOS home"><span className="brand-symbol"><WorldIcon name="scan" size={23}/></span>world<span>os</span><small>A SPACE READY FOR YOU</small></button>
+      {route.page!=='inspect'&&<nav className="app-navigation" aria-label="Main navigation">{mainPages.map(page=>{const icon=icons[page];return <button key={page} aria-current={route.page===page?'page':undefined} onClick={()=>navigate(page)}><WorldIcon name={icon} size={20}/><span>{titles[page]}</span></button>;})}</nav>}
       {route.page==='inspect'&&<span className="app-header-note"><span className="status-dot"/> YOUR SPACE, IN FOCUS</span>}
     </header>}
     {['advanced','advanced-inspect','studio','history-detail'].includes(route.page)&&<div className="advanced-heading"><span>Advanced workspace</span><button onClick={()=>navigate('advanced')}>All tools</button><button onClick={()=>navigate('home')}>Back to simple view</button></div>}

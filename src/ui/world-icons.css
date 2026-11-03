@@ -1,0 +1,61 @@
+/* WorldOS glyphs: the same optical weight on tabs, tools, and feature cards. */
+.world-icon { display: inline-block; vertical-align: middle; flex-shrink: 0; overflow: visible; }
+.world-icon .world-icon-tone { fill: currentColor; fill-opacity: .14; stroke: none; }
+.world-icon .world-icon-solid { fill: currentColor; stroke: none; }
+
+/* Destination colors help the same feature feel familiar wherever it appears. */
+.device-app .consumer-navigation [data-destination=home] { --tab-ink: #356450; --tab-soft: #eaf2ec; --tab-tile: #dfebe2; }
+.device-app .consumer-navigation [data-destination=camera] { --tab-ink: #476e9a; --tab-soft: #edf2f8; --tab-tile: #e3ebf5; }
+.device-app .consumer-navigation [data-destination=room] { --tab-ink: #7b6298; --tab-soft: #f1edf7; --tab-tile: #e9e1f2; }
+.device-app .consumer-navigation [data-destination=spaces] { --tab-ink: #856336; --tab-soft: #f7f1e8; --tab-tile: #f0e5d4; }
+.device-app .consumer-navigation [data-destination=settings] { --tab-ink: #5f6a82; --tab-soft: #eff1f6; --tab-tile: #e5e9f1; }
+.device-app .consumer-navigation button { gap: 12px; padding: 8px 11px; min-height: 54px; }
+.device-tab-icon { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 auto; border: 1px solid transparent; border-radius: 11px; background: var(--tab-soft); color: var(--tab-ink); transition: background .16s ease, color .16s ease; }
+.device-tab-icon > .world-icon { width: 23px; height: 23px; }
+.device-app .consumer-navigation button[aria-current=page], .device-app .consumer-navigation button[aria-current=page]:hover { background: var(--tab-soft); color: var(--tab-ink); }
+.device-app .consumer-navigation button[aria-current=page] .device-tab-icon { background: var(--tab-ink); color: #fff; box-shadow: 0 3px 7px #17252210; }
+.device-app .consumer-navigation button[aria-current=page] .world-icon-tone { fill-opacity: .26; }
+.device-app .consumer-navigation button:hover .device-tab-icon { background: var(--tab-tile); }
+.device-app .consumer-navigation button[aria-current=page]:hover .device-tab-icon { background: var(--tab-ink); }
+
+/* The home cards reuse the actual destination glyphs, without miniature scenes. */
+.dh-feature-icon { display: grid; place-items: center; width: 86px; height: 86px; border: 1px solid #c2d6b1; border-radius: 25px; background: #e0ebd2; color: #577346; box-shadow: 0 4px 0 #d2e0c1, 0 8px 16px #425f2e05; }
+.dh-reimagine .dh-feature-icon { border-color: #d0c0e2; background: #e5dcf0; color: #80629b; box-shadow: 0 4px 0 #d7cbe5, 0 8px 16px #4b2e6805; }
+.dh-remember .dh-feature-icon { border-color: #dfc7a5; background: #efdfc8; color: #9a7747; box-shadow: 0 4px 0 #e5d1b3, 0 8px 16px #6b502e05; }
+.dh-feature-icon > .world-icon { width: 50px; height: 50px; stroke-width: 1.5; }
+.device-app .dh-hero-process > span > .world-icon { display: inline-block; width: 18px; height: 18px; }
+.device-app .dh-preview .recorded-layer-bar button > .world-icon { display: inline-block; width: 16px; height: 16px; }
+.device-app .dh-preview .recorded-object-icon > .world-icon { width: 20px; height: 20px; }
+
+/* Keep the new secondary-tab glyphs legible at every responsive breakpoint. */
+.device-app .consumer-live .live-panel-tabs button { display: flex; flex-direction: column; gap: 5px; min-height: 61px; padding: 8px 4px; position: relative; font-size: 10px; }
+.device-app .consumer-live .live-panel-tabs button > .world-icon { display: block; width: 20px; height: 20px; }
+.device-app .consumer-live .live-panel-tabs button > span { position: absolute; top: 5px; left: calc(50% + 9px); padding: 1px 3px; font-size: 8px; line-height: 1.3; }
+.device-app .consumer-live .live-panel-tabs button[aria-pressed=true] { color: #213d35; }
+.device-app .consumer-live .live-panel-tabs button[aria-pressed=true] .world-icon-tone { fill-opacity: .22; }
+.device-app .consumer-live .camera-aperture > .world-icon { width: 39px; height: 39px; }
+.device-app .consumer-live .live-ready-room > .world-icon { width: 23px; height: 23px; }
+.device-app .room-consumer .room-view-tabs button > .world-icon { display: block; width: 18px; height: 18px; }
+
+@media (max-width: 1000px) {
+  .device-app .consumer-navigation button { gap: 4px; padding: 4px 2px; min-height: 59px; border-radius: 12px; }
+  .device-tab-icon { width: 32px; height: 32px; border-radius: 10px; background: transparent; }
+  .device-tab-icon > .world-icon { width: 24px; height: 24px; }
+  .device-app .consumer-navigation .device-tab-label { font-size: 10px; line-height: 1.3; }
+}
+@media (max-width: 760px) {
+  .dh-tool .dh-feature-art { top: 64px; right: 19px; width: 86px; height: 94px; margin: 0; transform: none; overflow: visible; }
+  .dh-feature-icon { width: 76px; height: 76px; border-radius: 22px; }
+  .dh-feature-icon > .world-icon { width: 43px; height: 43px; }
+}
+@media (max-width: 480px) {
+  .dh-tool .dh-feature-art { top: 64px; right: 15px; width: 70px; height: 80px; }
+  .dh-feature-icon { width: 65px; height: 65px; border-radius: 19px; }
+  .dh-feature-icon > .world-icon { width: 38px; height: 38px; }
+  .device-app .dh-preview .recorded-layer-bar { grid-template-columns: .8fr 1fr 1.25fr; padding-inline: 7px; }
+  .device-app .dh-preview .recorded-layer-bar button { gap: 4px; font-size: 10px; }
+  .device-app .dh-preview .recorded-layer-bar button > .world-icon { width: 16px; height: 16px; }
+  .device-app .room-consumer .room-view-tabs button { gap: 5px; padding-inline: 6px; }
+}
+@media (prefers-reduced-motion: reduce) { .device-tab-icon { transition: none; } }
+html[data-motion=reduced] .device-tab-icon { transition: none; }

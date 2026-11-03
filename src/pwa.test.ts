@@ -36,9 +36,9 @@ it('keeps the current worker when offline assets fail to install',async()=>{
   await expect(finished).rejects.toThrow('offline');expect(w.self.skipWaiting).not.toHaveBeenCalled();
 });
 it('activates quietly and removes only obsolete WorldOS offline caches',async()=>{
-  const w=worker();w.caches.keys.mockResolvedValue(['worldos-offline-v1.3.0','worldos-app-old','worldos-app-previous','worldos-app-test','another-app']);
+  const w=worker();w.caches.keys.mockResolvedValue(['worldos-offline-v1.3.0','worldos-offline-v1.3.0-design','worldos-app-old','worldos-app-previous','worldos-app-test','another-app']);
   let finished!:Promise<unknown>;w.listeners.activate({waitUntil:(promise:Promise<unknown>)=>{finished=promise;}});await finished;
-  expect(w.caches.delete.mock.calls).toEqual([['worldos-offline-v1.3.0'],['worldos-app-old']]);
+  expect(w.caches.delete.mock.calls).toEqual([['worldos-offline-v1.3.0'],['worldos-offline-v1.3.0-design'],['worldos-app-old']]);
   expect(w.self.clients.claim).toHaveBeenCalledTimes(1);
 });
 it.each([

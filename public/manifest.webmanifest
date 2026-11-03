@@ -2,12 +2,12 @@
   "id": "/",
   "name": "WorldOS",
   "short_name": "WorldOS",
-  "description": "Identify objects, plan a room, and save photos, notes, and checklists on your device.",
+  "description": "See your space differently. Identify everyday objects, explore room layouts, and save the setups that work for you.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f8f7f3",
-  "theme_color": "#f8f7f3",
+  "background_color": "#f6f7f9",
+  "theme_color": "#f6f7f9",
   "lang": "en",
   "icons": [
     {
