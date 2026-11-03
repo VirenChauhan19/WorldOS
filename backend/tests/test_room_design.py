@@ -40,6 +40,8 @@ def test_photo_survey_sends_actual_image_and_caches_validated_estimate():
     def handler(req):
         body = json.loads(req.content)
         calls.append(body)
+        assert body['reasoning_effort'] == 'low'
+        assert body['max_completion_tokens'] == 8192
         assert body["messages"][1]["content"][1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
         assert "One photo cannot establish" in body["messages"][0]["content"]
         return httpx.Response(200, json=chat(survey()))
@@ -80,6 +82,19 @@ def test_unreadable_photo_returns_recapture_guidance_without_fake_dimensions():
         Survey.model_validate(survey(status="needs_photo"))
 
 
+def test_truncated_room_response_is_not_applied_and_records_a_safe_failure():
+    payload=chat(survey(), choices=[{'finish_reason':'length','message':{'content':'untrusted secret-like upstream output'}}])
+    ai=service(lambda _:httpx.Response(200,json=payload))
+    with pytest.raises(ProviderError) as error:
+        asyncio.run(survey_room(PhotoRequest(image_url=photo()),ai))
+    assert error.value.code=='malformed_response'
+    assert 'response limit' in str(error.value)
+    failure=ai.http.failed_inferences[('meta','muse-spark-1.3')]
+    assert failure['operation']=='room_survey' and failure['code']=='malformed_response'
+    assert 'untrusted' not in json.dumps(failure) and 'secret-like' not in str(error.value)
+    assert not ai.http.validated_inferences
+
+
 def test_wall_height_anchor_must_match_a_visible_back_floor_corner():
     value = Survey.model_validate(survey(vertical_reference={"corner": 1, "ceiling_y": .1, "height_m": 2.7}))
     assert value.vertical_reference.height_m == 2.7
@@ -115,6 +130,7 @@ def test_design_includes_wishlist_priority_features_and_reserved_area_in_context
         assert context["features"][0]["kind"] == "window"
         assert context["zones"][0]["id"] == "door"
         assert body["max_completion_tokens"] == 8192
+        assert body['reasoning_effort'] == 'low'
         return httpx.Response(200, json=chat(design()))
     result = asyncio.run(design_room(design_request(style="open"), service(handler)))
     assert result["items"][0]["kind"] == "sofa"

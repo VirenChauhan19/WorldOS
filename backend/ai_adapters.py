@@ -2,6 +2,7 @@
 import json
 import re
 from contextvars import ContextVar
+from time import perf_counter
 from typing import TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -89,7 +90,7 @@ class MuseSparkReasoning:
 
     async def _structured_once(self, provider, operation, instruction, context, schema, image_url):
         provider, model, base_url, key = self.http.settings.reasoning_config(provider)
-        output_tokens = 1200 if operation == "live_observe" else 8192 if operation == "room_design" else 4096
+        output_tokens = 1200 if operation == "live_observe" else 8192 if operation in {"room_survey", "room_design"} else 4096
         content = [{"type": "text", "text": json.dumps(context)}]
         if image_url:
             content.append({"type": "image_url", "image_url": {"url": image_url}})
@@ -107,6 +108,11 @@ class MuseSparkReasoning:
             options = {"max_completion_tokens": output_tokens, "response_format": {"type": "json_schema", "json_schema": {"name": schema.__name__, "schema": schema.model_json_schema()}}}
             if operation == "live_observe":
                 options["reasoning_effort"] = "minimal"
+            elif operation in {"room_survey", "room_design"}:
+                # Reasoning tokens share the completion budget. Leave room for
+                # the validated JSON instead of relying on a changing default.
+                options["reasoning_effort"] = "low"
+        started = perf_counter()
         data = await self.http.post(provider=provider, model=model, operation=operation, include_metadata=True,
             url=f"{base_url}/chat/completions", key=key, payload={"model": model, "messages": [
                 {"role": "developer", "content": instruction}, {"role": "user", "content": content}], **options})
@@ -120,7 +126,13 @@ class MuseSparkReasoning:
             self._metadata.set(data.get("_worldos_metadata") or {"provider": provider, "model": model, "live_request": False})
             return result
         except (KeyError, IndexError, TypeError, ValueError, ValidationError):
-            raise ProviderError("Muse Spark returned incomplete, refused, or invalid structured output. No AI result was applied.", code="malformed_response") from None
+            choices = data.get('choices')
+            truncated = isinstance(choices, list) and bool(choices) and isinstance(choices[0], dict) and choices[0].get('finish_reason') == 'length'
+            message = ("Muse Spark reached its response limit before finishing. Retry this stage; no incomplete result was applied." if truncated else
+                       "Muse Spark returned incomplete, refused, or invalid structured output. No AI result was applied.")
+            error = ProviderError(message, code="malformed_response")
+            self.http.record_failure(provider, model, operation, error, started)
+            raise error from None
 
     async def discover(self, image_url: str, *, whole_scene=False) -> ConceptDiscovery:
         scope = (

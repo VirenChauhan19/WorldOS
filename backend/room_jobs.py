@@ -59,7 +59,7 @@ def build_room_jobs_router(get_service, run_ai):
                         if parent['status'] == 'completed':
                             return parent['result']
                         if parent['status'] in ('failed', 'cancelled'):
-                            raise HTTPException(422, 'Room analysis did not finish. Retry analysis before designing.')
+                            raise HTTPException(422, 'Room analysis stopped: ' + (parent['error'] or 'Analyze the photo again before designing.'))
                         await asyncio.sleep(.25)
                 completed_survey = await asyncio.wait_for(wait_for_survey(), timeout=MAX_SECONDS-130)
                 if completed_survey.get('status') != 'ready' or not completed_survey.get('room'):

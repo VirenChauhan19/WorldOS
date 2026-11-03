@@ -192,3 +192,25 @@ def test_queued_design_validates_workspace_dependency_and_cancellation(tmp_path,
             assert room_jobs.load_job(store,child)['result'] is None
         await room_jobs.stop_room_jobs()
     asyncio.run(run())
+
+
+def test_queued_design_preserves_the_actual_analysis_error(tmp_path,monkeypatch):
+    async def run():
+        app,store,gate,calls=setup_app(tmp_path,monkeypatch)
+        async def fail_survey(body,service):
+            await gate.wait()
+            raise HTTPException(502,'Muse Spark reached its response limit before finishing.')
+        monkeypatch.setattr(room_jobs,'survey_room',fail_survey)
+        parent,child=str(uuid4()),str(uuid4())
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app),base_url='http://test') as client:
+            await client.post('/api/ai/room/jobs',json={'id':parent,'request':{'image_url':photo()}})
+            assert (await client.post('/api/ai/room/jobs',json={'id':child,'request':{'survey_job_id':parent,'goal':'Reading corner','gap':.3}})).status_code==202
+            gate.set()
+            for _ in range(100):
+                result=room_jobs.load_job(store,child)
+                if result['status']=='failed':break
+                await asyncio.sleep(.01)
+            assert result['status']=='failed' and result['result'] is None
+            assert result['error']=='Room analysis stopped: Muse Spark reached its response limit before finishing.'
+        await room_jobs.stop_room_jobs()
+    asyncio.run(run())

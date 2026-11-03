@@ -91,6 +91,19 @@ it('keeps a completed survey when a queued design fails, so retry only designs',
   expect(surveyRoom).not.toHaveBeenCalled();expect(designRoom).toHaveBeenCalledTimes(1);
 });
 
+it('reopens a pending photo and retries analysis when its queued design lost the survey',async()=>{
+  const base=projectFixture(),project={...base,draft:{...base.draft,source:'unmeasured' as const,roomFields:{width:'',depth:'',height:''},roomJob:{id:'child',stage:'design' as const,surveyId:'parent'},designQueued:true},reference:{...base.reference,corners:[],survey:undefined}};
+  vi.mocked(watchRoomJob).mockRejectedValueOnce(new RoomJobFailure('Room analysis stopped: response limit reached.'));
+  render(<DeviceWorkspaceContext.Provider value={true}><RoomStudio initialProject={project}/></DeviceWorkspaceContext.Provider>);
+  const retry=await screen.findByRole('button',{name:'Try room analysis again'});
+  expect(screen.getByRole('button',{name:'Photo plan'}).getAttribute('aria-pressed')).toBe('true');
+  expect(screen.queryByRole('button',{name:'Try design again'})).toBeNull();
+  fireEvent.click(retry);
+  await waitFor(()=>expect(surveyRoom).toHaveBeenCalledTimes(1));
+  expect(vi.mocked(surveyRoom).mock.calls[0][0]).toBe(base.reference.image_url);
+  expect(designRoom).not.toHaveBeenCalled();
+});
+
 it('starts with an empty device plan and waits for dimensions and review before offering furniture',async()=>{
   await open();
   expect(screen.queryByRole('button',{name:/Add suggested/})).toBeNull();

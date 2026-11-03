@@ -14,17 +14,19 @@ This pass tested transitions, interrupted saves, authentication, and recovery be
 | A rejected queued design loses its accepted survey identity | Keep the original survey available for reconnection | Room regression with rejected dependent submission |
 | A successful server task is hidden when saving its device shortcut fails | Open the accepted task and explain the failed device shortcut | Mission regression |
 | Missing saved tasks show a misleading new-photo form | Show reload, My Spaces, and new-task recovery actions | Mission regression |
+| A queued design hides the reason its room analysis failed | Preserve the analysis error and retry analysis from the saved photo | Backend pipeline and component regressions |
+| Reloading an unfinished room opens an empty 3D view | Reopen the saved photo even before room dimensions are available | Component and browser failure recovery |
 | Research notes disappear after reload and multiple participants share one recording | Save notes and assistance; export the previous session before starting a new recording | Component and browser regressions |
 
 Setup edits also flush when the page becomes hidden. IndexedDB synchronous failures close the database connection, and pending writes complete before same-tab deletion.
 
 ## Validation
 
-- 489 frontend tests pass across 55 files.
-- 413 backend tests pass; two optional live-provider tests are skipped.
+- 490 frontend tests pass across 55 files.
+- 415 backend tests pass; two optional live-provider tests are skipped.
 - TypeScript and the production build pass.
 - Normal room/photo workflows pass at 320, 390, and 1440 pixels.
-- All eight existing recovery browser scenarios pass.
+- All nine recovery browser scenarios pass.
 - Seven new browser scenarios pass, including long saved names at 320 pixels and runtime-error checks.
 - The isolated real HTTP production check passes authentication, CSRF, owner/judge isolation, backup integrity, restart persistence, and logout revocation.
 - The public demo pass adds automatic no-password access, visitor isolation, persisted quotas, job capacity and cleanup checks. Real cookies, CSRF and background room jobs pass fresh-browser checks at 320, 390 and 1440 pixels with synthetic AI responses; see [public demo access](PUBLIC_DEMO.md).

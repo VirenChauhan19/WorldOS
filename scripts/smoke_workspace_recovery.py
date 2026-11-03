@@ -42,6 +42,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self.reply({'required': False, 'authenticated': True, 'session_mode': 'cookie', 'csrf_token': 'audit', 'access': 'owner', 'storage_mode': 'persistent'})
         if path.startswith('/api/ai/room/jobs/'):
             identity = path.rsplit('/', 1)[-1]
+            if state['mode'] == 'failed-survey':
+                return self.reply({'id':identity,'stage':'design','status':'failed','result':None,'error':'Room analysis stopped: response limit reached.'})
             if state['mode'] in ('401', '429'):
                 return self.reply({'detail': 'Synthetic temporary access failure'}, int(state['mode']))
             if identity not in state['jobs']: return self.reply({'detail': 'Missing request'}, 404)
@@ -135,6 +137,23 @@ try:
             return check
         run('expired-session-recovery',access_check('401'))
         run('rate-limit-recovery',access_check('429'))
+        def failed_survey_check(context,page):
+            pending=str(uuid.uuid4());project=seed_project(page,pending)
+            project['draft'].update(source='unmeasured',roomFields={'width':'','depth':'','height':''},design=None,items=[],manual=None,
+                                    roomJob={'id':pending,'stage':'design','surveyId':str(uuid.uuid4())})
+            project['reference'].update(corners=[]);project['reference'].pop('survey',None)
+            page.evaluate(seed_js,['worldos-projects',1,'records','room:'+project['id'],project])
+            state['mode']='failed-survey'
+            page.goto(origin+'/#/room?project='+project['id'])
+            expect(page.get_by_role('button',name='Try room analysis again',exact=True)).to_be_visible()
+            expect(page.get_by_role('button',name='Photo plan',exact=True)).to_have_attribute('aria-pressed','true')
+            assert page.evaluate(read_project,project['id'])['reference']['image_url']==ref['image_url']
+            state['mode']='normal';state['release']=True
+            page.get_by_role('button',name='Try room analysis again',exact=True).click()
+            expect(page.get_by_role('button',name='Design my room',exact=True)).to_be_enabled()
+            assert not state['designs'],'Retry must analyze before designing.'
+            return {'photo_preserved':True,'photo_view_after_reload':True,'retry_stage':'survey'}
+        run('failed-survey-recovery',failed_survey_check)
         def tabs_check(context,page):
             project=seed_project(page);url=origin+'/#/room?project='+project['id'];page.goto(url)
             expect(page.get_by_label('Room name',exact=True)).to_have_value('Audit room')

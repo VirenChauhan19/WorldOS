@@ -90,7 +90,7 @@ export default function RoomStudio({active=true,initialProject,onProjectChange,o
   useEffect(()=>()=>{aiEpoch.current++;aiAbort.current?.abort();},[]);
   // Leaving a screen pauses the camera, but an accepted room job keeps running.
   const [roomFields,setRoomFields]=useState<RoomFields>(draft?.roomFields??{width:'',depth:'',height:''});
-  const [source,setSource]=useState<Source>(draft?.source??'unmeasured'),[view,setView]=useState<View>(draft?.source==='photo'?'photo':'3d');
+  const [source,setSource]=useState<Source>(draft?.source??'unmeasured'),[view,setView]=useState<View>(initialProject?.reference||draft?.source==='photo'?'photo':'3d');
   const [quickLookSupported]=useState(supportsQuickLook);
   const [quickLookOpened,setQuickLookOpened]=useState(false);
   const [sampleLoading,setSampleLoading]=useState(false),[toolsOpen,setToolsOpen]=useState(!device);

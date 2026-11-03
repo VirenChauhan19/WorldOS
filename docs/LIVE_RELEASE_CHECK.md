@@ -1,0 +1,11 @@
+# Public demo verification — November 3, 2026 UTC
+
+The deployed public site enabled password-free visitor sessions. A fresh mobile browser uploaded the bundled public room photograph and opened its own guest session without a passphrase. Secure/HttpOnly/SameSite cookies, CSRF protection, owner-only routes, camera API access, and isolation from a second visitor all passed.
+
+The first queued room design stopped because its survey failed. The deployed child job replaced the original error with a generic message, so that failure's provider cause could not be established. A separate explicit survey retry succeeded on the deployed Meta Muse Spark 1.3 integration in 29.9 seconds. A deployed SAM 3.1 request also succeeded and found one window in the sample photograph. This verifies those requests, not uninterrupted service or scene accuracy.
+
+The follow-up change preserves the actual analysis error in dependent jobs, records safe structured-output failures, reopens unfinished rooms on their saved photo, and labels retries for the stage that failed. Room survey and design requests now explicitly use low reasoning effort on Meta and leave 8,192 completion tokens for reasoning plus structured output. Meta documents that internal reasoning uses the same output budget and that the default effort is model-dependent: [reasoning controls](https://dev.meta.ai/docs/reasoning), [token accounting](https://dev.meta.ai/docs/cookbook/reasoning-thinking-tokens).
+
+With the revised settings, two real requests from the local checkout completed: survey in 15.4 seconds (1,704 completion tokens) and design in 14.9 seconds (1,598 completion tokens). These are individual observations, not latency guarantees. Invalid or incomplete results still fail validation; the app does not silently apply them or repeatedly bill for retries.
+
+The browser recovery regression now covers a failed survey behind a queued design, a page reload, the still-visible saved photo, and an explicit analysis retry. The follow-up code requires another deployment before these improvements are on the public site. Reports and screenshots from the checks are kept in ignored `artifacts/live-hackathon/`; no credentials or private photographs were included in these checks.
