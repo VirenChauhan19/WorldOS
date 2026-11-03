@@ -15,6 +15,8 @@ const failure = 'This device could not save your work. Browser storage may be fu
 export class DeviceSpaceConflict extends Error {
   constructor(){super('This setup changed in another tab. Your changes need a separate recovered setup.');}
 }
+export class DeviceSpaceDeleted extends Error {constructor(){super('This setup was removed from My Spaces. Create a new setup to continue.');}}
+type StoredSetup=DeviceSpace|{id:string;deleted:true};
 
 async function database(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -40,9 +42,10 @@ async function transaction<T>(mode: IDBTransactionMode, operation: (store: IDBOb
   });
 }
 
-const setupWrites=new Map<string,Promise<IDBValidKey>>();
-export const listDeviceSpaces = async (): Promise<DeviceSpace[]> => { await Promise.allSettled([...setupWrites.values()]);return (await transaction<DeviceSpace[]>('readonly', s => s.getAll())).sort((a,b) => b.updatedAt.localeCompare(a.updatedAt)); };
-export const getDeviceSpace = async(id: string) => {await setupWrites.get(id)?.catch(()=>{});return transaction<DeviceSpace|undefined>('readonly', s => s.get(id));};
+const setupWrites=new Map<string,Promise<unknown>>();
+function announceSetupChange(){if(typeof window!=='undefined'){window.dispatchEvent(new Event('worldos:device-saved'));if(typeof window.BroadcastChannel==='function'){const channel=new BroadcastChannel('worldos-rooms');channel.postMessage('changed');channel.close();}}}
+export const listDeviceSpaces = async (): Promise<DeviceSpace[]> => { await Promise.allSettled([...setupWrites.values()]);return (await transaction<StoredSetup[]>('readonly', s => s.getAll())).filter((space):space is DeviceSpace=>!('deleted' in space)).sort((a,b) => b.updatedAt.localeCompare(a.updatedAt)); };
+export const getDeviceSpace = async(id: string) => {await setupWrites.get(id)?.catch(()=>{});const space=await transaction<StoredSetup|undefined>('readonly', s => s.get(id));return space&&!('deleted' in space)?space:undefined;};
 export function saveDeviceSpace(space:DeviceSpace):Promise<IDBValidKey>{
   const snapshot=structuredClone(space);
   const operation=(setupWrites.get(space.id)??Promise.resolve()).catch(()=>{}).then(async()=>{
@@ -51,18 +54,24 @@ export function saveDeviceSpace(space:DeviceSpace):Promise<IDBValidKey>{
       const tx=db.transaction('spaces','readwrite'),store=tx.objectStore('spaces'),read=store.get(snapshot.id);
       let reason:unknown;
       read.onsuccess=()=>{try{
+        if(read.result?.deleted)throw new DeviceSpaceDeleted();
         if((read.result?.revision??0)!==(snapshot.revision??0))throw new DeviceSpaceConflict();
         snapshot.revision=(snapshot.revision??0)+1;store.put(snapshot);
       }catch(error){reason=error;tx.abort();}};
       tx.oncomplete=()=>{db.close();space.revision=snapshot.revision;resolve(snapshot.id);};
-      tx.onabort=tx.onerror=()=>{db.close();reject(reason instanceof DeviceSpaceConflict?reason:new Error(failure));};
+      tx.onabort=tx.onerror=()=>{db.close();reject(reason instanceof DeviceSpaceConflict||reason instanceof DeviceSpaceDeleted?reason:new Error(failure));};
     });
   });
   setupWrites.set(space.id,operation);
-  void operation.then(()=>{if(setupWrites.get(space.id)===operation)setupWrites.delete(space.id);if(typeof window!=='undefined'){window.dispatchEvent(new Event('worldos:device-saved'));if(typeof BroadcastChannel==='function'){const channel=new BroadcastChannel('worldos-rooms');channel.postMessage('changed');channel.close();}}},()=>{if(setupWrites.get(space.id)===operation)setupWrites.delete(space.id);});
+  void operation.then(()=>{if(setupWrites.get(space.id)===operation)setupWrites.delete(space.id);announceSetupChange();},()=>{if(setupWrites.get(space.id)===operation)setupWrites.delete(space.id);});
   return operation;
 }
-export const deleteDeviceSpace = async (id: string) => {await setupWrites.get(id)?.catch(()=>{});return transaction('readwrite', s => s.delete(id));};
+export function deleteDeviceSpace(id:string):Promise<void>{
+  const operation=(setupWrites.get(id)??Promise.resolve()).catch(()=>{}).then(async()=>{await transaction('readwrite',store=>store.put({id,deleted:true}));});
+  setupWrites.set(id,operation);
+  void operation.then(()=>{if(setupWrites.get(id)===operation)setupWrites.delete(id);announceSetupChange();},()=>{if(setupWrites.get(id)===operation)setupWrites.delete(id);});
+  return operation;
+}
 export const loadRoomReference=()=>transaction<RoomReference|undefined>('readonly',s=>s.get('reference'),'room');
 export const saveRoomReference=(value:RoomReference|null)=>value?transaction('readwrite',s=>s.put(value,'reference'),'room'):transaction('readwrite',s=>s.delete('reference'),'room');
 

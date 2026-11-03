@@ -1,0 +1,8 @@
+.device-spaces .saved-room-row{display:flex;align-items:center;gap:12px;margin:20px 0}
+.device-spaces .saved-room-row>.saved-room-card{flex:1;min-width:0;margin:0}
+.device-spaces .saved-space-delete{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:10px 12px;border:1px solid #dbc8bf;border-radius:10px;background:#fff;color:#854b38;font:inherit;font-size:13px;flex-shrink:0}
+.device-spaces .saved-space-delete:hover{background:#faf1eb;border-color:#b9846d}
+.device-spaces .saved-space-delete:focus-visible{outline:3px solid #517766;outline-offset:3px}
+.device-spaces .saved-space-delete:disabled{opacity:.5;cursor:wait}
+.device-compact .saved-room-row{margin:0 0 10px}
+@media(max-width:520px){.device-spaces .saved-room-row{flex-wrap:wrap;gap:6px}.device-spaces .saved-room-row>.saved-room-card{flex-basis:100%}.device-spaces .saved-space-delete{margin-left:auto}.device-spaces .room-version{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.device-spaces .room-version>span{flex-basis:100%}}

@@ -116,6 +116,41 @@ export function removeObject(scene: DesignScene, id: string): DesignScene {
   return { ...scene, objects: scene.objects.filter(object => object.item.id !== id) };
 }
 
+export const SURFACE_KINDS: readonly FurnitureItem['kind'][] = ['table', 'desk', 'shelf', 'custom'];
+
+/** Place one piece on a modeled top surface. This creates no attachment relation. */
+export function surfacePlacement(scene: DesignScene, id: string, surfaceId: string): FurniturePlacement {
+  const object = scene.objects.find(object => object.item.id === id), surface = scene.objects.find(object => object.item.id === surfaceId);
+  if (!object || !surface) throw new Error('Choose a piece and a surface in this design.');
+  if (id === surfaceId) throw new Error('Choose another piece as the surface.');
+  if (!SURFACE_KINDS.includes(surface.item.kind)) throw new Error('Choose a table, desk, shelf, or custom surface.');
+  const size = orientedSize(object.item, object.placement.rotation), top = orientedSize(surface.item, surface.placement.rotation);
+  if (size.width > top.width + EPS || size.depth > top.depth + EPS) throw new Error(`${object.item.label} is too large for ${surface.item.label}.`);
+  // Recover existing support chains from footprint and height. Never move a
+  // support underneath a piece already resting on it onto that same piece.
+  const visited = new Set<string>();
+  function supportedBy(current: DesignObject): boolean {
+    if (visited.has(current.item.id)) return false;
+    visited.add(current.item.id);
+    const footprint = orientedSize(current.item, current.placement.rotation), bottom = current.placement.elevation ?? 0;
+    return scene.objects.some(candidate => {
+      if (candidate.item.id === current.item.id || !SURFACE_KINDS.includes(candidate.item.kind)) return false;
+      const bounds = orientedSize(candidate.item, candidate.placement.rotation), at = candidate.placement;
+      const rests = Math.abs(bottom - ((at.elevation ?? 0) + candidate.item.height)) < 1e-6
+        && current.placement.x >= at.x - EPS && current.placement.z >= at.z - EPS
+        && current.placement.x + footprint.width <= at.x + bounds.width + EPS
+        && current.placement.z + footprint.depth <= at.z + bounds.depth + EPS;
+      return rests && (candidate.item.id === id || supportedBy(candidate));
+    });
+  }
+  if (supportedBy(surface)) throw new Error('This surface is resting on the selected piece. Choose another surface.');
+  const elevation = (surface.placement.elevation ?? 0) + surface.item.height;
+  if (elevation > 10 || scene.room.height !== undefined && elevation + object.item.height > scene.room.height + EPS) throw new Error('This piece would be above the plan ceiling. Choose a lower surface.');
+  const placement = { ...object.placement, x: surface.placement.x + (top.width - size.width) / 2, z: surface.placement.z + (top.depth - size.depth) / 2, elevation };
+  if (!validPlacement(placement, object.item, scene.room)) throw new Error('This surface is outside your plan.');
+  return placement;
+}
+
 export function resizeScene(scene: DesignScene, room: RoomSize): DesignScene {
   if (!validRoom(room)) throw new Error('Use space dimensions between 0.01 and 30 metres.');
   return { ...scene, room: { ...room }, objects: scene.objects.map(object => ({ item: { ...object.item }, placement: boundedPlacement(object.item, object.placement, room) })) };
@@ -146,4 +181,11 @@ export function saveScene(scene: DesignScene): void {
   if (!valid) throw new Error('This scene has invalid dimensions or object data. Fix them before saving.');
   try { localStorage.setItem(SCENE_STORAGE_KEY, JSON.stringify(valid)); }
   catch { throw new Error('This scene could not be saved in this browser. Export it before leaving.'); }
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('worldos:design-saved'));
+}
+
+export function deleteScene(): void {
+  try { localStorage.removeItem(SCENE_STORAGE_KEY); }
+  catch { throw new Error('This design could not be deleted from this browser. Try again.'); }
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('worldos:design-deleted'));
 }

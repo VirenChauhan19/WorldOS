@@ -100,17 +100,22 @@ export class ImageTracker {
   }
 
   seed(objects: SceneObject[], captured: TrackingFrame): SceneObject[] {
-    const index = this.history.indexOf(captured);
-    this.objects = [];
-    if (index < 0) return [];
+    this.capturedAt = captured.at;
+    this.objects = this.project(objects,captured);
+    return this.objects;
+  }
+
+  // Validate a completed inference against every intervening image before it
+  // contributes temporal evidence. This does not replace existing tracks.
+  project(objects:SceneObject[],captured:TrackingFrame):SceneObject[]{
+    const index = this.history.indexOf(captured),latest=this.history.at(-1);
+    if(index<0||!latest||latest.at-captured.at>this.ttlMs)return [];
     let tracked = objects;
     // Replay the exact image path while the API was running, so old boxes
     // cannot suddenly appear at their original coordinates over a new view.
     for (let i = index + 1; i < this.history.length && tracked.length; i++) {
       tracked = trackObjects(tracked, this.history[i - 1], this.history[i]);
     }
-    this.capturedAt = captured.at;
-    this.objects = tracked;
     return tracked;
   }
 }

@@ -32,9 +32,9 @@ beforeEach(() => {
   vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } });
   vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue();
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
-  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => ({
-    drawImage: vi.fn(), getImageData: () => ({ data: new Uint8ClampedArray(32 * 24 * 4).fill(level) }),
-  }) as unknown as CanvasRenderingContext2D);
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function(this: HTMLCanvasElement) { return ({
+    drawImage: vi.fn(), getImageData: () => ({ data: new Uint8ClampedArray(this.width * this.height * 4).fill(level) }),
+  }) as unknown as CanvasRenderingContext2D;});
   vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockImplementation(function(this: HTMLCanvasElement) { return `data:image/jpeg;base64,fixture-${this.width}x${this.height}`; });
   vi.mocked(analyzeAI).mockResolvedValue(response);
   vi.mocked(observeLive).mockResolvedValue(response);
@@ -48,6 +48,49 @@ function enableLocalDetection(){
   vi.mocked(LocalDetector).mockImplementation(function(onStatus){onStatus('ready');return detector as unknown as LocalDetector;});
   return detector;
 }
+const localLaptop=(label='laptop'):LocalResult=>({latencyMs:40,detections:[{boundingBox:{originX:100,originY:80,width:200,height:120},categories:[{categoryName:label,score:.8}]}]});
+const deviceCamera=({children}:{children:ReactNode})=><DeviceWorkspaceContext.Provider value={true}>{children}</DeviceWorkspaceContext.Provider>;
+
+it('holds an admitted laptop through missed and conflicting local detections with stable IDs across memory saves',async()=>{
+  const detector=enableLocalDetection();detector.detect.mockResolvedValue(localLaptop());
+  getUserMedia.mockResolvedValue(camera().stream);
+  const ref=videoRef(),{result}=renderHook(()=>useLiveCamera({active:true,autoAnalyze:true,videoRef:ref,mode:'live'}),{wrapper:deviceCamera});
+  await act(async()=>result.current.start());await advance(240);
+  const id=result.current.trackedObjects[0].id;
+  detector.detect.mockResolvedValue({latencyMs:40,detections:[]});await advance(160);
+  expect(result.current.trackedObjects[0]).toMatchObject({id,label:'Laptop'});
+  for(let i=0;i<8;i++){
+    detector.detect.mockResolvedValue(localLaptop(i%2?'laptop':'book'));await advance(160);
+    expect(result.current.trackedObjects[0]).toMatchObject({id,label:'Laptop'});
+    expect(result.current.trackedObjects[0].confidence).toBeCloseTo(.8);
+    expect(result.current.analysis?.objects[0]).toMatchObject({id,label:'Laptop'});
+  }
+  expect(result.current.memory.items.length).toBeGreaterThan(0);
+  detector.detect.mockResolvedValue({latencyMs:40,detections:[]});await advance(800);
+  expect(result.current.trackedObjects).toEqual([]);
+  expect(observeLive).not.toHaveBeenCalled();
+});
+
+it('drops local evidence on a camera pan and cannot reconfirm from a late result for the old view',async()=>{
+  const detector=enableLocalDetection();detector.detect.mockResolvedValue(localLaptop());
+  getUserMedia.mockResolvedValue(camera().stream);
+  const ref=videoRef(),{result}=renderHook(()=>useLiveCamera({active:true,autoAnalyze:true,videoRef:ref,mode:'live'}),{wrapper:deviceCamera});
+  await act(async()=>result.current.start());await advance(240);
+  const oldId=result.current.trackedObjects[0].id;
+  let complete!:(value:LocalResult)=>void;
+  detector.detect.mockImplementationOnce(()=>new Promise(resolve=>{complete=resolve;}));
+  await advance(160);level=140;await advance(80);
+  expect(result.current.trackedObjects).toEqual([]);
+  await act(async()=>complete(localLaptop()));
+  expect(result.current.trackedObjects).toEqual([]);
+  expect(result.current.analysis?.objects).toEqual([]);
+  await advance(80);
+  expect(result.current.trackedObjects).toEqual([]);
+  expect(result.current.localStabilizing).toBe(true);
+  await advance(160);
+  expect(result.current.trackedObjects[0].label).toBe('Laptop');
+  expect(result.current.trackedObjects[0].id).not.toBe(oldId);
+});
 
 it('keeps device camera recognition and memory working without uploading frames to either cloud API',async()=>{
   const detector=enableLocalDetection();
@@ -69,6 +112,10 @@ it('prepares the local model before camera access and shows fresh labels without
   await act(async()=>result.current.start());await advance(80);
   expect(result.current.analysis?.provider).toBe('on_device');
   expect(result.current.analysisFrame?.width).toBe(512);
+  expect(result.current.trackedObjects).toEqual([]);
+  expect(result.current.localStabilizing).toBe(true);
+  expect(result.current.memory.items).toEqual([]);
+  await advance(160);
   expect(result.current.trackedObjects[0].label).toBe('Cup');
   expect(result.current.memory.items[0].object.source).toBe('on_device');
   expect(observeLive).toHaveBeenCalledOnce();

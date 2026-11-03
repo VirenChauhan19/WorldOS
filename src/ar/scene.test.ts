@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { addObject, createScene, createStarterScene, duplicateObject, loadScene, MAX_SCENE_OBJECTS, parseScene, removeObject, resizeScene, saveScene, SCENE_STORAGE_KEY, updateObject } from './scene';
+import { addObject, createScene, createStarterScene, duplicateObject, loadScene, MAX_SCENE_OBJECTS, parseScene, removeObject, resizeScene, saveScene, SCENE_STORAGE_KEY, surfacePlacement, updateObject } from './scene';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -86,5 +86,38 @@ describe('scene restoration', () => {
     vi.stubGlobal('localStorage', { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('full'); } });
     expect(loadScene()).toBeNull();
     expect(() => saveScene(createScene())).toThrow('could not be saved');
+  });
+});
+
+describe('modeled surface placement',()=>{
+  it('centers quarter-turned objects on a raised surface and retains all other attributes',()=>{
+    let scene=addObject(addObject(createScene(),'desk'),'laptop');
+    const [desk,laptop]=scene.objects;
+    scene=updateObject(scene,desk.item.id,{placement:{x:2,z:1,rotation:90,elevation:.3}});
+    scene=updateObject(scene,laptop.item.id,{placement:{rotation:90}});
+    const before=structuredClone(scene),placement=surfacePlacement(scene,laptop.item.id,desk.item.id);
+    expect(placement).toEqual({itemId:laptop.item.id,x:2+(.6-.26)/2,z:1+(1.2-.34)/2,rotation:90,elevation:1.05});
+    expect(scene).toEqual(before);
+    const stacked=updateObject(scene,laptop.item.id,{placement});
+    expect(stacked.objects[0]).toEqual(scene.objects[0]);
+    expect(stacked.objects[1].item).toEqual(laptop.item);
+    expect(parseScene(stacked)).toEqual(stacked);
+  });
+
+  it('rejects self support, undersized or unsuitable tops, and ceiling overflow',()=>{
+    let scene=addObject(addObject(addObject(createScene(),'side-table'),'desk'),'chair');
+    const [table,desk,chair]=scene.objects;
+    expect(()=>surfacePlacement(scene,desk.item.id,desk.item.id)).toThrow('another piece');
+    expect(()=>surfacePlacement(scene,desk.item.id,table.item.id)).toThrow('too large');
+    expect(()=>surfacePlacement(scene,table.item.id,chair.item.id)).toThrow('table, desk');
+    scene=updateObject(scene,desk.item.id,{placement:{elevation:2}});
+    expect(()=>surfacePlacement(scene,table.item.id,desk.item.id)).toThrow('ceiling');
+  });
+
+  it('prevents moving an existing support on top of its own dependent surface',()=>{
+    let scene=addObject(addObject(createScene(),'storage-box'),'storage-box');
+    const [base,top]=scene.objects;
+    scene=updateObject(scene,top.item.id,{placement:surfacePlacement(scene,top.item.id,base.item.id)});
+    expect(()=>surfacePlacement(scene,base.item.id,top.item.id)).toThrow('resting on the selected piece');
   });
 });

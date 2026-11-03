@@ -12,10 +12,11 @@ import { isWorldARSupported, startWorldAR } from '../live/xr';
 import type { WorldARController, WorldARPlacementPose, WorldARSceneObject, WorldARState } from '../live/xr';
 import type { XRPoint } from '../live/xr-types';
 import { exportJSON } from '../exportFile';
-import { navigate } from '../navigation';
+import { navigate, useRoute } from '../navigation';
 import { AR_CATALOG, AR_CATEGORIES } from './catalog';
-import { addObject, createScene, createStarterScene, duplicateObject, loadScene, MAX_SCENE_OBJECTS, parseScene, removeObject, resizeScene, saveScene, updateObject } from './scene';
+import { addObject, createScene, createStarterScene, duplicateObject, loadScene, MAX_SCENE_OBJECTS, parseScene, removeObject, resizeScene, saveScene, SCENE_STORAGE_KEY, SURFACE_KINDS, surfacePlacement, updateObject } from './scene';
 import type { DesignScene, ObjectUpdate } from './scene';
+import { consumeRoomHandoff } from './roomHandoff';
 import ObjectThumbnail from './ObjectThumbnail';
 import DesignPlan from './DesignPlan';
 import { placeSceneObject } from './placement';
@@ -35,15 +36,17 @@ function SizeField({label,value,onChange,min=0,max=30}:{label:string;value:numbe
 }
 
 export default function SceneDesigner({active=true}:{active?:boolean}) {
+  const route=useRoute();
   const [initial]=useState(()=>{const stored=loadScene();return {scene:stored??createScene(),saved:!!stored};});
   const [scene,setScene]=useState<DesignScene>(initial.scene);
-  const current=useRef(scene),dirty=useRef(!initial.saved);current.current=scene;
+  const current=useRef(scene),dirty=useRef(false),hadStored=useRef(initial.saved);current.current=scene;
   const [selectedId,setSelectedId]=useState(''),[view,setView]=useState<'3d'|'plan'>('3d');
   const [category,setCategory]=useState('all'),[query,setQuery]=useState(''),[notice,setNotice]=useState(''),[error,setError]=useState(''),[saved,setSaved]=useState(initial.saved),[libraryOpen,setLibraryOpen]=useState(false);
   const [xrSupported,setXRSupported]=useState<boolean|null>(null),[quickSupported]=useState(supportsQuickLook),[previewScope,setPreviewScope]=useState<'all'|'selected'>('all');
   const [nativeSupport,setNativeSupport]=useState<NativeARCapabilities>({supported:false}),[nativeRunning,setNativeRunning]=useState(false);
   const [running,setRunning]=useState(false),[starting,setStarting]=useState(false),[xrState,setXRState]=useState<WorldARState|null>(null),[arCatalog,setARCatalog]=useState(false),[pendingId,setPendingId]=useState('');
   const [replace,setReplace]=useState<'empty'|'living-room'|'workspace'|null>(null),[historyRevision,setHistoryRevision]=useState(0);
+  const [incoming,setIncoming]=useState<DesignScene|null>(null),[surfaceId,setSurfaceId]=useState('');
   const undo=useRef<DesignSnapshot[]>([]),redo=useRef<DesignSnapshot[]>([]),dragStart=useRef<DesignScene|null>(null);
   const overlay=useRef<HTMLDivElement>(null),canvas=useRef<HTMLCanvasElement>(null),controller=useRef<WorldARController|null>(null),abort=useRef<AbortController|null>(null),epoch=useRef(0);
   const positions=useRef(new Map<string,XRPoint>()),origin=useRef<XRPoint|null>(null),pending=useRef('');pending.current=pendingId;
@@ -52,10 +55,13 @@ export default function SceneDesigner({active=true}:{active?:boolean}) {
   const quickObjects=previewScope==='selected'?(selected?[{...selected,placement:{...selected.placement,x:0,z:0,elevation:0}}]:[]):scene.objects;
   const quick=useQuickLookAsset(quickObjects.map(o=>o.item),quickObjects.map(o=>o.placement),active&&quickSupported&&quickObjects.length>0);
   const catalog=AR_CATALOG.filter(entry=>(category==='all'||entry.category===category)&&entry.item.label.toLowerCase().includes(query.trim().toLowerCase()));
+  const surfaces=selected?scene.objects.filter(object=>object.item.id!==selected.item.id&&SURFACE_KINDS.includes(object.item.kind)).map(object=>{try{surfacePlacement(scene,selected.item.id,object.item.id);return {object,reason:''};}catch(error){return {object,reason:(error as Error).message};}}):[];
 
   function snapshot(value=current.current):DesignSnapshot{return {epoch:epoch.current,scene:value,positions:new Map([...positions.current].map(([id,p])=>[id,{...p}])),origin:origin.current?{...origin.current}:null};}
   function remember(previous:DesignScene){undo.current=[...undo.current.slice(-29),snapshot(previous)];redo.current=[];setHistoryRevision(n=>n+1);}
-  function persist(){if(!dirty.current)return;saveScene(current.current);dirty.current=false;}
+  function clearDeleted(){stopAR();const empty=createScene();current.current=empty;dirty.current=false;hadStored.current=false;undo.current=[];redo.current=[];dragStart.current=null;setScene(empty);setSaved(false);setSelectedId('');setSurfaceId('');setIncoming(null);setReplace(null);setError('');setNotice('Design deleted. Add a piece to begin again.');setHistoryRevision(n=>n+1);}
+  function removedFromStorage(){try{return hadStored.current&&localStorage.getItem(SCENE_STORAGE_KEY)===null;}catch{return false;}}
+  function persist(){if(!dirty.current)return false;if(removedFromStorage()){clearDeleted();return false;}saveScene(current.current);dirty.current=false;hadStored.current=true;return true;}
   function change(next:DesignScene,record=true){if(record)remember(current.current);current.current=next;dirty.current=true;setScene(next);setSaved(false);setError('');}
   function perform(work:()=>void){try{work();setError('');}catch(e){setError(e instanceof Error?e.message:'Could not update this design.');}}
   function edit(id:string,patch:ObjectUpdate,record=true){perform(()=>{
@@ -67,7 +73,21 @@ export default function SceneDesigner({active=true}:{active?:boolean}) {
       positions.current.set(id,{x:position.x+after.placement.x-before.placement.x+(newSize.width-oldSize.width)/2,y:position.y+(after.placement.elevation??0)-(before.placement.elevation??0),z:position.z+after.placement.z-before.placement.z+(newSize.depth-oldSize.depth)/2});
     }
   });}
-  function select(id:string){setSelectedId(id);setPendingId('');}
+  function select(id:string){setSelectedId(id);setPendingId('');setSurfaceId('');}
+  function placeOnSurface(){if(!selected||!surfaceId)return;perform(()=>{
+    const value=current.current,placement=surfacePlacement(value,selected.item.id,surfaceId),target=value.objects.find(object=>object.item.id===surfaceId)!,targetPosition=positions.current.get(surfaceId);
+    edit(selected.item.id,{placement});
+    if(running){if(targetPosition){positions.current.set(selected.item.id,{x:targetPosition.x,y:targetPosition.y+target.item.height,z:targetPosition.z});setPendingId('');}else positions.current.delete(selected.item.id);syncWorld();}
+    setNotice(running&&!targetPosition?`${selected.item.label} arranged on ${target.item.label} in the plan. Place the full design to see them together.`:`${selected.item.label} centered on ${target.item.label}. Move each piece independently to adjust it.`);
+  });}
+  function acceptRoom(next:DesignScene){if(removedFromStorage())clearDeleted();stopAR();change(next);hadStored.current=false;setSelectedId('');setSurfaceId('');setIncoming(null);setView('3d');setNotice('Your room layout is ready. Keep editing here or place the full design in AR.');}
+  function refreshSaved(){
+    if(dirty.current)return;
+    const stored=loadScene();
+    if(!stored){if(removedFromStorage())clearDeleted();return;}
+    if(JSON.stringify(stored)===JSON.stringify(current.current))return;
+    stopAR();current.current=stored;hadStored.current=true;undo.current=[];redo.current=[];dragStart.current=null;setScene(stored);setSaved(true);setSelectedId('');setSurfaceId('');setPreviewScope('all');setError('');setNotice('Opened your latest saved design.');setHistoryRevision(n=>n+1);
+  }
   function add(id:string){perform(()=>{const next=addObject(current.current,id),object=next.objects.at(-1)!;change(next);setLibraryOpen(false);setSelectedId(object.item.id);if(running){setPendingId(object.item.id);setARCatalog(false);setNotice(`Aim at a surface to place ${object.item.label}.`);}else setNotice(`${object.item.label} added. Drag it in Floor plan or edit its position below.`);});}
   function remove(id:string){change(removeObject(current.current,id));positions.current.delete(id);if(selectedId===id)setSelectedId('');if(pendingId===id)setPendingId('');setNotice('Object removed. Undo is available.');}
   function duplicate(){if(!selected)return;perform(()=>{const next=duplicateObject(current.current,selected.item.id),id=next.objects.at(-1)!.item.id;change(next);setSelectedId(id);if(running)setPendingId(id);});}
@@ -93,9 +113,24 @@ export default function SceneDesigner({active=true}:{active?:boolean}) {
     }catch(e){if(epoch.current===request){setRunning(false);setNativeRunning(false);setStarting(false);setError(e instanceof Error?e.message:typeof (e as {message?:unknown})?.message==='string'?(e as {message:string}).message:'AR could not start.');}}
   }
   useEffect(()=>{let live=true;void isWorldARSupported().then(value=>{if(live)setXRSupported(value);});void nativeARCapabilities().then(value=>{if(live)setNativeSupport(value);});return()=>{live=false;};},[]);
-  useEffect(()=>{if(!active){stopAR();try{persist();}catch{/* The active view reports save errors. */}}},[active]);
+  useEffect(()=>{if(active){refreshSaved();return;}setIncoming(null);stopAR();try{persist();}catch{/* The active view reports save errors. */}},[active]);
+  useEffect(()=>{if(!active)return;const token=route.params.get('handoff');if(!token)return;const next=consumeRoomHandoff(token);if(next){if(current.current.objects.length)setIncoming(next);else acceptRoom(next);}},[active,route.key]);
+  useEffect(()=>{
+    const deleted=()=>clearDeleted();
+    const storage=(event:StorageEvent)=>{
+      if((event.key!==SCENE_STORAGE_KEY&&event.key!==null)||event.newValue!==null)return;
+      // An accepted room is a new design. A delayed deletion of its predecessor
+      // must retire the old undo history without erasing the new arrangement.
+      if(!hadStored.current){undo.current=[];redo.current=[];setHistoryRevision(n=>n+1);return;}
+      const stored=loadScene();
+      if(stored&&JSON.stringify(stored)===JSON.stringify(current.current))return;
+      deleted();
+    };
+    window.addEventListener('worldos:design-deleted',deleted);window.addEventListener('storage',storage);
+    return()=>{window.removeEventListener('worldos:design-deleted',deleted);window.removeEventListener('storage',storage);};
+  },[]);
   useEffect(()=>{const leave=()=>{try{persist();}catch{/* A visible save error is reported by the normal save effect. */}stopAR();};const close=()=>{if(document.hidden)leave();};document.addEventListener('visibilitychange',close);window.addEventListener('pagehide',leave);return()=>{try{persist();}catch{/* The active view reports save errors. */}epoch.current++;abort.current?.abort();void controller.current?.end();document.removeEventListener('visibilitychange',close);window.removeEventListener('pagehide',leave);};},[]);
-  useEffect(()=>{if(!active)return;const timer=window.setTimeout(()=>{try{persist();setSaved(true);}catch(e){setError((e as Error).message);}},300);return()=>window.clearTimeout(timer);},[scene,active]);
+  useEffect(()=>{if(!active||!dirty.current)return;const timer=window.setTimeout(()=>{try{if(persist())setSaved(true);}catch(e){setError((e as Error).message);}},300);return()=>window.clearTimeout(timer);},[scene,active]);
   useEffect(()=>{if(!running)return;syncWorld();const object=scene.objects.find(o=>o.item.id===pendingId);controller.current?.setPlacementPreview?.(object?.item??null,object?.placement.rotation??0);},[scene,selectedId,pendingId,running,starting]);
   async function restore(file:File){try{if(file.size>128000)throw new Error('Choose a design backup smaller than 128 KB.');const next=parseScene(JSON.parse(await file.text()));if(!next)throw new Error('This file is not a valid WorldOS design.');change(next);setSelectedId('');setNotice('Design restored.');}catch(e){setError(e instanceof Error?e.message:'Could not restore this design.');}}
 
@@ -113,6 +148,7 @@ export default function SceneDesigner({active=true}:{active?:boolean}) {
     <div className="design-edit-actions"><button onClick={rotate}><RotateCw size={16}/>Rotate 90°</button><button onClick={duplicate}><Copy size={16}/>Duplicate</button><button aria-label={`Remove ${selected.item.label}`} onClick={()=>remove(selected.item.id)}><Trash2 size={16}/>Remove</button></div>
     <div className="design-position"><div><span className="design-kicker">POSITION · {selected.placement.rotation}°</span><span>Move 10 cm</span></div><div className="design-nudge" role="group" aria-label="Move selected object"><button aria-label="Move object left" onClick={()=>nudge(-.1,0)}><ArrowLeft size={18}/></button><button aria-label="Move object forward" onClick={()=>nudge(0,-.1)}><ArrowUp size={18}/></button><button aria-label="Move object backward" onClick={()=>nudge(0,.1)}><ArrowDown size={18}/></button><button aria-label="Move object right" onClick={()=>nudge(.1,0)}><ArrowRight size={18}/></button></div></div>
     <div className="design-size-fields"><SizeField label="Position from left" value={selected.placement.x} onChange={n=>edit(selected.item.id,{placement:{x:n}})}/><SizeField label="Position from back" value={selected.placement.z} onChange={n=>edit(selected.item.id,{placement:{z:n}})}/><SizeField label="Height off floor" value={selected.placement.elevation??0} max={10} onChange={n=>edit(selected.item.id,{placement:{elevation:n}})}/></div>
+    <div className="design-surface-tools"><label>Place on top<select aria-label="Supporting surface" value={surfaces.some(surface=>surface.object.item.id===surfaceId)?surfaceId:''} onChange={event=>setSurfaceId(event.target.value)}><option value="">Choose a surface</option>{surfaces.map(({object,reason})=><option key={object.item.id} value={object.item.id} disabled={!!reason}>{object.item.label}{reason?' · Does not fit':''}</option>)}</select></label><div><button disabled={!surfaces.some(surface=>surface.object.item.id===surfaceId&&!surface.reason)} onClick={placeOnSurface}>Place on top</button><button onClick={()=>{edit(selected.item.id,{placement:{elevation:0}});setNotice(`${selected.item.label} moved to the floor.`);}}>Move to floor</button></div><p>Center a piece on a table, desk, shelf, or custom surface. Each piece moves independently.</p>{!surfaces.some(surface=>!surface.reason)&&<p>No surface fits this piece. Add a larger surface or adjust the dimensions.</p>}</div>
     {running&&<button className="design-primary" onClick={()=>setPendingId(selected.item.id)}><Move size={17}/>{positions.current.has(selected.item.id)?'Move to a new spot':'Place this object'}</button>}
   </section>:<section className="design-selection-empty"><WorldIcon name="objects" size={25}/><h2>A room made by you.</h2><p>Select a piece to change its size, finish, rotation, and position.</p></section>;
 
@@ -121,7 +157,7 @@ export default function SceneDesigner({active=true}:{active?:boolean}) {
     <div className="design-standard">
       <header className="design-heading"><div><span className="design-kicker">YOUR POCKET INTERIOR STUDIO</span><h1>Good spaces start with you.</h1><p>Choose your pieces. Try a layout. See it in your space.</p></div><div className="design-heading-actions"><button className="design-primary design-open-library" onClick={()=>setLibraryOpen(true)}><Plus size={18}/>Add pieces</button><button className="design-secondary" onClick={()=>navigate('room',{workspace:''})}>Photo room planner<ArrowRight size={16}/></button>{(nativeSupport.supported||xrSupported)&&<button className="design-primary" disabled={starting} onClick={()=>void startAR()}><WorldIcon name="scan" size={19}/>Start interactive AR</button>}</div></header>
       <div className="design-layout"><div className="design-main">
-        <section className="design-canvas-card"><div className="design-toolbar"><label><input aria-label="Design name" maxLength={80} value={scene.name} onChange={e=>{if(e.target.value.trim())change({...scene,name:e.target.value});}}/><span>{saved?<><Check size={12}/>Saved on this device</>:'Saving your design…'}</span></label><div className="design-history"><button aria-label="Undo design change" disabled={!undo.current.length} onClick={()=>travel('undo')}><Undo2 size={18}/></button><button aria-label="Redo design change" disabled={!redo.current.length} onClick={()=>travel('redo')}><Redo2 size={18}/></button></div></div>
+        <section className="design-canvas-card"><div className="design-toolbar"><label><input aria-label="Design name" maxLength={80} value={scene.name} onChange={e=>{if(e.target.value.trim())change({...scene,name:e.target.value});}}/><span>{saved?<><Check size={12}/>Saved on this device</>:dirty.current?'Saving your design…':'Add pieces to save your design'}</span></label><div className="design-history"><button aria-label="Undo design change" disabled={!undo.current.length} onClick={()=>travel('undo')}><Undo2 size={18}/></button><button aria-label="Redo design change" disabled={!redo.current.length} onClick={()=>travel('redo')}><Redo2 size={18}/></button></div></div>
           <div className="design-view-tabs" role="group" aria-label="Design view"><button aria-pressed={view==='3d'} onClick={()=>setView('3d')}><WorldIcon name="room" size={17}/>3D studio</button><button aria-pressed={view==='plan'} onClick={()=>setView('plan')}><WorldIcon name="floorplan" size={17}/>Floor plan<small>Drag to arrange</small></button><span>{scene.room.width} × {scene.room.depth} m plan</span></div>
           {view==='3d'?<RoomPreview room={scene.room} items={scene.objects.map(o=>o.item)} placements={scene.objects.map(o=>o.placement)} selectedId={selectedId} onSelect={select}/>:<DesignPlan scene={scene} selectedId={selectedId} onSelect={select} onBegin={()=>{dragStart.current=current.current;}} onMove={(id,x,z,record=true)=>edit(id,{placement:{x:round(x),z:round(z)}},record)} onEnd={()=>{if(dragStart.current&&dragStart.current!==current.current)remember(dragStart.current);dragStart.current=null;}}/>}
           {!scene.objects.length&&<div className="design-empty-invitation"><span><WorldIcon name="objects" size={25}/></span><h2>Your blank canvas.</h2><p>Add a piece from the collection, or explore a starting idea.</p><div><button onClick={()=>change(createStarterScene('living-room'))}>Try a living room<ArrowRight size={15}/></button><button onClick={()=>change(createStarterScene('workspace'))}>Try a workspace<ArrowRight size={15}/></button></div></div>}
@@ -142,6 +178,7 @@ export default function SceneDesigner({active=true}:{active?:boolean}) {
       </div></div>}
     <Dialog open={libraryOpen&&!running} onClose={()=>setLibraryOpen(false)} title="Add pieces to your design">{library}</Dialog>
     <Dialog open={!!replace} onClose={()=>setReplace(null)} title="Start a new design?"><p>Export this design first to keep a separate copy. Undo can also restore it during this visit.</p><button className="design-primary" onClick={()=>{change(createScene());setSelectedId('');setReplace(null);}}>Start a blank design</button></Dialog>
+    <Dialog open={!!incoming} onClose={()=>setIncoming(null)} title="Open your room layout?"><p>Replace “{scene.name}” with “{incoming?.name}” and its {incoming?.objects.length} pieces? Export your current design first to keep a separate copy. Undo can restore it during this visit.</p><div className="design-handoff-actions"><button className="design-secondary" onClick={()=>setIncoming(null)}>Keep current design</button><button className="design-primary" onClick={()=>{if(incoming)acceptRoom(incoming);}}>Use room layout</button></div></Dialog>
     <span hidden data-history-revision={historyRevision}/>
   </div>;
 }

@@ -23,7 +23,9 @@ import { isWorldARSupported, startWorldAR } from '../live/xr';
 import { nativeARCapabilities, startNativeInteriorAR } from './native';
 import { supportsQuickLook } from '../room/quickLook';
 import { useQuickLookAsset } from '../room/QuickLookLink';
-import { createScene, loadScene, saveScene, SCENE_STORAGE_KEY } from './scene';
+import { addObject, createScene, createStarterScene, deleteScene, loadScene, saveScene, SCENE_STORAGE_KEY } from './scene';
+import { prepareRoomHandoff } from './roomHandoff';
+import { navigate } from '../navigation';
 import SceneDesigner from './SceneDesigner';
 
 let options: WorldAROptions;
@@ -32,6 +34,8 @@ let controller: NativeARController;
 
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
+  window.history.replaceState(null,'','#/ar');
   vi.mocked(isWorldARSupported).mockResolvedValue(false);
   vi.mocked(nativeARCapabilities).mockResolvedValue({ supported: false });
   vi.mocked(supportsQuickLook).mockReturnValue(false);
@@ -315,6 +319,219 @@ describe('saving across lifecycle transitions', () => {
     expect(loadScene()?.objects).toEqual([]);
     fireEvent(window, new Event('pagehide'));
     expect(loadScene()?.objects).toHaveLength(1);
+  });
+});
+
+describe('continuing a room layout',()=>{
+  it('checks a new handoff against the latest saved design when the cached studio reopens',async()=>{
+    saveScene(addObject(createScene('Old saved design'),'chair'));
+    const view=await renderDesigner();view.rerender(<SceneDesigner active={false}/>);
+    const newer=addObject(createScene('Latest saved design'),'desk'),incoming=createStarterScene('workspace');
+    saveScene(newer);
+    act(()=>navigate('ar',{handoff:prepareRoomHandoff(incoming)}));
+    view.rerender(<SceneDesigner active/>);
+    const dialog=screen.getByRole('dialog',{name:'Open your room layout?'});
+    expect(dialog.textContent).toContain('Latest saved design');
+    expect(preview().items).toEqual(newer.objects.map(object=>object.item));
+    fireEvent.click(within(dialog).getByRole('button',{name:'Keep current design'}));
+    expect(preview().items).toEqual(newer.objects.map(object=>object.item));
+    expect(loadScene()).toEqual(newer);
+  });
+
+  it('accepts an explicit new room after an unseen deletion without making the deleted design undoable',async()=>{
+    saveScene(addObject(createScene('Removed in another tab'),'chair'));
+    await renderDesigner();
+    localStorage.removeItem(SCENE_STORAGE_KEY);
+    const incoming=createStarterScene('workspace');
+    act(()=>navigate('ar',{handoff:prepareRoomHandoff(incoming)}));
+    fireEvent.click(screen.getByRole('button',{name:'Use room layout'}));
+    fireEvent(window,new Event('pagehide'));
+    expect(loadScene()).toEqual(incoming);
+    fireEvent(window,new StorageEvent('storage',{key:SCENE_STORAGE_KEY,newValue:null}));
+    expect(preview().items).toEqual(incoming.objects.map(object=>object.item));
+    fireEvent.click(screen.getByRole('button',{name:'Undo design change'}));
+    expect(preview().items).toEqual([]);
+  });
+
+  it('opens a layout in a blank studio, preserving its dimensions, finishes and placements',async()=>{
+    const incoming=createStarterScene('workspace');incoming.name='Photo room';incoming.room={width:6,depth:4.5,height:3};incoming.objects[0].item.color='#123456';
+    navigate('ar',{handoff:prepareRoomHandoff(incoming)});
+    const view=await renderDesigner();
+    expect(preview().room).toEqual(incoming.room);
+    expect(preview().items).toEqual(incoming.objects.map(object=>object.item));
+    expect(preview().placements).toEqual(incoming.objects.map(object=>object.placement));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    view.unmount();
+    expect(loadScene()).toEqual(incoming);
+  });
+
+  it('lets a cached editor cancel a replacement once, then explicitly confirm another and undo it',async()=>{
+    const old=addObject(createScene('My existing design'),'chair'),incoming=createStarterScene('workspace');
+    saveScene(old);
+    const view=await renderDesigner();
+    view.rerender(<SceneDesigner active={false}/>);
+    act(()=>navigate('ar',{handoff:prepareRoomHandoff(incoming)}));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    view.rerender(<SceneDesigner active/>);
+    const dialog=screen.getByRole('dialog',{name:'Open your room layout?'});
+    expect(preview().items).toEqual(old.objects.map(object=>object.item));
+    fireEvent.click(within(dialog).getByRole('button',{name:'Keep current design'}));
+    view.rerender(<SceneDesigner active={false}/>);view.rerender(<SceneDesigner active/>);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(loadScene()).toEqual(old);
+    act(()=>navigate('ar',{handoff:prepareRoomHandoff(incoming)}));
+    fireEvent.click(within(screen.getByRole('dialog',{name:'Open your room layout?'})).getByRole('button',{name:'Use room layout'}));
+    expect(preview().items).toEqual(incoming.objects.map(object=>object.item));
+    fireEvent(window,new Event('pagehide'));
+    expect(loadScene()).toEqual(incoming);
+    fireEvent.click(screen.getByRole('button',{name:'Undo design change'}));
+    expect(preview().items).toEqual(old.objects.map(object=>object.item));
+    view.unmount();
+    expect(loadScene()).toEqual(old);
+  });
+});
+
+describe('reopening a cached studio',()=>{
+  it('opens the latest saved scene and retires history from the previously opened design',async()=>{
+    vi.useFakeTimers();
+    saveScene(addObject(createScene('Earlier design'),'chair'));
+    let view!:ReturnType<typeof render>;
+    await act(async()=>{view=render(<SceneDesigner/>);});
+    fireEvent.click(screen.getByRole('button',{name:'Add Laptop'}));
+    act(()=>{vi.advanceTimersByTime(300);});
+    view.rerender(<SceneDesigner active={false}/>);
+    const newer=addObject(createScene('Updated elsewhere',{width:6,depth:5,height:3}),'desk');
+    newer.objects[0].item.color='#123456';newer.objects[0].placement.x=2;
+    saveScene(newer);
+    view.rerender(<SceneDesigner active/>);
+    expect(preview().room).toEqual(newer.room);
+    expect(preview().items).toEqual(newer.objects.map(object=>object.item));
+    expect(preview().placements).toEqual(newer.objects.map(object=>object.placement));
+    expect((screen.getByRole('button',{name:'Undo design change'}) as HTMLButtonElement).disabled).toBe(true);
+    act(()=>{vi.advanceTimersByTime(1000);});
+    expect(loadScene()).toEqual(newer);
+  });
+
+  it('preserves dirty edits if the prior save failed instead of replacing them from storage',async()=>{
+    vi.useFakeTimers();
+    saveScene(addObject(createScene('Original design'),'chair'));
+    let view!:ReturnType<typeof render>;
+    await act(async()=>{view=render(<SceneDesigner/>);});
+    fireEvent.click(screen.getByRole('button',{name:'Add Laptop'}));
+    const edited=preview();
+    const failing=vi.spyOn(Storage.prototype,'setItem').mockImplementationOnce(()=>{throw new Error('Storage full');});
+    view.rerender(<SceneDesigner active={false}/>);
+    failing.mockRestore();
+    const newer=addObject(createScene('Saved elsewhere'),'desk');saveScene(newer);
+    view.rerender(<SceneDesigner active/>);
+    expect(preview().items).toEqual(edited.items);
+    expect(preview().placements).toEqual(edited.placements);
+    expect((screen.getByRole('button',{name:'Undo design change'}) as HTMLButtonElement).disabled).toBe(false);
+    act(()=>{vi.advanceTimersByTime(300);});
+    expect(loadScene()?.objects.map(object=>object.item)).toEqual(edited.items);
+  });
+});
+
+describe('deleting a cached design',()=>{
+  it('does not restore a removed design if the storage event has not arrived before a lifecycle flush',async()=>{
+    saveScene(addObject(createScene('Deleted elsewhere'),'desk'));
+    await renderDesigner();
+    fireEvent.click(screen.getByRole('button',{name:'Add Laptop'}));
+    localStorage.removeItem(SCENE_STORAGE_KEY);
+    fireEvent(window,new Event('pagehide'));
+    expect(preview().items).toEqual([]);
+    expect(loadScene()).toBeNull();
+  });
+
+  it.each(['same tab','another tab'] as const)('retires pending saves and history after deletion in %s',async source=>{
+    vi.useFakeTimers();
+    saveScene(addObject(createScene('Delete me'),'desk'));
+    let view!:ReturnType<typeof render>;
+    await act(async()=>{view=render(<SceneDesigner/>);});
+    fireEvent.click(screen.getByRole('button',{name:'Add Laptop'}));
+    act(()=>{
+      if(source==='same tab')deleteScene();
+      else{localStorage.removeItem(SCENE_STORAGE_KEY);window.dispatchEvent(new StorageEvent('storage',{key:SCENE_STORAGE_KEY,newValue:null}));}
+    });
+    expect(preview().items).toEqual([]);
+    expect((screen.getByRole('button',{name:'Undo design change'}) as HTMLButtonElement).disabled).toBe(true);
+    act(()=>{vi.advanceTimersByTime(1000);});
+    fireEvent(window,new Event('pagehide'));view.unmount();
+    expect(localStorage.getItem(SCENE_STORAGE_KEY)).toBeNull();
+    render(<SceneDesigner/>);
+    expect(preview().items).toEqual([]);
+    act(()=>{vi.advanceTimersByTime(1000);});
+    expect(localStorage.getItem(SCENE_STORAGE_KEY)).toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:'Add Chair'}));
+    fireEvent(window,new Event('pagehide'));
+    expect(loadScene()?.objects.map(object=>object.item.label)).toEqual(['Chair']);
+  });
+});
+
+describe('placing pieces on modeled surfaces',()=>{
+  it('keeps a plan-only surface operation out of the tracked scene until the user places the full design',async()=>{
+    vi.mocked(isWorldARSupported).mockResolvedValue(true);
+    await renderDesigner();
+    fireEvent.click(screen.getByRole('button',{name:'Add Desk'}));
+    fireEvent.click(screen.getByRole('button',{name:'Add Laptop'}));
+    const [desk]=preview().items;
+    await startAR();
+    fireEvent.change(liveControls().getByRole('combobox',{name:'Supporting surface'}),{target:{value:desk.id}});
+    fireEvent.click(liveControls().getByRole('button',{name:'Place on top'}));
+    expect(worldObjects()).toEqual([]);
+    expect(preview().placements[1].elevation).toBe(.75);
+    fireEvent.click(liveControls().getByRole('button',{name:'Place full design'}));
+    expect(worldObjects()).toHaveLength(2);
+    expect(worldObjects()[1].position.y-worldObjects()[0].position.y).toBe(.75);
+  });
+
+  it('centers a laptop on a desk, supports floor placement and undo, and excludes undersized tops',async()=>{
+    await renderDesigner();
+    fireEvent.click(screen.getByRole('button',{name:'Add Desk'}));
+    setField('Position from left','1.5');setField('Position from back','.8');
+    fireEvent.click(screen.getByRole('button',{name:'Add Laptop'}));
+    const before=preview();
+    fireEvent.change(screen.getByRole('combobox',{name:'Supporting surface'}),{target:{value:before.items[0].id}});
+    fireEvent.click(screen.getByRole('button',{name:'Place on top'}));
+    expect(preview().placements[1]).toMatchObject({x:1.5+(1.2-.34)/2,z:.8+(.6-.26)/2,elevation:.75});
+    expect(preview().items).toEqual(before.items);
+    fireEvent.click(screen.getByRole('button',{name:'Move to floor'}));
+    expect(preview().placements[1].elevation).toBe(0);
+    fireEvent.click(screen.getByRole('button',{name:'Undo design change'}));
+    expect(preview().placements[1].elevation).toBe(.75);
+    fireEvent.click(screen.getByRole('button',{name:'Undo design change'}));
+    expect(preview().placements).toEqual(before.placements);
+    fireEvent.click(screen.getByRole('button',{name:'Add Side table'}));
+    selectPiece('Desk');
+    expect((screen.getByRole('option',{name:'Side table · Does not fit'}) as HTMLOptionElement).disabled).toBe(true);
+    expect((screen.getByRole('button',{name:'Place on top'}) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it.each(['WebXR','native'] as const)('anchors an unplaced piece to a placed table in %s and restores both scene and poses with undo',async runtime=>{
+    vi.mocked(isWorldARSupported).mockResolvedValue(true);
+    vi.mocked(nativeARCapabilities).mockResolvedValue({supported:runtime==='native'});
+    await renderDesigner();
+    fireEvent.click(screen.getByRole('button',{name:'Add Desk'}));
+    fireEvent.click(screen.getByRole('button',{name:'Add Laptop'}));
+    const [desk,laptop]=preview().items;
+    await startAR();
+    act(()=>options.onObjectSelect?.(desk.id));
+    fireEvent.click(liveControls().getByRole('button',{name:'Place this object'}));
+    pose={position:{x:2,y:.4,z:3},rotation:0};
+    fireEvent.click(liveControls().getByRole('button',{name:'Place here'}));
+    const placedDesk=worldObjects()[0];
+    act(()=>options.onObjectSelect?.(laptop.id));
+    fireEvent.change(liveControls().getByRole('combobox',{name:'Supporting surface'}),{target:{value:desk.id}});
+    fireEvent.click(liveControls().getByRole('button',{name:'Place on top'}));
+    expect(worldObjects()).toHaveLength(2);
+    expect(worldObjects()[0]).toEqual(placedDesk);
+    expect(worldObjects()[1].position).toEqual({x:2,y:1.15,z:3});
+    fireEvent.click(screen.getByRole('button',{name:'Undo AR change'}));
+    expect(worldObjects()).toEqual([placedDesk]);
+    fireEvent.click(screen.getByRole('button',{name:'Redo AR change'}));
+    expect(worldObjects()[1].position).toEqual({x:2,y:1.15,z:3});
+    fireEvent.click(liveControls().getByRole('button',{name:'Move to floor'}));
+    expect(worldObjects()[1].position.y).toBeCloseTo(.4);
   });
 });
 

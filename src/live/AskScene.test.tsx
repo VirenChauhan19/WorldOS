@@ -59,3 +59,30 @@ it('locks duplicate submissions, supports cancellation and preserves a failed qu
   expect(vi.mocked(askScene).mock.calls[1][3]?.aborted).toBe(true);
   await waitFor(()=>expect(screen.queryByText('Looking closely at your space…')).toBeNull());
 });
+
+it('discards an answer when the label is corrected on the same photograph',async()=>{
+  let resolve!:(value:SceneAnswer)=>void;
+  vi.mocked(askScene).mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));
+  const view=render(<AskScene {...props} selectedId="phone"/>);
+  fireEvent.click(screen.getByRole('button',{name:'Check this label'}));
+  const signal=vi.mocked(askScene).mock.calls[0][3]!;
+  const corrected={...analysis,objects:[{...analysis.objects[0],label:'Calculator',source:'ai_corrected' as const,confidence:null}]};
+  view.rerender(<AskScene {...props} analysis={corrected} selectedId="phone"/>);
+  expect(signal.aborted).toBe(true);
+  await act(async()=>resolve(answer));
+  expect(screen.queryByText(answer.answer)).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'Check this label'}));
+  expect(askScene).toHaveBeenLastCalledWith(frame.image_url,corrected.objects,expect.stringContaining('suggested label "Calculator"'),expect.any(AbortSignal));
+  await screen.findByText(answer.answer);
+});
+
+it('can explain the image without any detected boxes and cancels when the view closes',async()=>{
+  vi.mocked(askScene).mockImplementationOnce(()=>new Promise(()=>{}));
+  const view=render(<AskScene {...props} analysis={{...analysis,objects:[]}}/>);
+  expect(askScene).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button',{name:'Explain this view'}));
+  expect(askScene).toHaveBeenCalledWith(frame.image_url,[],expect.stringContaining('Say what is uncertain'),expect.any(AbortSignal));
+  const signal=vi.mocked(askScene).mock.calls[0][3]!;
+  view.rerender(<AskScene {...props} active={false}/>);
+  expect(signal.aborted).toBe(true);
+});

@@ -1,13 +1,9 @@
 import { Crosshair, LoaderCircle, RotateCcw, ScanLine } from 'lucide-react';
-import type { AIAnalysis, SceneImage, SceneObject } from '../types';
+import type { AIAnalysis, SceneImage } from '../types';
 import type { RecognitionStatus } from './useLiveCamera';
 import { useDeviceWorkspace } from '../device/context';
 
-function location(object: SceneObject) {
-  const x = object.box.x + object.box.width / 2;
-  const y = object.box.y + object.box.height / 2;
-  return `${y < .33 ? 'Upper' : y > .67 ? 'Lower' : 'Middle'} ${x < .33 ? 'left' : x > .67 ? 'right' : 'center'}`;
-}
+import { imageLocation } from './objectEvidence';
 
 export default function SceneUnderstanding({ continuous=false, analysis, snapshot, status, retryInSeconds, selectedId, onSelect, onRefresh }: {
   continuous?: boolean;
@@ -33,7 +29,7 @@ export default function SceneUnderstanding({ continuous=false, analysis, snapsho
     {snapshot && <figure className="scene-captured"><figcaption>LAST CAPTURED VIEW · {objects.length} ITEMS</figcaption><div><img src={snapshot.image_url} alt="The captured camera frame used for these recognition results"/>{objects.map(object=><button key={object.id} type="button" className={`scene-captured-box ${selectedId===object.id?'is-selected':''}`} style={{left:`${object.box.x*100}%`,top:`${object.box.y*100}%`,width:`${object.box.width*100}%`,height:`${object.box.height*100}%`}} aria-label={`Highlight ${object.label} in captured view`} aria-pressed={selectedId===object.id} onClick={()=>onSelect(object.id)}/>)}</div></figure>}
     {summary && <p className="scene-summary">{summary}</p>}
     {!!objects.length && <div className="scene-items" role="group" aria-label="Recognized items">{objects.map((object, index) => <button key={object.id} aria-pressed={selectedId === object.id} onClick={() => onSelect(object.id)}><span>{String(index + 1).padStart(2, '0')}</span><strong>{object.label}</strong><Crosshair size={14}/></button>)}</div>}
-    {selected && <div className="scene-selection"><strong>{selected.label}</strong><span>{location(selected)} of the image{selected.confidence != null && ` · Detection score ${selected.confidence.toFixed(2)}`}</span>{analysis?.details?.[selected.id]&&<p>{analysis.details[selected.id]}</p>}<p>Object outlines describe this camera frame. They do not establish physical size or free space.</p></div>}
+    {selected && <div className="scene-selection"><strong>{selected.label}</strong><span>{imageLocation(selected)} of the image{selected.confidence != null && ` · Detection score ${selected.confidence.toFixed(2)}`}</span>{analysis?.details?.[selected.id]&&<p>{analysis.details[selected.id]}</p>}<p>Labels are suggestions. The outline shows image position; physical size, model, material, and fit need additional evidence.</p></div>}
     {analysis?.truncated && <p className="scene-limit">Showing {objects.length} of {analysis.total_objects} detections. Move closer to focus on a smaller area.</p>}
     {!!analysis?.unmatched_concepts?.length && <details className="scene-unlocated"><summary>{analysis.unmatched_concepts.length} suggested {analysis.unmatched_concepts.length === 1 ? 'type' : 'types'} could not be located</summary><p>{analysis.unmatched_concepts.join(', ')}. These have no verified outline in this view.</p></details>}
     {analysis && <div className="scene-attribution"><span>{[analysis.concept_discovery?.model,analysis.concepts.length?analysis.model:undefined].filter(Boolean).join(' + ') || 'Scene analysis'}{analysis.inference_cache?.status === 'hit' ? ' · reused result' : ''}</span><span>{continuous?'Approximate image labels · 2D tracking':'Image-based suggestions'}</span></div>}

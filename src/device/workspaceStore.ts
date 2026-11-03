@@ -11,8 +11,10 @@ export async function removeWorkspaceRecord(key:string):Promise<void> {
 export async function workspaceRecords<T>():Promise<T[]> {
   return operate('readonly',store=>store.getAll());
 }
-/** Read, compare and replace in one transaction, including across browser tabs. */
-export function updateWorkspaceRecord<T>(key:string,update:(current:T|undefined)=>T):Promise<T>{
+/** A source-record precondition checked under the replacement transaction's lock. */
+export interface WorkspaceRecordGuard {key:string;check:(current:unknown)=>void}
+/** Read, compare and replace atomically, including the optional guard across records. */
+export function updateWorkspaceRecord<T>(key:string,update:(current:T|undefined)=>T,guard?:WorkspaceRecordGuard):Promise<T>{
   return new Promise((resolve,reject)=>{
     if(!globalThis.indexedDB){reject(new Error('Device storage is unavailable. Enable site storage to keep your work.'));return;}
     const opening=indexedDB.open('worldos-projects',1);let blocked=false;
@@ -22,8 +24,14 @@ export function updateWorkspaceRecord<T>(key:string,update:(current:T|undefined)
     opening.onsuccess=()=>{
       const db=opening.result;if(blocked){db.close();return;}db.onversionchange=()=>db.close();
       const tx=db.transaction('records','readwrite'),store=tx.objectStore('records');let value:T,reason:unknown;
-      const read=store.get(key);
-      read.onsuccess=()=>{try{value=update(read.result);store.put(value,key);}catch(error){reason=error;tx.abort();}};
+      const replace=()=>{
+        const read=store.get(key);
+        read.onsuccess=()=>{try{value=update(read.result);store.put(value,key);}catch(error){reason=error;tx.abort();}};
+      };
+      if(guard){
+        const source=store.get(guard.key);
+        source.onsuccess=()=>{try{guard.check(source.result);replace();}catch(error){reason=error;tx.abort();}};
+      }else replace();
       tx.oncomplete=()=>{db.close();resolve(value);};
       tx.onabort=tx.onerror=()=>{db.close();reject(reason??new Error('Device storage is full or unavailable. Export your work and try again.'));};
     };

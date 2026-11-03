@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Archive, Copy, Download, Plus, Save, Trash2 } from 'lucide-react';
 import { DeviceWorkspaceContext } from '../device/context';
-import { getRoomProject, initialRoomProject, newRoomProject, recoverRoomProject, restoreRoom, RoomConflict, saveRoomProject, snapshotRoom } from '../device/roomProjects';
+import { getRoomProject, initialRoomProject, newRoomProject, recoverRoomProject, restoreRoom, RoomConflict, RoomDeleted, saveRoomProject, snapshotRoom } from '../device/roomProjects';
 import type { RoomProject, RoomSnapshot } from '../device/roomProjects';
 import type { RoomDraft } from '../device/roomDraft';
 import type { RoomReference } from './photoPlane';
@@ -21,6 +21,14 @@ function SavedRoomWorkspace({active}:{active:boolean}){
   const route=useRoute(),id=route.params.get('project');
   const [project,setProject]=useState<RoomProject|null>(null),[error,setError]=useState('');
   useEffect(()=>{
+    const invalidate=(deletedId:string)=>{if(deletedId===project?.id){setProject(null);setError(new RoomDeleted().message);}};
+    const removed=(event:Event)=>invalidate((event as CustomEvent<string>).detail);
+    window.addEventListener('worldos:room-deleted',removed);
+    const channel=typeof window.BroadcastChannel==='function'?new BroadcastChannel('worldos-rooms'):null;
+    if(channel)channel.onmessage=event=>{if(event.data?.type==='room-deleted')invalidate(event.data.id);};
+    return()=>{window.removeEventListener('worldos:room-deleted',removed);channel?.close();};
+  },[project?.id]);
+  useEffect(()=>{
     if(!active)return;let live=true;setError('');setProject(null);
     void (id?getRoomProject(id):initialRoomProject()).then(value=>{
       if(!live)return;if(!value)throw new Error('This room was not found. Open My Spaces or restore a backup.');
@@ -36,12 +44,14 @@ function ProjectEditor({initial,active,recovered}:{initial:RoomProject;active:bo
   const [project,setProject]=useState(initial),[error,setError]=useState(''),[saved,setSaved]=useState(true);
   const [versionName,setVersionName]=useState(''),[compare,setCompare]=useState(''),[epoch,setEpoch]=useState(0),[working,setWorking]=useState(false);
   const [removed,setRemoved]=useState<RoomSnapshot|null>(null);
+  const [deleted,setDeleted]=useState(false),deletedRef=useRef(false);
   const latest=useRef(initial),revision=useRef(initial.revision??0),dirty=useRef(false),mounted=useRef(true),recovering=useRef(false);
   const timer=useRef<ReturnType<typeof setTimeout>|null>(null),tail=useRef<Promise<void>>(Promise.resolve());
-  const fail=useCallback((reason:unknown)=>{if(mounted.current)setError(reason instanceof Error?reason.message:'Your changes could not be saved. Export this room before leaving.');},[]);
+  const fail=useCallback((reason:unknown)=>{if(reason instanceof RoomDeleted){deletedRef.current=true;dirty.current=false;if(mounted.current)setDeleted(true);}if(mounted.current)setError(reason instanceof Error?reason.message:'Your changes could not be saved. Export this room before leaving.');},[]);
   const flush=useCallback(()=>{
     if(timer.current){clearTimeout(timer.current);timer.current=null;}
     const operation=tail.current.catch(()=>{}).then(async()=>{
+      if(deletedRef.current)return;
       if(recovering.current)throw new RoomConflict();
       if(!dirty.current)return;
       const current=latest.current,snapshot={...current,revision:revision.current};
@@ -50,6 +60,7 @@ function ProjectEditor({initial,active,recovered}:{initial:RoomProject;active:bo
         if(latest.current===current){latest.current=value;dirty.current=false;if(mounted.current){setProject(value);setSaved(true);setError('');}}
         else latest.current={...latest.current,revision:value.revision};
       }catch(reason){
+        if(reason instanceof RoomDeleted){deletedRef.current=true;dirty.current=false;if(mounted.current)setDeleted(true);throw reason;}
         if(reason instanceof RoomConflict){
           recovering.current=true;
           try{const copy=await recoverRoomProject(latest.current);dirty.current=false;
@@ -63,6 +74,7 @@ function ProjectEditor({initial,active,recovered}:{initial:RoomProject;active:bo
   },[]);
   const schedule=useCallback(()=>{if(timer.current)clearTimeout(timer.current);timer.current=setTimeout(()=>void flush().catch(fail),400);},[flush,fail]);
   const update=useCallback((value:RoomProject)=>{
+    if(deletedRef.current)return;
     latest.current={...value,revision:revision.current,updatedAt:new Date().toISOString()};dirty.current=true;setProject(latest.current);setSaved(false);schedule();
   },[schedule]);
   const changed=useCallback((draft:RoomDraft,reference:RoomReference|null)=>{
@@ -89,6 +101,7 @@ function ProjectEditor({initial,active,recovered}:{initial:RoomProject;active:bo
   async function removeVersion(version:RoomSnapshot){await flush();update({...latest.current,versions:latest.current.versions.filter(v=>v.id!==version.id)});await flush();setRemoved(version);}
   async function undoRemove(){if(!removed)return;await flush();if(latest.current.versions.length>=12)throw new Error('Remove another alternative before restoring this one.');update({...latest.current,versions:[...latest.current.versions,removed]});await flush();setRemoved(null);}
   const alternative=project.versions.find(v=>v.id===compare);
+  if(deleted)return <div className="consumer"><p role="alert">{new RoomDeleted().message}</p><button onClick={()=>navigate('history')}>Open My Spaces</button></div>;
   return <div className="room-project">
     {recovered&&<p className="consumer simple-alert" role="status">This room changed in another tab. Your edits were saved in this recovered room; the other version is still in My Spaces.</p>}
     <section className="room-project-toolbar" aria-label="Room project">

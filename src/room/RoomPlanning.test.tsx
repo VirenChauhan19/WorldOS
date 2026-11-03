@@ -46,7 +46,7 @@ beforeEach(()=>{
   vi.mocked(surveyRoom).mockResolvedValue(structuredClone(survey));
   vi.mocked(designRoom).mockResolvedValue(structuredClone(design));
   vi.stubGlobal('requestAnimationFrame',vi.fn(()=>1));
-  camera={memory:{places:[],items:[],location:null,full:false},forgetMemory:vi.fn(),renamePlace:vi.fn(),trackedObjects:[],latencyMs:null,localStatus:'off',localLatencyMs:null,resultAgeMs:null,status:'idle',error:'',analysis:null,analysisFrame:null,lastScan:null,steady:false,analyzing:false,recognitionStatus:'off',retryInSeconds:0,lastRecognizedAt:null,start:vi.fn(async()=>{}),stop:vi.fn(),retry:vi.fn()};
+  camera={memory:{places:[],items:[],location:null,full:false},forgetMemory:vi.fn(),renamePlace:vi.fn(),trackedObjects:[],latencyMs:null,localStatus:'off',localLatencyMs:null,localStabilizing:false,resultAgeMs:null,status:'idle',error:'',analysis:null,analysisFrame:null,lastScan:null,steady:false,analyzing:false,recognitionStatus:'off',retryInSeconds:0,lastRecognizedAt:null,start:vi.fn(async()=>{}),stop:vi.fn(),retry:vi.fn()};
   vi.mocked(useLiveCamera).mockReturnValue(camera);
   vi.mocked(isWorldARSupported).mockResolvedValue(false);
   vi.mocked(loadRoomReference).mockResolvedValue(undefined);

@@ -41,3 +41,14 @@ it('expires old detections and clears history on a new camera session',()=>{
   tracker.clear();
   expect(tracker.seed([object],capture)).toEqual([]);
 });
+it('validates completed detections without replacing active tracks and rejects old unchanged captures',()=>{
+  const tracker=new ImageTracker(1200),capture=frame();
+  tracker.push(capture);tracker.seed([object],capture);
+  tracker.push(frame(3,1,80));
+  const other={...object,id:'new-cup'};
+  expect(tracker.project([other],capture)[0].box.x).toBeCloseTo(.25+3/128);
+  expect(tracker.push(frame(3,1,160))[0].id).toBe('cup');
+  for(let at=240;at<=1280;at+=80)tracker.push(frame(3,1,at));
+  expect(tracker.project([other],capture)).toEqual([]);
+  expect(tracker.seed([other],capture)).toEqual([]);
+});

@@ -5,6 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorldARController, WorldARMeasurement, WorldAROptions } from '../live/xr';
 import type { FurnitureItem, FurniturePlacement, RoomSize } from './layout';
 import { orientedSize } from './layout';
+import { consumeRoomHandoff } from '../ar/roomHandoff';
+import { createStarterScene } from '../ar/scene';
+import type { RoomProject } from '../device/roomProjects';
 
 interface PreviewProps { room: RoomSize; showWalls: boolean; items: FurnitureItem[]; placements: FurniturePlacement[] }
 vi.mock('./RoomPreview', () => ({ default: (props: PreviewProps) => <output data-testid="room-preview">{JSON.stringify(props)}</output> }));
@@ -23,7 +26,9 @@ const measured: WorldARMeasurement = {
 };
 
 beforeEach(() => {
-  camera = { memory:{places:[],items:[],location:null,full:false}, forgetMemory:vi.fn(), renamePlace:vi.fn(), trackedObjects:[], latencyMs:null, localStatus:'off', localLatencyMs:null, resultAgeMs:null, status: 'idle', error: '', analysis: null, analysisFrame: null, lastScan: null, steady: false, analyzing: false, recognitionStatus: 'off', retryInSeconds: 0, lastRecognizedAt: null, start: vi.fn(async () => {}), stop: vi.fn(), retry: vi.fn() };
+  sessionStorage.clear();
+  window.history.replaceState(null,'','#/room');
+  camera = { memory:{places:[],items:[],location:null,full:false}, forgetMemory:vi.fn(), renamePlace:vi.fn(), trackedObjects:[], latencyMs:null, localStatus:'off', localStabilizing:false, localLatencyMs:null, resultAgeMs:null, status: 'idle', error: '', analysis: null, analysisFrame: null, lastScan: null, steady: false, analyzing: false, recognitionStatus: 'off', retryInSeconds: 0, lastRecognizedAt: null, start: vi.fn(async () => {}), stop: vi.fn(), retry: vi.fn() };
   controller = { setFootprint: vi.fn(), setRoomLayout: vi.fn(), selectPoint: vi.fn(() => true), useDetectedSurface: vi.fn(() => true), reset: vi.fn(), end: vi.fn(async () => {}) };
   vi.mocked(useLiveCamera).mockReturnValue(camera);
   vi.mocked(isWorldARSupported).mockResolvedValue(false);
@@ -59,6 +64,23 @@ async function startAR() {
 }
 
 describe('room furnishing controls', () => {
+  it('continues an AI room layout in AR with current manual positions, finishes and actual room dimensions',async()=>{
+    const scene=createStarterScene('workspace');scene.room={width:6.5,depth:4.8,height:3.1};
+    scene.objects[0].item.color='#123456';scene.objects[0].placement.x=1.45;
+    const items=scene.objects.map(object=>object.item),placements=scene.objects.map(object=>object.placement);
+    const project:RoomProject={kind:'room-project',id:'room-1',name:'My AI room',updatedAt:new Date().toISOString(),reference:null,versions:[],draft:{roomFields:{width:'6.5',depth:'4.8',height:'3.1'},source:'photo',items,gap:'0.3',manual:placements,zones:[],reviewed:false,goal:'A calm workspace',design:{title:'AI arrangement',summary:'A workspace',items,placements:placements.map(placement=>({...placement,reason:'A useful spot'})),tradeoffs:[]}}};
+    render(<RoomStudio initialProject={project}/>);
+    await waitFor(()=>expect(isWorldARSupported).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole('button',{name:'Edit this layout in AR'}));
+    expect(camera.stop).toHaveBeenCalled();
+    expect(window.location.hash).toMatch(/^#\/ar\?handoff=/);
+    const token=new URLSearchParams(window.location.hash.split('?')[1]).get('handoff'),carried=consumeRoomHandoff(token);
+    expect(carried?.name).toBe('My AI room');
+    expect(carried?.room).toEqual(scene.room);
+    expect(carried?.objects).toEqual(scene.objects);
+    expect(consumeRoomHandoff(token)).toBeNull();
+  });
+
   it('stops its camera when opening a new AR studio scene in the device workspace', async () => {
     window.history.replaceState(null, '', '#/room?workspace=connected');
     await renderStudio();

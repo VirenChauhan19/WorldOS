@@ -16,7 +16,7 @@ let options: WorldAROptions;
 const measured: WorldARMeasurement = { width: 2, length: 3, corners: [{ x: 0, y: 0, z: 0 }, { x: 2, y: 0, z: 0 }, { x: 2, y: 0, z: 3 }, { x: 0, y: 0, z: 3 }] };
 beforeEach(() => {
   window.history.replaceState(null, '', '#/live');
-  camera = { memory:{places:[],items:[],location:null,full:false}, forgetMemory:vi.fn(), renamePlace:vi.fn(), trackedObjects:[], latencyMs:null, localStatus:'off', localLatencyMs:null, resultAgeMs:null, status: 'idle', error: '', analysis: null, analysisFrame: null, lastScan:null, steady: false, analyzing: false, recognitionStatus:'waiting', retryInSeconds:0, lastRecognizedAt:null, start: vi.fn(async () => {}), stop: vi.fn(), retry: vi.fn() };
+  camera = { memory:{places:[],items:[],location:null,full:false}, forgetMemory:vi.fn(), renamePlace:vi.fn(), trackedObjects:[], latencyMs:null, localStatus:'off',localStabilizing:false, localLatencyMs:null, resultAgeMs:null, status: 'idle', error: '', analysis: null, analysisFrame: null, lastScan:null, steady: false, analyzing: false, recognitionStatus:'waiting', retryInSeconds:0, lastRecognizedAt:null, start: vi.fn(async () => {}), stop: vi.fn(), retry: vi.fn() };
   controller = { setFootprint: vi.fn(), setRoomLayout: vi.fn(), useDetectedSurface: vi.fn(() => true), selectPoint: vi.fn(() => true), reset: vi.fn(), end: vi.fn(async () => {}) };
   vi.mocked(useLiveCamera).mockReturnValue(camera);
   vi.mocked(isWorldARSupported).mockResolvedValue(false);
@@ -189,11 +189,19 @@ it('keeps a slow result on its captured photo without placing old outlines over 
   const analysis={objects:[{id:'phone',label:'smartphone',box:{x:.1,y:.2,width:.15,height:.3},locked:false}],concepts:['smartphone'],summary:'A phone in the captured view.',warnings:[],message:'One item',provider:'meta',model:'sam-3.1',live_request:true};
   Object.assign(camera,{status:'live',steady:false,recognitionStatus:'stabilizing',lastScan:{analysis,frame:{image_url:'data:image/jpeg;base64,fixture',width:1280,height:720,name:'Captured camera frame'},capturedAt:Date.now()}});
   render(<LiveSpace/>);
+  const video=screen.getByLabelText('Live camera preview');
+  Object.defineProperties(video,{videoWidth:{value:1280},videoHeight:{value:720}});
+  const capture=vi.spyOn(HTMLCanvasElement.prototype,'getContext').mockReturnValue({drawImage:vi.fn()} as unknown as CanvasRenderingContext2D);
+  const encode=vi.spyOn(HTMLCanvasElement.prototype,'toDataURL').mockReturnValue('data:image/jpeg;base64,new-live-view');
   expect(screen.getByAltText('The captured camera frame used for these recognition results')).toBeTruthy();
   expect(screen.getByText(/Labels from the last captured view/)).toBeTruthy();
   expect(screen.queryByRole('button',{name:'Highlight smartphone in camera'})).toBeNull();
   fireEvent.click(screen.getByRole('button',{name:'Highlight smartphone in captured view'}));
+  expect(screen.getByAltText('Held camera view').getAttribute('src')).toBe(camera.lastScan!.frame.image_url);
   expect(within(screen.getByRole('group',{name:'Recognized items'})).getByRole('button',{name:/smartphone/}).getAttribute('aria-pressed')).toBe('true');
+  expect(screen.getByRole('button',{name:'Highlight smartphone in camera'}).getAttribute('aria-pressed')).toBe('true');
+  expect(capture).not.toHaveBeenCalled();expect(encode).not.toHaveBeenCalled();
+  capture.mockRestore();encode.mockRestore();
   await waitFor(()=>expect(isWorldARSupported).toHaveBeenCalled());
 });
 
