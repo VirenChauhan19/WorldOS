@@ -2,6 +2,7 @@ import type { RoomReference } from '../room/photoPlane';
 
 export interface DeviceSpace {
   id: string;
+  revision?: number;
   name: string;
   notes: string;
   photo: string;
@@ -11,6 +12,9 @@ export interface DeviceSpace {
 }
 
 const failure = 'This device could not save your work. Browser storage may be full or unavailable. Export a backup before leaving.';
+export class DeviceSpaceConflict extends Error {
+  constructor(){super('This setup changed in another tab. Your changes need a separate recovered setup.');}
+}
 
 async function database(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -28,7 +32,8 @@ async function transaction<T>(mode: IDBTransactionMode, operation: (store: IDBOb
   const db = await database();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, mode);
-    const request = operation(tx.objectStore(storeName));
+    let request:IDBRequest<T>;
+    try{request=operation(tx.objectStore(storeName));}catch{tx.abort();db.close();reject(new Error(failure));return;}
     tx.oncomplete = () => { db.close(); resolve(request.result); };
     tx.onabort = () => { db.close(); reject(new Error(failure)); };
     tx.onerror = () => { db.close(); reject(new Error(failure)); };
@@ -39,12 +44,25 @@ const setupWrites=new Map<string,Promise<IDBValidKey>>();
 export const listDeviceSpaces = async (): Promise<DeviceSpace[]> => { await Promise.allSettled([...setupWrites.values()]);return (await transaction<DeviceSpace[]>('readonly', s => s.getAll())).sort((a,b) => b.updatedAt.localeCompare(a.updatedAt)); };
 export const getDeviceSpace = async(id: string) => {await setupWrites.get(id)?.catch(()=>{});return transaction<DeviceSpace|undefined>('readonly', s => s.get(id));};
 export function saveDeviceSpace(space:DeviceSpace):Promise<IDBValidKey>{
-  const operation=(setupWrites.get(space.id)??Promise.resolve()).catch(()=>{}).then(()=>transaction('readwrite',s=>s.put(space)));
+  const snapshot=structuredClone(space);
+  const operation=(setupWrites.get(space.id)??Promise.resolve()).catch(()=>{}).then(async()=>{
+    const db=await database();
+    return new Promise<IDBValidKey>((resolve,reject)=>{
+      const tx=db.transaction('spaces','readwrite'),store=tx.objectStore('spaces'),read=store.get(snapshot.id);
+      let reason:unknown;
+      read.onsuccess=()=>{try{
+        if((read.result?.revision??0)!==(snapshot.revision??0))throw new DeviceSpaceConflict();
+        snapshot.revision=(snapshot.revision??0)+1;store.put(snapshot);
+      }catch(error){reason=error;tx.abort();}};
+      tx.oncomplete=()=>{db.close();space.revision=snapshot.revision;resolve(snapshot.id);};
+      tx.onabort=tx.onerror=()=>{db.close();reject(reason instanceof DeviceSpaceConflict?reason:new Error(failure));};
+    });
+  });
   setupWrites.set(space.id,operation);
-  void operation.then(()=>{if(setupWrites.get(space.id)===operation)setupWrites.delete(space.id);if(typeof window!=='undefined')window.dispatchEvent(new Event('worldos:device-saved'));},()=>{if(setupWrites.get(space.id)===operation)setupWrites.delete(space.id);});
+  void operation.then(()=>{if(setupWrites.get(space.id)===operation)setupWrites.delete(space.id);if(typeof window!=='undefined'){window.dispatchEvent(new Event('worldos:device-saved'));if(typeof BroadcastChannel==='function'){const channel=new BroadcastChannel('worldos-rooms');channel.postMessage('changed');channel.close();}}},()=>{if(setupWrites.get(space.id)===operation)setupWrites.delete(space.id);});
   return operation;
 }
-export const deleteDeviceSpace = (id: string) => transaction('readwrite', s => s.delete(id));
+export const deleteDeviceSpace = async (id: string) => {await setupWrites.get(id)?.catch(()=>{});return transaction('readwrite', s => s.delete(id));};
 export const loadRoomReference=()=>transaction<RoomReference|undefined>('readonly',s=>s.get('reference'),'room');
 export const saveRoomReference=(value:RoomReference|null)=>value?transaction('readwrite',s=>s.put(value,'reference'),'room'):transaction('readwrite',s=>s.delete('reference'),'room');
 

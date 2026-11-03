@@ -193,7 +193,7 @@ class SessionAuth:
                 if self.cookie_session(request) and request.method not in {'GET','HEAD'}:
                     expected = self.csrf_token(self.token(request))
                     if not self.same_origin(request) or not hmac.compare_digest(request.headers.get('x-csrf-token',''), expected):
-                        return JSONResponse({'detail':'Refresh your session before retrying this action.'},403,headers={'Cache-Control':'no-store'})
+                        return JSONResponse({'detail':'Refresh your session before retrying this action.'},403,headers={'Cache-Control':'no-store','X-WorldOS-Error-Code':'csrf_required'})
         response = await call_next(request)
         if api:
             response.headers["Cache-Control"] = "no-store"

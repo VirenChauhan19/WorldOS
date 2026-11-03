@@ -19,8 +19,8 @@ import type { WorldARController, WorldAROptions } from '../live/xr';
 import { loadRoomReference, saveRoomReference } from '../device/store';
 import { roomDraftKey } from '../device/roomDraft';
 import RoomStudio from './RoomStudio';
-vi.mock('./jobs',async original=>({...await original<typeof import('./jobs')>(),cancelRoomJob:vi.fn(async()=>({})),watchRoomJob:vi.fn()}));
-import { RoomJobFailure, watchRoomJob } from './jobs';
+vi.mock('./jobs',async original=>({...await original<typeof import('./jobs')>(),cancelRoomJob:vi.fn(async()=>({})),watchRoomJob:vi.fn(),startRoomJob:vi.fn()}));
+import { RoomJobFailure, RoomJobRejected, startRoomJob, watchRoomJob } from './jobs';
 import { APIError } from '../api';
 import { emptyRoom } from '../device/roomProjects';
 import { surveyRoom, designRoom } from './design';
@@ -29,6 +29,17 @@ import type { SurveyResponse, RoomDesign } from './design';
 const survey:SurveyResponse={status:'ready',summary:'An open room with a window on the left.',room:{width:4,depth:5,width_min:3.2,width_max:4.8,depth_min:4,depth_max:6},floor_corners:[{x:.2,y:.4},{x:.8,y:.4},{x:.95,y:.95},{x:.05,y:.95}],evidence:['Assuming a typical door size.'],uncertainty:'Hidden space is unknown.',confidence:'low',features:[{label:'Left window',kind:'window',x:0,z:.3,observation:'A visible window on the left wall.'}],zones:[{id:'door',label:'Door access',kind:'access',x:3,z:4,width:1,depth:1}],ideas:['Add a reading corner'],image_url:'data:image/jpeg;base64,cGhvdG8=',image_width:1280,image_height:720};
 const design:RoomDesign={title:'A little room to read',summary:'A reading corner beside the window.',items:[{id:'sofa',kind:'sofa',label:'Compact sofa',width:1.8,depth:.85,height:.8,color:'#718b65'}],placements:[{itemId:'sofa',x:0,z:1,rotation:90,reason:'Near the window for reading light.'}],tradeoffs:['Example furniture sizes.']};
 const projectFixture=()=>({kind:'room-project' as const,id:'project',name:'Office',updatedAt:'now',draft:{...emptyRoom(),roomFields:{width:'4',depth:'5',height:''},source:'photo' as const,goal:'Reading corner',designStyle:'open' as const},reference:{image_url:survey.image_url,width:survey.image_width,height:survey.image_height,corners:survey.floor_corners,labels:[],survey},versions:[]});
+it('keeps the accepted survey recoverable when its queued design submission is rejected',async()=>{
+  vi.mocked(surveyRoom).mockImplementation((_image,_signal,_id,onStatus)=>{onStatus?.('running');return new Promise(()=>{});});
+  vi.mocked(startRoomJob).mockRejectedValueOnce(new RoomJobRejected('Two room requests are running',429));
+  await capturePhoto();
+  change('What would make this room yours?','A reading corner');
+  fireEvent.click(screen.getByRole('button',{name:'Design when room is ready'}));
+  await screen.findByText('Two room requests are running');
+  const pending=JSON.parse(localStorage.getItem(roomDraftKey)!).roomJob;
+  expect(pending.stage).toBe('survey');expect(pending.id).toBe(vi.mocked(surveyRoom).mock.calls[0][2]);
+  expect(screen.getByRole('button',{name:'Reconnect to this request'})).toBeTruthy();
+});
 let camera:ReturnType<typeof CameraHook>;
 beforeEach(()=>{
   localStorage.clear();

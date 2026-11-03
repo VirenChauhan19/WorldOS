@@ -235,7 +235,12 @@ export default function RoomStudio({active=true,initialProject,onProjectChange,o
       if(controller.signal.aborted||request!==aiEpoch.current)return;
       const value=await startRoomJob<{survey:SurveyResponse;design:RoomDesign}>(job.id,{survey_job_id:parent.id,goal,style:designStyle,gap:clearance},controller.signal,setJobStatus);
       if(request!==aiEpoch.current)return;applyQueuedDesign(value);rememberJob(undefined);reveal('room-plan-stage');
-    }catch(error){if(request===aiEpoch.current&&!controller.signal.aborted)reportAIError(error);}
+    }catch(error){if(request===aiEpoch.current&&!controller.signal.aborted){
+      const rejected=error instanceof RoomJobRejected||!jobRef.current;
+      reportAIError(error);
+      // A rejected dependent request must not orphan its already accepted survey.
+      if(rejected){rememberJob(parent);setDesignQueued(false);setRetryDesign(false);}
+    }}
     finally{if(request===aiEpoch.current)setAiBusy(null);}
   }
   async function checkpointJob(value:RoomDraft,photo:RoomReference|null){

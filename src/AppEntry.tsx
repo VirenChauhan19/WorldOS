@@ -3,21 +3,22 @@ import WorldOS from './WorldOS';
 import MobileShell from './MobileShell';
 import { setAccessToken } from './backend';
 import { DeviceWorkspaceContext } from './device/context';
-import { navigate } from './navigation';
+import { navigate, useRoute } from './navigation';
 import Dialog from './ui/Dialog';
 import './device/device.css';
 
 /** The device workspace never waits for the private server or starts a session. */
 export default function AppEntry() {
-  const [privateWorkspace, setPrivateWorkspace] = useState(()=>{
-    const [path,query]=window.location.hash.replace(/^#\/?/,'').split('?');
-    const params=new URLSearchParams(query);
-    return path==='mission'&&['id','routine','capture'].some(key=>params.has(key));
-  });
-  const [roomConnection,setRoomConnection]=useState(false);
+  const route=useRoute();
+  const privateWorkspace=route.workspace!=='device',roomConnection=route.workspace==='connected';
   const [installHelp,setInstallHelp]=useState(false),[installPrompt,setInstallPrompt]=useState<(Event & {prompt:()=>Promise<void>})|null>(null);
   useEffect(() => {
-    const open = (event:Event) => { const detail=(event as CustomEvent).detail,room=detail?.room===true;setRoomConnection(room);if(detail?.task)navigate('mission',detail.id?{id:detail.id}:{capture:'1'});else if(!room)navigate('home');else if(!window.location.hash.startsWith('#/room'))navigate('room');setPrivateWorkspace(true); };
+    const open = (event:Event) => {
+      const detail=(event as CustomEvent).detail;
+      if(detail?.task)navigate('mission',{...(detail.id?{id:detail.id}:{capture:'1'}),workspace:'private'});
+      else if(detail?.room){const params=new URLSearchParams(window.location.hash.split('?')[1]);navigate('room',{...(params.get('project')?{project:params.get('project')!}:{}),workspace:'connected'});}
+      else navigate('home',{workspace:'private'});
+    };
     window.addEventListener('worldos:open-private', open);
     return () => window.removeEventListener('worldos:open-private', open);
   }, []);
@@ -30,8 +31,7 @@ export default function AppEntry() {
   },[privateWorkspace]);
   function returnToDevice() {
     setAccessToken('');
-    navigate('home');
-    setPrivateWorkspace(false);
+    navigate('home',{workspace:''});
   }
   return <>
     {privateWorkspace&&<div className="device-bar"><span>Private workspace</span><button onClick={returnToDevice}>Back to device workspace</button></div>}

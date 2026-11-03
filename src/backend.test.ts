@@ -5,6 +5,24 @@ import { apiFetch, backendURL, configureBackend, requestScope, setAccessToken, s
 
 beforeEach(()=>{vi.spyOn(Capacitor,'isNativePlatform').mockReturnValue(false);configureBackend('');Object.defineProperty(navigator,'onLine',{value:true,configurable:true});});
 afterEach(()=>{setAccessToken('');vi.restoreAllMocks();vi.unstubAllGlobals();localStorage.clear();});
+it('refreshes a missing cookie CSRF token and retries only a confirmed pre-execution rejection',async()=>{
+  const fetcher=vi.fn()
+    .mockResolvedValueOnce(new Response('{}',{status:403,headers:{'X-WorldOS-Error-Code':'csrf_required'}}))
+    .mockResolvedValueOnce(new Response(JSON.stringify({authenticated:true,session_mode:'cookie',csrf_token:'restored'})))
+    .mockResolvedValueOnce(new Response('{"accepted":true}'));
+  vi.stubGlobal('fetch',fetcher);
+  expect((await apiFetch('ai/room/jobs',{method:'POST',body:'same request'})).ok).toBe(true);
+  expect(fetcher.mock.calls.map(([url])=>url)).toEqual(['/api/ai/room/jobs','/api/auth/status','/api/ai/room/jobs']);
+  expect(fetcher.mock.calls[2][1].headers.get('X-CSRF-Token')).toBe('restored');
+  expect(fetcher.mock.calls[2][1].body).toBe('same request');
+});
+it('never retries ordinary permission failures or ambiguous server failures',async()=>{
+  const fetcher=vi.fn().mockResolvedValueOnce(new Response('{}',{status:403})).mockResolvedValueOnce(new Response('{}',{status:503}));
+  vi.stubGlobal('fetch',fetcher);
+  expect((await apiFetch('ai/room/jobs',{method:'POST'})).status).toBe(403);
+  expect((await apiFetch('ai/room/jobs',{method:'POST'})).status).toBe(503);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
 it.each(['http://example.com','https://localhost','https://127.0.0.1','https://u:password@example.com','https://example.com/api','https://example.com?q=1','https://example.com#token','javascript:alert(1)'])('rejects unsafe production backend %s',value=>{expect(()=>validateBackendURL(value,false)).toThrow();});
 it('accepts exact HTTPS origins and only development loopback HTTP',()=>{
   expect(validateBackendURL(' https://example.com/ ',false)).toBe('https://example.com');

@@ -7,6 +7,8 @@ vi.mock('./api',()=>({getMission:vi.fn(),getRoutine:vi.fn(),createMission:vi.fn(
 vi.mock('../api',()=>({analyze:vi.fn()}));
 vi.mock('../PhotoActions',()=>({default:({onPhoto,disabled,label}:{onPhoto:(file:File)=>Promise<void>;disabled:boolean;label:string})=><button disabled={disabled} onClick={()=>void onPhoto(new File(['photo'],'desk.jpg',{type:'image/jpeg'}))}>{label}</button>}));
 vi.mock('../exportFile',()=>({exportJSON:vi.fn()}));
+vi.mock('../device/taskCapture',()=>({getTaskCapture:vi.fn(),saveTaskCapture:vi.fn()}));
+import { getTaskCapture, saveTaskCapture } from '../device/taskCapture';
 import * as api from './api';
 import { analyze } from '../api';
 import Mission from './Mission';
@@ -21,6 +23,27 @@ beforeEach(()=>{
   vi.mocked(api.progressMission).mockImplementation(async(value,id,done)=>({...value,revision:value.revision+1,completed_ids:done?[...new Set([...value.completed_ids,id])]:value.completed_ids.filter(item=>item!==id)}));
 });
 afterEach(()=>{cleanup();vi.restoreAllMocks();});
+
+it('offers recovery instead of a new-photo form when an existing task cannot be loaded',async()=>{
+  vi.mocked(api.getMission).mockRejectedValueOnce(new Error('Task not found'));
+  render(<Mission/>);
+  await screen.findByRole('heading',{name:'This saved task is unavailable.'});
+  expect(screen.queryByRole('button',{name:'Choose a photo'})).toBeNull();
+  expect(screen.getByRole('button',{name:'Reload saved task'})).toBeTruthy();
+  expect(screen.getByRole('button',{name:'Start a new task'})).toBeTruthy();
+});
+
+it('opens an accepted server task even if its device shortcut cannot be saved',async()=>{
+  history.replaceState(null,'','/#/mission?capture=1');
+  vi.mocked(getTaskCapture).mockResolvedValue({kind:'task-capture',id:base.id,goal:base.goal,constraints:'',photo:{...image,name:'Starting photo'},updatedAt:'now'});
+  vi.mocked(saveTaskCapture).mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('Storage full'));
+  render(<Mission/>);
+  fireEvent.click(await screen.findByRole('button',{name:'Get my guided steps'}));
+  await screen.findByRole('heading',{name:'Anything that should stay?'});
+  expect(api.createMission).toHaveBeenCalledTimes(1);
+  expect(location.hash).toContain('id=task-one');
+  expect(screen.getByText(/Its device shortcut could not be saved/)).toBeTruthy();
+});
 
 it('can start with a photo without typing, and makes AI use an explicit next action',async()=>{
   window.history.replaceState(null,'','#/mission');render(<Mission/>);
@@ -72,7 +95,7 @@ it('resumes completed steps at the photo check and saves a preferred setup only 
   expect(api.saveRoutine).not.toHaveBeenCalled();expect(screen.queryByRole('checkbox')).toBeNull();
   fireEvent.click(screen.getByRole('button',{name:'Save this setup'}));await screen.findByText('Your setup is saved.');
   expect(api.saveRoutine).toHaveBeenCalledWith(expect.objectContaining({after:reviewed.after}),planned.plan!.title,expect.any(AbortSignal));
-  fireEvent.click(screen.getByRole('button',{name:'Use this setup again'}));expect(window.location.hash).toBe('#/mission?routine=routine-one');
+  fireEvent.click(screen.getByRole('button',{name:'Use this setup again'}));expect(window.location.hash).toBe('#/mission?routine=routine-one&workspace=private');
 });
 
 it('aborts a pending plan on navigation and discards its late answer',async()=>{

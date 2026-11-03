@@ -32,7 +32,7 @@ Production builds generate a content-versioned service worker with an allowlist 
 
 ## Validation
 
-The implementation passes 471 frontend tests, 403 backend tests (two optional live tests skipped), and the production build. The normal browser flows pass at all three viewport sizes below, and all eight recovery scenarios pass. New regression coverage includes capture persistence, private-task reloads, independent projects, backup validation, protected restores, polling without duplicate inference, workspace separation, cancellation, and explicit retries after a failed design.
+The implementation passes 484 frontend tests, 403 backend tests (two optional live tests skipped), and the production build. The normal browser flows pass at all three viewport sizes below, and all eight recovery scenarios pass. New regression coverage includes capture persistence, private-task reloads, independent projects, backup validation, protected restores, polling without duplicate inference, workspace separation, cancellation, and explicit retries after a failed design.
 
 `scripts/smoke_workspace_upgrade.py --browser "C:\Program Files\Google\Chrome\Application\chrome.exe"` runs in a fresh headless profile against a loopback fixture server. It does not inspect existing browser windows, profiles or cookies. It checks capture handoff, queued design, reload recovery, independent rooms, alternatives, comparison, protected restore, export/import and offline cold start at 320, 390 and 1440 pixels. Fixtures are synthetic; these checks do not establish model accuracy or physical-phone behavior. Screenshots and a JSON report are written under `artifacts/workspace-upgrade/`.
 

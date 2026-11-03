@@ -26,9 +26,9 @@ function Capture({reset}:{reset:string|null}){
     pending.current=pending.current.catch(()=>{}).then(()=>saveTaskCapture(next));void pending.current.catch(e=>setError(e.message));
   }
   async function photo(file:File){setBusy(true);setError('');try{edit({photo:await localTaskPhoto(file),id:crypto.randomUUID()});recordStudyEvent('capture_ready');}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
-  async function begin(){setBusy(true);setError('');try{await pending.current;await saveTaskCapture(latest.current);recordStudyEvent('guidance_requested');connectGuidedTask(latest.current.missionId);}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+  async function begin(){setBusy(true);setError('');try{await pending.current.catch(()=>{});await saveTaskCapture(latest.current);recordStudyEvent('guidance_requested');connectGuidedTask(latest.current.missionId);}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
   async function restart(){setBusy(true);setError('');try{
-    await pending.current;await discardTaskCapture(latest.current);
+    await pending.current.catch(()=>{});await discardTaskCapture(latest.current);
     const next=reset?{...blank(),sourceSetupId:reset,goal:latest.current.goal,constraints:latest.current.constraints,reference:latest.current.reference}:blank();
     await saveTaskCapture(next);latest.current=next;setDraft(next);
   }catch(e){setError((e as Error).message);}finally{setBusy(false);}}

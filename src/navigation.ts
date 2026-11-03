@@ -2,6 +2,14 @@ import { useSyncExternalStore } from 'react';
 
 export const PAGES = ['home','prepare','mission','live','room','inspect','history','studio','settings','advanced','advanced-inspect','history-detail'] as const;
 export type Page = typeof PAGES[number];
+export type WorkspaceMode = 'device'|'private'|'connected';
+export function workspaceMode(hash=window.location.hash):WorkspaceMode {
+  const [path,query]=hash.replace(/^#\/?/,'').split('?'),params=new URLSearchParams(query);
+  const mode=params.get('workspace');
+  if(mode==='private'||mode==='connected')return mode;
+  // Preserve existing shared task links that predate the explicit workspace route.
+  return path==='mission'&&['id','routine','capture'].some(key=>params.has(key))?'private':'device';
+}
 const event = 'worldos:navigation';
 function subscribe(listener:()=>void) {
   window.addEventListener('popstate',listener);window.addEventListener('hashchange',listener);window.addEventListener(event,listener);
@@ -11,10 +19,16 @@ export function useRoute() {
   const hash=useSyncExternalStore(subscribe,()=>window.location.hash,()=> '');
   const [path,query]=hash.replace(/^#\/?/,'').split('?');
   const page=PAGES.includes(path as Page)?path as Page:'home';
-  return {page,params:new URLSearchParams(query),key:hash};
+  return {page,params:new URLSearchParams(query),key:hash,workspace:workspaceMode(hash)};
 }
 export function routeURL(page:Page,params:Record<string,string>={}) {
-  const query=new URLSearchParams(params).toString();
+  const values={...params};
+  const mode=workspaceMode();
+  if(!Object.hasOwn(values,'workspace')&&mode!=='device')values.workspace=mode;
+  // Room projects and their library stay on the device even when opened from AI tools.
+  if(page==='room'&&values.workspace==='private')values.workspace='connected';
+  if(!values.workspace)delete values.workspace;
+  const query=new URLSearchParams(values).toString();
   return `#/${page}${query?'?'+query:''}`;
 }
 export function navigate(page:Page,params:Record<string,string>={}) {

@@ -9,6 +9,17 @@ import { getDeviceSpace } from './store';
 import PrepareSpace from './PrepareSpace';
 beforeEach(()=>{history.replaceState(null,'','/#/prepare');vi.clearAllMocks();});
 afterEach(()=>cleanup());
+it('can continue after a failed draft save once storage becomes available',async()=>{
+  const connect=vi.fn();window.addEventListener('worldos:open-private',connect);
+  vi.mocked(saveTaskCapture).mockRejectedValueOnce(new Error('Storage full'));
+  render(<PrepareSpace/>);await screen.findByText('What’s next?');
+  await act(async()=>fireEvent.click(screen.getByText('Choose test photo')));
+  await screen.findByText('Storage full');
+  fireEvent.click(screen.getByRole('button',{name:'Continue to guided steps'}));
+  await waitFor(()=>expect(connect).toHaveBeenCalledTimes(1));
+  expect(saveTaskCapture).toHaveBeenCalledTimes(2);
+  window.removeEventListener('worldos:open-private',connect);
+});
 it('keeps photo and goal on device before opening guidance',async()=>{
   const connect=vi.fn();window.addEventListener('worldos:open-private',connect);render(<PrepareSpace/>);
   await screen.findByText('What’s next?');fireEvent.click(screen.getByRole('button',{name:/Make room to create/}));fireEvent.click(screen.getByText('Choose test photo'));

@@ -3,7 +3,7 @@ import { navigate } from '../navigation';
 import type { Page } from '../navigation';
 
 const destinations=[{page:'home',label:'Home',Icon:House},{page:'live',label:'Camera',Icon:Camera},{page:'room',label:'Room',Icon:LayoutGrid},{page:'history',label:'My Spaces',Icon:Folder},{page:'settings',label:'Settings',Icon:Settings}] as const;
-const names:Partial<Record<Page,string>>={home:'Workspace',live:'Camera',room:'Room planner',history:'My Spaces',settings:'Settings',mission:'Setup',inspect:'Setup'};
+const names:Partial<Record<Page,string>>={home:'Workspace',prepare:'Get ready',live:'Camera',room:'Room planner',history:'My Spaces',settings:'Settings',mission:'Setup',inspect:'Setup'};
 
 export default function DeviceChrome({page}:{page:Page}){
   return <header className="device-masthead">

@@ -45,7 +45,8 @@ def test_cookie_flags_csrf_reload_and_restart_persistence(encoded,tmp_path):
     status=restarted.get('/api/auth/status')
     assert status.json()['authenticated'] is True and status.json()['csrf_token']==csrf
     assert restarted.get('/api/private').status_code==200
-    assert restarted.post('/api/private',headers={'Origin':'https://testserver'}).status_code==403
+    rejected=restarted.post('/api/private',headers={'Origin':'https://testserver'})
+    assert rejected.status_code==403 and rejected.headers['X-WorldOS-Error-Code']=='csrf_required'
     assert restarted.post('/api/private',headers={'Origin':'https://evil.example','X-CSRF-Token':csrf}).status_code==403
     assert restarted.post('/api/private',headers={'Origin':'https://testserver','X-CSRF-Token':csrf}).status_code==200
     assert restarted.post('/api/auth/logout',headers={'Origin':'https://testserver','X-CSRF-Token':csrf}).status_code==200

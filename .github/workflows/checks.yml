@@ -27,6 +27,8 @@ jobs:
       - run: npm run build -- --configLoader native
       - run: python scripts/smoke_workspace_upgrade.py
       - run: python scripts/smoke_workspace_recovery.py
+      - run: python scripts/smoke_journey_reliability.py
+      - run: python scripts/smoke_production.py
       - name: Check deployable image
         run: docker build --target app -t worldos-check .
       - uses: actions/upload-artifact@v4
@@ -36,4 +38,5 @@ jobs:
           path: |
             artifacts/workspace-upgrade/
             artifacts/workspace-recovery/
+            artifacts/journey-reliability/
           retention-days: 7

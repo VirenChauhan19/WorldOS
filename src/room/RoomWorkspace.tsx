@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Archive, Copy, Download, Plus, Save, Trash2 } from 'lucide-react';
-import { useDeviceWorkspace } from '../device/context';
+import { DeviceWorkspaceContext } from '../device/context';
 import { getRoomProject, initialRoomProject, newRoomProject, recoverRoomProject, restoreRoom, RoomConflict, saveRoomProject, snapshotRoom } from '../device/roomProjects';
 import type { RoomProject, RoomSnapshot } from '../device/roomProjects';
 import type { RoomDraft } from '../device/roomDraft';
@@ -15,17 +15,19 @@ import { recordStudyEvent } from '../study/events';
 import './workspace.css';
 
 export default function RoomWorkspace({active=true}:{active?:boolean}){
-  const device=useDeviceWorkspace(),route=useRoute(),id=route.params.get('project');
+  return <DeviceWorkspaceContext.Provider value={true}><SavedRoomWorkspace active={active}/></DeviceWorkspaceContext.Provider>;
+}
+function SavedRoomWorkspace({active}:{active:boolean}){
+  const route=useRoute(),id=route.params.get('project');
   const [project,setProject]=useState<RoomProject|null>(null),[error,setError]=useState('');
   useEffect(()=>{
-    if(!device||!active)return;let live=true;setError('');setProject(null);
+    if(!active)return;let live=true;setError('');setProject(null);
     void (id?getRoomProject(id):initialRoomProject()).then(value=>{
       if(!live)return;if(!value)throw new Error('This room was not found. Open My Spaces or restore a backup.');
       setProject(value);try{localStorage.setItem('worldos.active-room',value.id);}catch{/* Storage is optional for selection. */}
     }).catch(e=>{if(live)setError(e.message);});
     return()=>{live=false;};
-  },[device,id,active]);
-  if(!device)return <RoomStudio active={active}/>;
+  },[id,active]);
   if(!project)return error?<div className="consumer"><p role="alert">{error}</p><button onClick={()=>navigate('history')}>Open My Spaces</button></div>:<div className="consumer" role="status">Opening your room…</div>;
   return <ProjectEditor key={project.id} initial={project} active={active} recovered={route.params.get('recovered')==='1'}/>;
 }

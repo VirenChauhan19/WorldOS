@@ -69,7 +69,7 @@ function MissionScreen() {
   }
   useEffect(()=>{
     if(!task||started.current||route.params.get('observe')!=='1'||loading)return;
-    started.current=true;replaceRoute('mission',{id:task.id});void action('Looking at your space…',signal=>api.observeMission(task,undefined,signal),adopt);
+    started.current=true;replaceRoute('mission',{id:task.id,...(route.params.get('deviceSave')==='failed'?{deviceSave:'failed'}:{})});void action('Looking at your space…',signal=>api.observeMission(task,undefined,signal),adopt);
   },[task,loading]);
   useEffect(()=>{
     if(!focusNext.current)return;focusNext.current=false;
@@ -86,9 +86,10 @@ function MissionScreen() {
       routine_id=imported.id;capture.current={...capture.current,routineId:routine_id};await saveTaskCapture(capture.current);
     }
     const value=await api.createMission({id:creationId.current,goal:goal.trim(),constraints:constraints.trim(),image_url:photo.image_url,...(routine_id?{routine_id}:{})},signal);
-    if(capture.current){capture.current={...capture.current,missionId:value.id};await saveTaskCapture(capture.current);}
-    return value;
-  },value=>navigate('mission',{id:value.id,observe:'1'}));}
+    let deviceSaved=true;
+    if(capture.current){capture.current={...capture.current,missionId:value.id};try{await saveTaskCapture(capture.current);}catch{deviceSaved=false;}}
+    return {task:value,deviceSaved};
+  },value=>navigate('mission',{id:value.task.id,observe:'1',...(!value.deviceSaved?{deviceSave:'failed'}:{})}));}
   async function makePlan(){if(!task)return;await action('Finding a few useful steps…',signal=>api.planMission(task,protectedIds,feedback,signal),value=>{recordStudyEvent('first_step');advance();adopt(value);setSelected(value.plan?.steps[0]?.id??'');setEditing(false);setView('guide');setRoutineName(value.plan?.title??'My focus setup');});}
   async function freshPhoto(file:File,check:boolean){if(!task)return;await action(check?'Comparing your photos…':'Looking at your updated space…',async signal=>{const image=await analyze(file);if(signal.aborted)throw new DOMException('Cancelled','AbortError');return check?api.checkMission(task,image.image_url,signal):api.observeMission(task,image.image_url,signal);},value=>{if(check)recordStudyEvent('photo_checked');advance();adopt(value);setSelected('');setAdapting(false);setEditing(false);setView(check?'check':'guide');});}
   async function mark(step:MissionStep,done:boolean){if(!task)return;await action('Saving your progress…',signal=>api.progressMission(task,step.id,done,signal),value=>{
@@ -114,9 +115,11 @@ function MissionScreen() {
     <main className="mission-main">
       <nav className="mission-progress" aria-label="Task stages">{(['photo','steps','check'] as const).map((value,index)=><span key={value} aria-current={stage===value?'step':undefined}><b>{index+1}</b>{['Photo','Steps','Check'][index]}</span>)}</nav>
       {loading&&<div className="mission-loading" role="status"><LoaderCircle className="spin"/>Opening your saved task…</div>}
+      {route.params.get('deviceSave')==='failed'&&<p className="mission-error" role="alert">Your task is saved in the private workspace. Its device shortcut could not be saved. Keep this task link or export a copy.</p>}
       {error&&<div className="mission-error" role="alert"><strong>Let’s pick up from here.</strong><p>{error}</p>{id&&<button disabled={blocked} onClick={()=>void action('Loading your saved progress…',signal=>api.getMission(id,signal),adopt)}>Reload saved task</button>}</div>}
       {!!busy&&<div className="mission-busy" role="status"><LoaderCircle size={18} className="spin"/><span>{busy}<small>{task?'Your photo and progress stay saved.':'This may take a moment.'}</small></span></div>}
-      {!loading&&!task&&(!routineId||routine)&&<section className="mission-start">
+      {!loading&&!task&&id&&<section className="mission-start"><h1>This saved task is unavailable.</h1><p>Retry loading above, or open My Spaces to choose another task.</p><button className="mission-primary" onClick={()=>navigate('history')}>Open My Spaces</button><button className="mission-text-button" onClick={()=>navigate('mission')}>Start a new task</button></section>}
+      {!loading&&!task&&!id&&(!routineId||routine)&&<section className="mission-start">
         <h1>{capture.current?'Ready for your next step.':routine?`Back to ${routine.name}.`:'Show your space.'}</h1><p className="mission-lead">{capture.current?goal:routine?'Take a photo of your space today. We’ll help you get back to your saved setup.':'Take a photo. We’ll help you get ready, one small step at a time.'}</p>
         <div className="mission-capture">{photo?<><figure className="mission-start-photo"><img src={photo.image_url} alt="Your selected starting photograph"/></figure><details className="mission-disclosure"><summary>Change photo</summary>{captureActions}</details></>:<>{captureActions}<p>Show the whole surface in good light.</p></>}</div>
         {!routine&&!capture.current&&<fieldset className="mission-goals"><legend>What would you like to do?</legend>{GOALS.map((value,index)=><button disabled={blocked} key={value.id} aria-pressed={goal===value.goal} onClick={()=>{setGoal(value.goal);creationId.current=crypto.randomUUID();}}>{['Focus','Create','Tidy up'][index]}</button>)}</fieldset>}

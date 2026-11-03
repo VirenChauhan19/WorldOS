@@ -7,10 +7,11 @@ import { navigate, useRoute } from '../navigation';
 import type { DeviceSpace } from './store';
 
 const transport=vi.hoisted(()=>({getDeviceSpace:vi.fn(),saveDeviceSpace:vi.fn(),readPhoto:vi.fn()}));
-vi.mock('./store',()=>transport);
+vi.mock('./store',async original=>({...await original<typeof import('./store')>(),...transport}));
 vi.mock('../PhotoActions',()=>({default:({label,onPhoto}:{label:string;onPhoto:(file:File)=>Promise<void>})=><button onClick={()=>void onPhoto(new File(['fixture'],'photo.jpg',{type:'image/jpeg'}))}>{label}</button>}));
 vi.mock('../exportFile',()=>({exportJSON:vi.fn(async()=>{})}));
 import { exportJSON } from '../exportFile';
+import { DeviceSpaceConflict } from './store';
 
 let records:Map<string,DeviceSpace>;
 const existing=():DeviceSpace=>({id:'existing-desk',name:'My desk',notes:'Original note',photo:'',after:'',steps:[{id:'step-1',text:'Clear the notebook space',done:false}],updatedAt:'2026-11-02T10:00:00Z'});
@@ -24,6 +25,26 @@ beforeEach(()=>{
 afterEach(()=>{cleanup();vi.clearAllMocks();vi.restoreAllMocks();});
 
 function RoutedSetup(){const route=useRoute();return <><DeviceSetup active={route.page==='mission'}/>{route.page==='history'&&<p>Saved setups view</p>}</>;}
+
+it('reports failed autosaves and retries the latest edits after storage recovers',async()=>{
+  transport.saveDeviceSpace.mockRejectedValueOnce(new Error('Device storage is full'));
+  render(<DeviceSetup/>);
+  fireEvent.change(screen.getByLabelText('Setup notes'),{target:{value:'Keep these unsaved notes'}});
+  await screen.findByText('Changes not saved');
+  fireEvent.click(screen.getByRole('button',{name:'Retry save'}));
+  await screen.findByText('Saved on this device. You can come back after reloading.');
+  expect([...records.values()][0].notes).toBe('Keep these unsaved notes');
+});
+
+it('preserves stale-tab edits in a recovered setup instead of replacing the original',async()=>{
+  records.set('existing-desk',existing());history.replaceState(null,'','/#/mission?device=existing-desk');
+  render(<DeviceSetup/>);await screen.findByLabelText('Setup name');
+  transport.saveDeviceSpace.mockRejectedValueOnce(new DeviceSpaceConflict());
+  fireEvent.change(screen.getByLabelText('Setup notes'),{target:{value:'My second tab edits'}});
+  await screen.findByText(/Your edits were saved in this recovered setup/);
+  expect(records.get('existing-desk')?.notes).toBe('Original note');
+  expect([...records.values()].find(value=>value.id!=='existing-desk')?.notes).toBe('My second tab edits');
+});
 
 it('automatically saves edited name, notes and progress without requiring the save button',async()=>{
   render(<DeviceSetup/>);

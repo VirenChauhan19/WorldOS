@@ -51,7 +51,18 @@ export async function apiFetch(path: string, options: RequestInit = {}): Promise
   if (token) headers.set('Authorization', `Bearer ${token}`);
   const cookies=usesCookies();
   if(cookies&&csrf&&!['GET','HEAD'].includes((options.method??'GET').toUpperCase()))headers.set('X-CSRF-Token',csrf);
-  const response = await fetch(`${backendURL()}/api/${path}`, { ...options, headers, cache: 'no-store', credentials: cookies?'same-origin':'omit', redirect: 'error' });
+  const send=()=>fetch(`${backendURL()}/api/${path}`, { ...options, headers, cache: 'no-store', credentials: cookies?'same-origin':'omit', redirect: 'error' });
+  let response=await send();
+  // The server guarantees this rejection happens before the action executes.
+  // Restore an existing cookie session after reload, then retry this action once.
+  if(current===generation&&cookies&&!path.startsWith('auth/')&&response.status===403&&response.headers.get('X-WorldOS-Error-Code')==='csrf_required'){
+    const status=await fetch(`${backendURL()}/api/auth/status`,{signal:options.signal,cache:'no-store',credentials:'same-origin',redirect:'error'});
+    const session=status.ok?await status.json().catch(()=>null):null;
+    if(current!==generation)throw new Error('The connection changed. Retry on the selected backend.');
+    if(session?.authenticated===true&&session.session_mode==='cookie'&&typeof session.csrf_token==='string'){
+      csrf=session.csrf_token;headers.set('X-CSRF-Token',csrf);response=await send();
+    }
+  }
   if(current!==generation)throw new Error('The connection changed. The earlier response was discarded; retry on the selected backend.');
   if (response.status === 401 && !path.startsWith('auth/')) {
     token = '';csrf='';generation++;
