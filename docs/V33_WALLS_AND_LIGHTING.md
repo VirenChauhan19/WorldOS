@@ -25,7 +25,9 @@ Surface changes revoke stale placement poses. Native state echoes the surface an
 
 - 756 frontend tests passed across 65 files, including mesh bounds, native/USDZ export for every catalog entry, mounting, persistence, surface classification, stale events, observed-angle editing, and UI workflows.
 - Production TypeScript/Vite build passed.
+- The unsigned iPhone/iPad Release build and compiled bundle verification passed on macOS for feature commit `d6ade3d`: [native iOS compile](https://github.com/VirenChauhan19/WorldOS/actions/runs/41703790931).
 - Browser QA used a real WebGL scene with 14 pieces at 320, 390, and 1440 px. It verified walls/ceilings, lighting controls, palette, undo, export, and reload without page exceptions or horizontal overflow.
+- Production browser regressions passed for workspace upgrade/offline recovery and public demo at 320/390/1440 px, all nine workspace-recovery scenarios, and all seven navigation/save-reliability scenarios. Harness selectors now distinguish room cards from their Delete controls and active save status from home summaries. The offline check verifies blocked requests and saved-room recovery before separately testing the connectivity banner, accommodating Chromium's service-worker reload emulation issue.
 - Native browser QA uses a simulated Capacitor bridge, not a physical ARKit session. Evidence and scripts are under ignored `artifacts/v33/`.
 - The Swift renderer changed. The updated installed iPhone app needs to be rebuilt; the existing macOS CI workflow checks unsigned iOS compilation after push. A physical-device check remains necessary for tracking quality. Apple's Quick Look still previews exported models/layouts and does not gain these native editing controls.
 - Render automatic deployment remains disabled, so pushing source does not update the public site.

@@ -98,7 +98,7 @@ def private_room(context, page):
     page.get_by_role('button', name='Furnish a room', exact=False).click()
     expect(page.get_by_label('Room name', exact=True)).to_be_visible()
     page.get_by_label('Room name', exact=True).fill('Private room saved locally')
-    expect(page.get_by_text('Saved on this device', exact=True)).to_be_visible()
+    expect(page.get_by_role('region', name='Room project', exact=True).get_by_role('status')).to_have_text('Saved on this device')
     page.reload()
     expect(page.get_by_label('Room name', exact=True)).to_have_value('Private room saved locally')
     page.get_by_role('button', name='My Spaces', exact=True).click()

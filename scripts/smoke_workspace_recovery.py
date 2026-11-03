@@ -114,7 +114,7 @@ try:
             page.get_by_role('button',name='More open space',exact=True).click()
             page.get_by_role('button',name='Design when room is ready',exact=True).click()
             expect(page.get_by_role('button',name='Design queued',exact=True)).to_be_visible()
-            expect(page.get_by_text('Saved on this device',exact=True)).to_be_visible()
+            expect(page.get_by_role('region',name='Room project',exact=True).get_by_role('status')).to_have_text('Saved on this device')
             page.reload();expect(page.get_by_role('button',name='Design queued',exact=True)).to_be_visible()
             state['release']=True
             expect(page.get_by_text(design['title'],exact=True)).to_be_visible()
@@ -126,7 +126,7 @@ try:
                 pending=str(uuid.uuid4());project=seed_project(page,pending);state['mode']=code
                 page.goto(origin+'/#/room?project='+project['id'])
                 expect(page.get_by_text('Synthetic temporary access failure' if code=='401' else 'Waiting to reconnect',exact=True)).to_be_visible()
-                expect(page.get_by_text('Saved on this device',exact=True)).to_be_visible()
+                expect(page.get_by_role('region',name='Room project',exact=True).get_by_role('status')).to_have_text('Saved on this device')
                 after=page.evaluate(read_project,project['id'])
                 assert after['draft']['roomJob']['id']==pending
                 state['mode']='normal';state['release']=True
@@ -196,7 +196,7 @@ try:
             state['mode']='unavailable';page.goto(origin+'/#/room')
             page.get_by_label('Choose room photo library input').set_input_files(str(large))
             expect(page.get_by_text('Synthetic server unavailable',exact=True)).to_be_visible()
-            expect(page.get_by_text('Saved on this device',exact=True)).to_be_visible()
+            expect(page.get_by_role('region',name='Room project',exact=True).get_by_role('status')).to_have_text('Saved on this device')
             with page.expect_download() as download:page.get_by_role('button',name='Export room',exact=True).click()
             target=out/'large-photo-backup.json';download.value.save_as(str(target))
             exported=json.loads(target.read_text())['project']
@@ -232,7 +232,7 @@ try:
             page.wait_for_timeout(650)
             page.evaluate("""()=>{window.auditOriginalPut=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(...args){if(this.transaction.db.name==='worldos-projects')throw new DOMException('Synthetic storage full','QuotaExceededError');return window.auditOriginalPut.apply(this,args);};}""")
             page.get_by_label('Room name',exact=True).fill('Unsaved edits')
-            expect(page.get_by_text('Changes not saved',exact=True)).to_be_visible()
+            expect(page.get_by_role('region',name='Room project',exact=True).get_by_role('status')).to_have_text('Changes not saved')
             with page.expect_download() as download:page.get_by_role('button',name='Export room',exact=True).click()
             target=out/'unsaved-export.json';download.value.save_as(str(target))
             assert json.loads(target.read_text())['project']['name']=='Unsaved edits'

@@ -6,6 +6,7 @@ open or read any of the user's browser windows, tabs, cookies or profiles.
 import argparse
 import base64
 import json
+import re
 import threading
 import time
 from functools import partial
@@ -142,22 +143,41 @@ try:
                 page.get_by_role('button',name='Duplicate room',exact=True).click()
                 expect(page.get_by_label('Room name',exact=True)).to_have_value('Reading room copy')
                 page.get_by_role('button',name='My Spaces',exact=True).click()
-                expect(page.get_by_role('button',name='Reading room copy',exact=False)).to_be_visible()
-                expect(page.get_by_role('button',name='Reading room',exact=False)).to_have_count(2)
+                # Match the room-opening cards, excluding separately named Delete controls.
+                room_cards=page.get_by_role('button',name=re.compile(r'^ROOM PROJECT Reading room(?:\s|$)'))
+                copied_room=page.get_by_role('button',name=re.compile(r'^ROOM PROJECT Reading room copy(?:\s|$)'))
+                expect(copied_room).to_be_visible()
+                expect(room_cards).to_have_count(2)
                 page.get_by_label('Restore device setup backup').set_input_files(str(output/f'room-backup-{width}.json'))
-                expect(page.get_by_role('button',name='Reading room',exact=False)).to_have_count(3)
+                expect(room_cards).to_have_count(3)
                 page.evaluate('navigator.serviceWorker.ready.then(()=>true)')
                 page.wait_for_function('navigator.serviceWorker.controller !== null')
-                context.set_offline(True);page.reload()
-                expect(page.get_by_text('You’re offline.',exact=False)).to_be_visible()
-                expect(page.get_by_role('button',name='Reading room copy',exact=False)).to_be_visible()
-                page.get_by_role('button',name='Reading room copy',exact=False).click()
+                context.set_offline(True)
+                page.wait_for_function('navigator.onLine === false')
+                page.reload()
+                # Prove real offline recovery first. This uncached API URL is
+                # excluded from the service worker, so a response is a failure.
+                network_blocked="fetch('/api/offline-probe?cold-start=1',{cache:'no-store'}).then(()=>false,()=>true)"
+                assert page.evaluate(network_blocked), 'The offline cold start still has network access'
+                expect(copied_room).to_be_visible()
+                copied_room.click()
                 expect(page.get_by_label('Room name',exact=True)).to_have_value('Reading room copy')
                 expect(page.get_by_text(design['title'],exact=True)).to_be_visible()
+                # Some headless Chromium builds reset navigator.onLine after a
+                # service-worker reload even though requests remain blocked.
+                # Test the banner separately with a real offline event, after
+                # the network-blocked cold-start assertions above have passed.
+                rearmed=page.evaluate('navigator.onLine')
+                if rearmed:
+                    context.set_offline(False)
+                    context.set_offline(True)
+                page.wait_for_function('navigator.onLine === false')
+                assert page.evaluate(network_blocked), 'The banner test must retain offline networking'
+                expect(page.get_by_text('You’re offline.',exact=False)).to_be_visible()
                 assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'), 'Horizontal overflow'
                 page.screenshot(path=str(output/f'offline-{width}.png'))
                 assert not errors, errors
-                report['viewports'].append({'width':width,'passed':True,'checks':['capture handoff','queued design','reload recovery','versions','comparison','restore','duplicate','backup roundtrip','offline cold start']})
+                report['viewports'].append({'width':width,'passed':True,'offline_banner_rearmed':rearmed,'checks':['capture handoff','queued design','reload recovery','versions','comparison','restore','duplicate','backup roundtrip','offline cold start','offline connectivity banner']})
                 context.close()
         except Exception:
             page.screenshot(path=str(output/'failure.png'),full_page=True)
