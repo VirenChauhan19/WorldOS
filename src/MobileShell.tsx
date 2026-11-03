@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App as NativeApp } from '@capacitor/app';
 import { Download, LockKeyhole, Settings2, WifiOff } from 'lucide-react';
-import { apiFetch, backendURL, configureBackend, nativeNeedsBackend, setAccessToken, setCookieSession, usesCookies, validateBackendURL } from './backend';
+import { apiFetch, backendURL, beginDemoSession, configureBackend, nativeNeedsBackend, setAccessToken, setCookieSession, usesCookies, validateBackendURL } from './backend';
 import { AccessContext, AuthenticationContext } from './access';
 import Dialog from './ui/Dialog';
 import type { WorkspaceAccess } from './access';
@@ -22,6 +22,7 @@ export default function MobileShell({children}:{children:ReactNode}) {
   const [ephemeralStorage,setEphemeralStorage]=useState(false);
   const [access,setAccess]=useState<WorkspaceAccess>('owner');
   const [judgeEnabled,setJudgeEnabled]=useState(false);
+  const [demoEnabled,setDemoEnabled]=useState(false);
   const [judgeExpiry,setJudgeExpiry]=useState<string|null>(null);
   const [install,setInstall]=useState<InstallPrompt|null>(null);
   const [installHelp,setInstallHelp]=useState(false);
@@ -29,6 +30,7 @@ export default function MobileShell({children}:{children:ReactNode}) {
   const [restored,setRestored]=useState(false);
   const [retainedAccess,setRetainedAccess]=useState<WorkspaceAccess|null>(null);
   const connectionAttempt=useRef(0),submitLock=useRef(false);
+  const accessRef=useRef(access);accessRef.current=access;
   useEffect(()=>{
     const connection=()=>setSettings(true),installation=()=>setInstallHelp(true);
     window.addEventListener('worldos:open-connection',connection);window.addEventListener('worldos:install',installation);
@@ -43,25 +45,34 @@ export default function MobileShell({children}:{children:ReactNode}) {
       if(nativeNeedsBackend()){setSettings(true);setState('unavailable');return;}
       const response=await apiFetch('auth/status',{signal:controller.signal});
       if(!response.ok)throw new Error('Backend access is unavailable. Check HTTPS and server access settings.');
-      const data=await response.json();
+      let data=await response.json();
       if(attempt!==connectionAttempt.current)return;
       if(typeof data.required!=='boolean'||typeof data.authenticated!=='boolean')throw new Error('That address did not return a WorldOS connection response.');
+      setDemoEnabled(data.demo_enabled===true&&usesCookies());
+      if(!data.authenticated&&data.demo_enabled===true&&usesCookies()&&(retainedAccess===null||retainedAccess==='guest')){
+        data=await beginDemoSession();
+        if(attempt!==connectionAttempt.current)return;
+        controller.signal.throwIfAborted();
+        // A new demo has a new isolated store; never carry server drafts across.
+        if(retainedAccess==='guest')setGeneration(n=>n+1);
+      }
       if(data.authenticated&&data.session_mode==='cookie'){
         if(typeof data.csrf_token!=='string')throw new Error('The backend returned an invalid session.');
         setCookieSession(data.csrf_token);
       }
       setJudgeEnabled(data.judge_enabled===true);
       setEphemeralStorage(data.storage_mode==='ephemeral');
-      setAccess(data.access==='judge'?'judge':'owner');setJudgeExpiry(data.judge_expires_at??null);
+      const nextAccess=data.access==='guest'?'guest':data.access==='judge'?'judge':'owner';
+      setAccess(nextAccess);setJudgeExpiry(data.judge_expires_at??null);
       setAuthRequired(data.required);setState(data.authenticated?'ready':'login');
-      if(data.authenticated)setRetainedAccess(data.access==='judge'?'judge':'owner');
+      if(data.authenticated)setRetainedAccess(nextAccess);
     }catch(e){if(attempt===connectionAttempt.current){setState('unavailable');setError(e instanceof DOMException&&e.name==='AbortError'?'The server did not wake in time. Retry connection; no upload or AI request was started.':e instanceof Error?e.message:'Cannot reach the backend.');}}
     finally{window.clearTimeout(timeout);if(attempt===connectionAttempt.current)setPending(false);}
   }
   useEffect(()=>{
     void connect();
     const offline=()=>setOnline(false),online=()=>setOnline(true);
-    const expired=()=>{setState('login');setAuthRequired(true);setError('Your session expired. Sign in again to resume your draft. No action will retry automatically.');};
+    const expired=()=>{setState(accessRef.current==='guest'?'unavailable':'login');setAuthRequired(true);setError(accessRef.current==='guest'?'Your demo session ended. Reconnect to start a new demo space. Room projects saved on this device are still available.':'Your session expired. Sign in again to resume your draft. No action will retry automatically.');};
     const prompt=(event:Event)=>{event.preventDefault();setInstall(event as InstallPrompt);};
     const installed=()=>{setInstall(null);setInstallHelp(false);};
     window.addEventListener('offline',offline);window.addEventListener('online',online);window.addEventListener('worldos:session-expired',expired);
@@ -95,7 +106,7 @@ export default function MobileShell({children}:{children:ReactNode}) {
     try{const response=await apiFetch('auth/logout',{method:'POST',signal:AbortSignal.timeout(5000)});if(!response.ok&&response.status!==401)throw new Error('Sign-out failed.');}
     catch{if(usesCookies()){setError('Could not sign out of the backend. Reconnect and retry; this browser session is still active.');return;}}
     finally{submitLock.current=false;setPending(false);}
-    setAccessToken('');setState('login');setRetainedAccess(null);setGeneration(n=>n+1);
+    setAccessToken('');setState(access==='guest'?'unavailable':'login');setRetainedAccess(null);setGeneration(n=>n+1);
   }
   async function changeBackend(event:React.FormEvent){
     event.preventDefault();if(submitLock.current)return;submitLock.current=true;setError('');setPending(true);
@@ -124,11 +135,13 @@ export default function MobileShell({children}:{children:ReactNode}) {
       <p>Use your trusted WorldOS server. Leave blank for this website’s backend. Changing servers signs you out and clears unsaved work.</p><button className="primary" disabled={pending}>Connect</button>
     </form>{error&&<p role="alert">{error}</p>}</Dialog>
     {error&&<div className="mobile-banner" role="alert">{error}</div>}
+    {state==='ready'&&access==='guest'&&<details className="storage-notice"><summary>Demo ready · No password needed</summary><p>Your demo space is separate from other visitors and lasts up to two hours. Includes 12 AI actions. Keep a copy of important work on your device.</p><p><button className="secondary" onClick={()=>{setAccess('owner');setState('login');setError('');}}>Owner sign-in</button></p></details>}
     {state==='ready'&&access==='judge'&&<div className="mobile-banner" role="status">Judge demo workspace. Other judges share these demo photos and inspections; owner data and backups are private. Sessions last up to two hours.{judgeExpiry&&` Access ends ${new Date(judgeExpiry).toLocaleString()}.`}</div>}
     {retainedAccess!==null&&<AccessContext.Provider value={retainedAccess}><AuthenticationContext.Provider value={authRequired}><div key={generation} hidden={state!=='ready'} inert={state!=='ready'} aria-hidden={state!=='ready'}>{children}</div></AuthenticationContext.Provider></AccessContext.Provider>}
     {state!=='ready'&&<main className="access-screen">
       <div className="access-card"><span className="section-kicker">WORLDOS</span><h1>{state==='login'?'Welcome to your space.':state==='loading'?'Opening WorldOS':'Let’s reconnect'}</h1>
-      <p>Save how your space should look, find what changed, and put things back. Sign in to keep your saved spaces private. Choosing a new photo starts automatic recognition.</p>
+      <p>{demoEnabled?'Explore WorldOS with a personal demo space. Owner sign-in is only needed to open the owner workspace.':'Save how your space should look, find what changed, and put things back. Sign in to keep your saved spaces private. Choosing a new photo starts automatic recognition.'}</p>
+      {state==='login'&&demoEnabled&&retainedAccess==='guest'&&<button className="secondary" disabled={pending} onClick={()=>void connect()}>Return to demo</button>}
       {state==='login'&&judgeEnabled&&retainedAccess===null&&<label>Access<select aria-label="Workspace access" value={access} disabled={pending} onChange={e=>{setAccess(e.target.value as WorkspaceAccess);setPassword('');setError('');}}><option value="owner">Owner workspace</option><option value="judge">Judge demo workspace</option></select></label>}
       {state==='login'&&retainedAccess!==null&&<p>Your {retainedAccess} draft stays locked in this tab. Saved checks can be reopened from My Spaces; changes that haven’t saved are lost on reload. <button className="secondary" disabled={pending} onClick={()=>{setRetainedAccess(null);setGeneration(n=>n+1);setPassword('');}}>Discard draft and switch access</button></p>}
       {state==='loading'&&<p role="status">Waiting for the server. Free hosting can take about a minute to wake up. No AI request has started.</p>}

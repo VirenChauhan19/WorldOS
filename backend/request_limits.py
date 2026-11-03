@@ -6,7 +6,7 @@ from starlette.responses import JSONResponse
 
 
 class RequestLimitsMiddleware:
-    def __init__(self, app, max_bytes=32*1024*1024, production=False, clock=time.monotonic, ai_per_minute=20, max_concurrent_writes=2):
+    def __init__(self, app, max_bytes=32*1024*1024, production=False, clock=time.monotonic, ai_per_minute=20, max_concurrent_writes=2, demo_limits=None):
         if max_bytes < 1 or max_concurrent_writes < 1:
             raise ValueError('Request size and concurrency limits must be positive.')
         self.app, self.max_bytes, self.production, self.clock = app, max_bytes, production, clock
@@ -15,6 +15,7 @@ class RequestLimitsMiddleware:
         self.events = defaultdict(deque)
         self.active_ai = 0
         self.active_writes = 0
+        self.demo_limits = demo_limits
 
     async def __call__(self, scope, receive, send):
         if scope['type'] != 'http' or not scope['path'].startswith('/api/'):
@@ -33,7 +34,7 @@ class RequestLimitsMiddleware:
             return await reject(400,'Invalid request length.')
         if length > limit:
             return await reject(413,'Request is too large. Choose a smaller photo and retry.')
-        ai = method == 'POST' and (path.startswith('/api/ai/') or path in {'/api/inspect/scans', '/api/inspect/recognize'} or path.endswith('/explain') or (path.startswith('/api/missions/') and path.rsplit('/', 1)[-1] in {'observe', 'plan', 'check'}))
+        ai = method == 'POST' and not path.endswith('/cancel') and (path.startswith('/api/ai/') or path in {'/api/inspect/scans', '/api/inspect/recognize'} or path.endswith('/explain') or (path.startswith('/api/missions/') and path.rsplit('/', 1)[-1] in {'observe', 'plan', 'check'}))
         if self.production and not path.startswith('/api/auth/'):
             now = self.clock()
             state = scope.get('state',{})
@@ -72,6 +73,11 @@ class RequestLimitsMiddleware:
             chunks.append(chunk)
             if not message.get('more_body',False): break
         body = b''.join(chunks)
+        if (self.demo_limits and scope.get('state',{}).get('access_role') == 'guest'
+                and scope['method'] in {'POST','PUT','PATCH'} and not scope['path'].startswith('/api/auth/')
+                and not scope['path'].endswith('/cancel')):
+            if not self.demo_limits(scope, ai, body):
+                return await reject(429, 'This demo has reached its usage limit. Your saved room and export tools still work. Try AI again tomorrow, or use owner access.')
         delivered = False
         async def bounded_receive():
             nonlocal delivered

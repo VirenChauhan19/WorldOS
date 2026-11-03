@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import os
 from contextlib import asynccontextmanager, suppress
 from functools import lru_cache
@@ -22,6 +23,7 @@ from .security import SecuritySettings, SessionAuth
 from .production import data_directory, storage_ready
 from .request_limits import RequestLimitsMiddleware
 from .backups import backup_loop, scheduled_backup
+from .demo_cleanup import demo_cleanup_loop
 from .imaging import prepare_image
 from .inspect_routes import build_inspect_router
 from .consumer_routes import build_consumer_router
@@ -42,12 +44,17 @@ session_auth = SessionAuth(security_settings, session_path=data_directory()/'aut
 @asynccontextmanager
 async def lifespan(_app):
     worker = None
+    demo_worker = None
     if security_settings.deployment == 'public':
         storage_ready()
+        demo_worker = asyncio.create_task(demo_cleanup_loop(data_directory()))
         if os.getenv('WORLDOS_BACKUPS_ENABLED','1') == '1':
             worker = asyncio.create_task(backup_loop(data_directory()))
     yield
     await stop_room_jobs()
+    if demo_worker:
+        demo_worker.cancel()
+        with suppress(asyncio.CancelledError): await demo_worker
     if worker:
         worker.cancel()
         with suppress(asyncio.CancelledError): await worker
@@ -55,6 +62,7 @@ async def lifespan(_app):
 
 app = FastAPI(title="WorldOS", version="1.3.0", lifespan=lifespan, description="Visual workspace inspection, persistent reference templates, and adaptive spatial planning.")
 app.add_middleware(RequestLimitsMiddleware, production=security_settings.deployment=='public',
+                   demo_limits=session_auth.demo_limits,
                    max_bytes=int(os.getenv('WORLDOS_MAX_REQUEST_MB','32'))*1024*1024,
                    max_concurrent_writes=int(os.getenv('WORLDOS_MAX_CONCURRENT_WRITES','2')))
 app.middleware("http")(session_auth.middleware)
@@ -162,10 +170,14 @@ async def ai_connection_test(request: ConnectionTestRequest, response: Response,
         raise HTTPException(error.status, str(error)) from None
 
 
+ai_slots = asyncio.Semaphore(2)
+
+
 async def run_ai(operation):
     try:
         async with asyncio.timeout(120):
-            result = await operation
+            async with ai_slots:
+                result = await operation
             logger.info('{"event":"ai_result","outcome":"validated"}')
             return result
     except ProviderError as error:
@@ -175,6 +187,11 @@ async def run_ai(operation):
         raise HTTPException(422, str(error)) from None
     except TimeoutError:
         raise HTTPException(504, "AI analysis reached its total two-minute time limit. No result was applied; use fewer concepts or manual mode.", headers={"X-WorldOS-Error-Code": "timeout"}) from None
+    finally:
+        # A timeout/cancellation while waiting for a slot never started this
+        # coroutine. Close it as well as normally awaited operations.
+        if inspect.iscoroutine(operation):
+            operation.close()
 
 
 @app.post("/api/ai/analyze")

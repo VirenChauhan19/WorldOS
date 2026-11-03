@@ -1,10 +1,35 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { Capacitor } from '@capacitor/core';
-import { apiFetch, backendURL, configureBackend, requestScope, setAccessToken, setCookieSession, validateBackendURL } from './backend';
+import { apiFetch, backendURL, beginDemoSession, configureBackend, requestScope, setAccessToken, setCookieSession, validateBackendURL } from './backend';
 
 beforeEach(()=>{vi.spyOn(Capacitor,'isNativePlatform').mockReturnValue(false);configureBackend('');Object.defineProperty(navigator,'onLine',{value:true,configurable:true});});
 afterEach(()=>{setAccessToken('');vi.restoreAllMocks();vi.unstubAllGlobals();localStorage.clear();});
+it('opens a no-password demo only after the server confirms an action has not executed',async()=>{
+  const fetcher=vi.fn().mockResolvedValueOnce(new Response('{}',{status:401,headers:{'X-WorldOS-Error-Code':'demo_available'}}))
+    .mockResolvedValueOnce(new Response(JSON.stringify({required:true,authenticated:true,access:'guest',session_mode:'cookie',csrf_token:'demo-csrf',demo_enabled:true})))
+    .mockResolvedValueOnce(new Response('{"accepted":true}'));
+  vi.stubGlobal('fetch',fetcher);
+  const expired=vi.fn();window.addEventListener('worldos:session-expired',expired);
+  expect((await apiFetch('ai/room/jobs',{method:'POST',body:'original photo request'})).ok).toBe(true);
+  expect(fetcher.mock.calls.map(([url])=>url)).toEqual(['/api/ai/room/jobs','/api/auth/demo','/api/ai/room/jobs']);
+  expect(fetcher.mock.calls[2][1].headers.get('X-CSRF-Token')).toBe('demo-csrf');
+  expect(fetcher.mock.calls[2][1].body).toBe('original photo request');expect(expired).not.toHaveBeenCalled();
+  window.removeEventListener('worldos:session-expired',expired);
+});
+it('coalesces demo creation and discards it if the backend changes',async()=>{
+  let release!:(response:Response)=>void;
+  const fetcher=vi.fn(()=>new Promise<Response>(resolve=>{release=resolve;}));vi.stubGlobal('fetch',fetcher);
+  const first=beginDemoSession(),second=beginDemoSession();expect(first).toBe(second);expect(fetcher).toHaveBeenCalledTimes(1);
+  configureBackend('https://other.example');
+  release(new Response(JSON.stringify({required:true,authenticated:true,access:'guest',session_mode:'cookie',csrf_token:'wrong-server',demo_enabled:true})));
+  await expect(first).rejects.toThrow('connection changed');
+});
+it('does not retry AI when demo creation is rate limited',async()=>{
+  const fetcher=vi.fn().mockResolvedValueOnce(new Response('{}',{status:401,headers:{'X-WorldOS-Error-Code':'demo_available'}}))
+    .mockResolvedValueOnce(new Response('{"detail":"Demo access is busy."}',{status:429}));vi.stubGlobal('fetch',fetcher);
+  await expect(apiFetch('ai/room/jobs',{method:'POST'})).rejects.toThrow('Demo access is busy');expect(fetcher).toHaveBeenCalledTimes(2);
+});
 it('refreshes a missing cookie CSRF token and retries only a confirmed pre-execution rejection',async()=>{
   const fetcher=vi.fn()
     .mockResolvedValueOnce(new Response('{}',{status:403,headers:{'X-WorldOS-Error-Code':'csrf_required'}}))

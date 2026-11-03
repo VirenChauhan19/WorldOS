@@ -23,6 +23,7 @@ class SessionStore:
             if version < 2:
                 self.db.execute("ALTER TABLE sessions ADD COLUMN role TEXT NOT NULL DEFAULT 'owner'")
             self.db.execute('PRAGMA user_version = 2')
+            self.db.execute('CREATE TABLE IF NOT EXISTS demo_usage (key TEXT PRIMARY KEY, used INTEGER NOT NULL, expires REAL NOT NULL)')
         if path:
             Path(path).chmod(0o600)
 
@@ -31,7 +32,22 @@ class SessionStore:
             self.db.execute('DELETE FROM sessions WHERE expires <= ? OR (role = ? AND credential_id != ?)', (now, role, credential_id))
             if self.db.execute('SELECT COUNT(*) FROM sessions').fetchone()[0] >= 256:
                 return False
+            if role == 'guest' and self.db.execute("SELECT COUNT(*) FROM sessions WHERE role='guest'").fetchone()[0] >= 32:
+                return False
             self.db.execute('INSERT INTO sessions VALUES (?,?,?,?)', (fingerprint(token), expires, credential_id, role))
+            return True
+
+    def reserve_demo(self, limits, now):
+        """Atomically reserve all limits, shared across sessions and server restarts."""
+        with self.lock, self.db:
+            self.db.execute('BEGIN IMMEDIATE')
+            self.db.execute('DELETE FROM demo_usage WHERE expires<=?', (now,))
+            for key, allowance, _expires in limits:
+                row = self.db.execute('SELECT used FROM demo_usage WHERE key=?', (key,)).fetchone()
+                if row and row[0] >= allowance:
+                    return False
+            for key, _allowance, expires in limits:
+                self.db.execute('INSERT INTO demo_usage VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET used=used+1', (key, expires))
             return True
 
     def valid(self, token, credential_id, now):

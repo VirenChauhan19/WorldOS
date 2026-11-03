@@ -3,6 +3,7 @@ import base64
 import hashlib
 import hmac
 import ipaddress
+import json
 import os
 import secrets
 import threading
@@ -11,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal
 from urllib.parse import urlparse
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -46,13 +48,15 @@ class SecuritySettings:
     hosts: tuple[str, ...] = ("localhost", "127.0.0.1", "[::1]", "testserver")
     judge_password: str = field(default="", repr=False)
     judge_expires_at: str = ""
+    public_demo: bool = False
 
     @classmethod
     def from_env(cls):
         setting = cls(os.getenv("WORLDOS_DEPLOYMENT", "local"), os.getenv("WORLDOS_AUTH_PASSWORD_HASH", ""),
                       tuple(v.strip() for v in os.getenv("WORLDOS_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if v.strip()),
                       tuple(v.strip() for v in os.getenv("WORLDOS_ALLOWED_HOSTS", "localhost,127.0.0.1,[::1],testserver").split(",") if v.strip()),
-                      os.getenv('WORLDOS_JUDGE_PASSWORD_HASH',''), os.getenv('WORLDOS_JUDGE_ACCESS_EXPIRES_AT',''))
+                      os.getenv('WORLDOS_JUDGE_PASSWORD_HASH',''), os.getenv('WORLDOS_JUDGE_ACCESS_EXPIRES_AT',''),
+                      os.getenv('WORLDOS_PUBLIC_DEMO', '1' if os.getenv('WORLDOS_DEPLOYMENT') == 'public' else '0') == '1')
         setting.validate()
         return setting
 
@@ -130,12 +134,46 @@ class SessionAuth:
     def judge_enabled(self):
         return bool(self.settings.judge_password) and self.clock() < self.settings.judge_deadline()
 
+    @property
+    def demo_enabled(self):
+        return self.required and self.settings.public_demo
+
+    @property
+    def demo_credential(self):
+        return fingerprint('public-demo-v1:' + self.credential_id)
+
     def access_role(self, request):
         token = self.token(request)
         credentials = {'owner': self.credential_id}
         if self.judge_enabled:
             credentials['judge'] = fingerprint(self.settings.judge_password)
+        if self.demo_enabled:
+            credentials['guest'] = self.demo_credential
         return self.store.identity(token, credentials, self.clock()) if token else None
+
+    def demo_limits(self, scope, ai, body=b''):
+        now = self.clock()
+        day = int(now // 86400)
+        visitor = scope['state']['auth_fingerprint']
+        # Reconnecting an accepted room job must not spend another AI action.
+        if scope['path'] == '/api/ai/room/jobs':
+            try:
+                value = json.loads(body)
+                identity = str(UUID(value['id'])) if isinstance(value, dict) and isinstance(value.get('id'), str) else None
+            except (ValueError, TypeError, KeyError, UnicodeDecodeError):
+                identity = None
+            if identity:
+                from .inspect_store import get_inspection_store
+                with get_inspection_store(guest=visitor).connect() as db:
+                    if db.execute('SELECT 1 FROM room_jobs WHERE id=?', (identity,)).fetchone():
+                        return True
+        address = fingerprint(self.credential_id + (scope.get('client') or ('unknown',))[0])
+        limits = [(f'write:{visitor}', 80, now + 7200)]
+        if ai:
+            limits += [(f'ai:{visitor}', 12, now + 7200),
+                       (f'ai:day:{day}', 240, (day + 1) * 86400),
+                       (f'ai:ip:{day}:{address}', 60, (day + 1) * 86400)]
+        return self.store.reserve_demo(limits, now)
 
     def login(self, password, address, access='owner'):
         now = self.clock()
@@ -179,15 +217,19 @@ class SessionAuth:
             if not self.required:
                 if not local:
                     return JSONResponse({"detail": "Remote access requires an authenticated HTTPS deployment."}, 403, headers={"Cache-Control": "no-store"})
-            exempt = request.url.path in {"/api/auth/status", "/api/auth/login"}
+            exempt = request.url.path in {"/api/auth/status", "/api/auth/login", "/api/auth/demo"}
             role = self.access_role(request) if self.required else 'owner'
             request.state.access_role = role
+            demo_routes = {'/api/auth/logout','/api/health','/api/analyze','/api/plan','/api/verify','/api/replan',
+                           '/api/ai/diagnostics','/api/ai/analyze','/api/ai/reason','/api/ai/ask','/api/ai/verify','/api/ai/room/survey','/api/ai/room/design','/api/verify/reviewed','/api/missions','/app','/inspect'}
+            demo_route = request.url.path in demo_routes or request.url.path.startswith(('/api/inspect/','/api/missions/','/api/ai/room/jobs','/app/','/inspect/'))
             if self.required and not exempt and not role:
-                return JSONResponse({"detail": "Sign in to WorldOS to continue."}, 401, headers={"Cache-Control": "no-store", "WWW-Authenticate": "Bearer"})
+                headers = {"Cache-Control": "no-store", "WWW-Authenticate": "Bearer"}
+                if self.demo_enabled and demo_route and not self.token(request):
+                    headers['X-WorldOS-Error-Code'] = 'demo_available'
+                return JSONResponse({"detail": "Connect to WorldOS to continue."}, 401, headers=headers)
             if self.required and not exempt:
-                judge_routes = {'/api/auth/logout','/api/health','/api/analyze','/api/plan','/api/verify','/api/replan',
-                                '/api/ai/diagnostics','/api/ai/analyze','/api/ai/reason','/api/ai/ask','/api/ai/verify','/api/ai/room/survey','/api/ai/room/design','/api/verify/reviewed','/api/missions','/app','/inspect'}
-                if role == 'judge' and request.url.path not in judge_routes and not request.url.path.startswith(('/api/inspect/','/api/missions/','/api/ai/room/jobs','/app/','/inspect/')):
+                if role in {'judge', 'guest'} and not demo_route:
                     return JSONResponse({'detail':'This action requires owner access.'},403,headers={'Cache-Control':'no-store'})
                 request.state.auth_fingerprint = fingerprint(self.token(request))
                 if self.cookie_session(request) and request.method not in {'GET','HEAD'}:
@@ -223,9 +265,33 @@ class SessionAuth:
             cookie = authorized and self.cookie_session(request)
             return {"required": self.required, "authenticated": not self.required or authorized, "deployment": self.settings.deployment,
                     'storage_mode': 'ephemeral' if os.getenv('WORLDOS_STORAGE_MODE') == 'ephemeral' else 'persistent',
-                    'access':role, 'judge_enabled':self.judge_enabled,
+                    'access':role, 'judge_enabled':self.judge_enabled, 'demo_enabled':self.demo_enabled,
                     'judge_expires_at':self.settings.judge_expires_at if role == 'judge' else None,
                     'session_mode': 'cookie' if cookie else 'bearer', 'csrf_token': self.csrf_token(self.token(request)) if cookie else None}
+
+        @router.post('/demo')
+        def demo(request: Request, response: Response):
+            if not self.demo_enabled:
+                raise HTTPException(404, 'Public demo access is not enabled.')
+            if not self.same_origin(request):
+                raise HTTPException(403, 'Start the demo from this WorldOS website.')
+            # Repeated bootstrap requests preserve the existing visitor or owner.
+            if self.authorized(request) and self.cookie_session(request):
+                return status(request)
+            now = self.clock()
+            hour, day = int(now // 3600), int(now // 86400)
+            address = fingerprint(self.credential_id + (request.client.host if request.client else 'unknown'))
+            if not self.store.reserve_demo([(f'join:{hour}:{address}', 6, (hour+1)*3600),
+                                            (f'join:day:{day}', 120, (day+1)*86400)], now):
+                raise HTTPException(429, 'Demo access is busy. Keep your current demo tab open or try again later.', headers={'Retry-After':'3600'})
+            token = secrets.token_urlsafe(32)
+            if not self.store.create(token, now+7200, self.demo_credential, now, 'guest'):
+                raise HTTPException(429, 'All demo spaces are in use. Please try again later.', headers={'Retry-After':'300'})
+            response.set_cookie(self.cookie_name, token, max_age=7200, httponly=True,
+                                secure=self.settings.deployment=='public', samesite='strict', path='/')
+            return {'required':True, 'authenticated':True, 'access':'guest', 'session_mode':'cookie',
+                    'csrf_token':self.csrf_token(token), 'expires_in':7200, 'demo_enabled':True,
+                    'storage_mode':'ephemeral' if os.getenv('WORLDOS_STORAGE_MODE') == 'ephemeral' else 'persistent'}
 
         @router.post("/login")
         def login(body: Login, request: Request, response: Response):

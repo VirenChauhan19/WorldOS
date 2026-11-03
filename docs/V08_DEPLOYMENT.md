@@ -57,10 +57,13 @@ All these files are ephemeral:
 /tmp/worldos/worldos.sqlite3              owner templates/photos/inspections/trials
 /tmp/worldos/auth.sqlite3                 session fingerprints, roles, expiry
 /tmp/worldos/judge-demo/worldos.sqlite3   isolated judge workspace
+/tmp/worldos/public-demo/<fingerprint>/  separate visitor workspaces
 /tmp/worldos/backups/                     manual local snapshots
 ```
 
 Render environment secrets remain separate. Lost session records invalidate cookies/native tokens; sign in again using the configured passphrase. Data loss never disables authentication. Cookies retain `Secure`, `HttpOnly`, `SameSite=Strict`, host-only scope, CSRF/Origin checks, expiry/revocation, and rate limits. Reloads can retain login while the database exists.
+
+Public visitors now receive a separate, passphrase-free demo session automatically. Owner sign-in still uses the configured passphrase. Demo sessions expire after two hours, have bounded AI usage, and cannot access owner workspaces or backups. Set `WORLDOS_PUBLIC_DEMO=0` for an owner-only site. See [the demo access contract](PUBLIC_DEMO.md).
 
 Owners can POST `/api/admin/backups` with the session CSRF header, then immediately download GET `/api/admin/backups/latest`. Snapshots include owner photos/evidence and exclude credentials/sessions. Judge data is separate. A snapshot left on `/tmp` is **not durable**. Free has no SSH/dashboard shell; the paid SSH restore procedure does not apply. Restore a downloaded snapshot locally into a new directory:
 

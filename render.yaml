@@ -15,6 +15,8 @@ services:
     envVars:
       - key: WORLDOS_DEPLOYMENT
         value: public
+      - key: WORLDOS_PUBLIC_DEMO
+        value: "1"
       - key: WORLDOS_DATA_DIR
         value: /tmp/worldos
       - key: WORLDOS_STORAGE_MODE

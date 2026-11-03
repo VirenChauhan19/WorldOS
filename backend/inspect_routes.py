@@ -32,7 +32,8 @@ def errors():
 def get_store(request: Request):
     with errors():
         # The authenticated server-side role is the only workspace selector.
-        return get_inspection_store(demo=getattr(request.state, 'access_role', 'owner') == 'judge')
+        role = getattr(request.state, 'access_role', 'owner')
+        return get_inspection_store(demo=role == 'judge', guest=request.state.auth_fingerprint if role == 'guest' else None)
 
 
 def template_data(body):

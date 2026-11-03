@@ -17,7 +17,7 @@ const sources: Record<string, string> = { root_dotenv: 'root .env', process_envi
 
 interface Props { busy: string | null; onBusy: (value: string | null) => void }
 export default function ConnectionStatus({ busy, onBusy }: Props) {
-  const judge = useWorkspaceAccess() === 'judge';
+  const judge = useWorkspaceAccess() !== 'owner';
   const [diagnostics, setDiagnostics] = useState<ConnectionDiagnostics | null>(null);
   const [integration, setIntegration] = useState<AIIntegration>('muse');
   const [pending, setPending] = useState(false);

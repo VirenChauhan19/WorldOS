@@ -2,7 +2,7 @@
 
 **Make room. Get going.**
 
-The latest reliability pass fixes workspace navigation, private-room persistence, setup conflicts, interrupted saves, and session recovery. Read [the reliability audit](docs/RELIABILITY_AUDIT.md), [the workspace upgrade](docs/WORKSPACE_UPGRADE.md), and [the real-phone study guide](docs/PHONE_USABILITY_STUDY.md). Physical-device and participant testing still need to be performed.
+The latest reliability pass fixes workspace navigation, private-room persistence, setup conflicts, interrupted saves, and session recovery. Public AI demos now open without an owner passphrase, with a separate workspace and bounded usage for each visitor. Read [public demo access](docs/PUBLIC_DEMO.md), [the reliability audit](docs/RELIABILITY_AUDIT.md), [the workspace upgrade](docs/WORKSPACE_UPGRADE.md), and [the real-phone study guide](docs/PHONE_USABILITY_STUDY.md). Physical-device and participant testing still need to be performed.
 
 Get your space ready to study, work, or create. WorldOS turns a photo and a goal into a short, practical sequence, then helps you check the result and remember the setup that worked for you.
 

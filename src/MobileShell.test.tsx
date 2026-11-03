@@ -11,6 +11,28 @@ import { useWorkspaceAccess } from './access';
 vi.mock('./photos',()=>({normalizePhoto:vi.fn(async(file:File)=>file),nativePhoto:vi.fn()}));
 beforeEach(()=>{vi.spyOn(Capacitor,'isNativePlatform').mockReturnValue(false);configureBackend('');Object.defineProperty(navigator,'onLine',{value:true,configurable:true});});
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals();vi.clearAllMocks();localStorage.clear();});
+it('opens the public AI workspace without a passphrase and keeps owner sign-in explicit',async()=>{
+  const fetcher=vi.fn().mockImplementation(async(url:string)=>new Response(JSON.stringify(url.endsWith('/auth/status')
+    ?{required:true,authenticated:false,demo_enabled:true}
+    :{required:true,authenticated:true,access:'guest',session_mode:'cookie',csrf_token:'demo',demo_enabled:true})));
+  vi.stubGlobal('fetch',fetcher);
+  function Content(){return <p>Workspace role: {useWorkspaceAccess()}</p>;}
+  render(<StrictMode><MobileShell><Content/></MobileShell></StrictMode>);
+  await screen.findByText('Workspace role: guest');expect(screen.queryByLabelText('Workspace passphrase')).toBeNull();
+  expect(fetcher.mock.calls.filter(([url])=>url.endsWith('/auth/demo'))).toHaveLength(1);
+  fireEvent.click(screen.getByText('Demo ready · No password needed'));
+  fireEvent.click(screen.getByRole('button',{name:'Owner sign-in'}));
+  expect(screen.getByLabelText('Workspace passphrase')).toBeTruthy();
+  expect(screen.getByRole('button',{name:'Return to demo'})).toBeTruthy();
+});
+it('restores a guest session on reload and offers reconnect rather than a password on expiry',async()=>{
+  const fetcher=vi.fn().mockImplementation(async()=>new Response(JSON.stringify({required:true,authenticated:true,access:'guest',session_mode:'cookie',csrf_token:'demo',demo_enabled:true})));
+  vi.stubGlobal('fetch',fetcher);render(<MobileShell><p>Demo restored</p></MobileShell>);
+  await screen.findByText('Demo restored');expect(fetcher).toHaveBeenCalledTimes(1);
+  act(()=>window.dispatchEvent(new Event('worldos:session-expired')));
+  expect(screen.queryByLabelText('Workspace passphrase')).toBeNull();
+  expect(screen.getByRole('button',{name:'Retry connection'})).toBeTruthy();
+});
 it('keeps draft input mounted without a reload banner when an older helper reports an update',async()=>{
   vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response('{"required":false,"authenticated":true}')));
   render(<MobileShell><input aria-label="Unsaved template name" defaultValue=""/></MobileShell>);

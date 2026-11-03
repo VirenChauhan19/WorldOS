@@ -26,6 +26,7 @@ jobs:
       - run: python -m pytest backend/tests -q
       - run: npm run build -- --configLoader native
       - run: python scripts/smoke_workspace_upgrade.py
+      - run: python scripts/smoke_public_demo.py
       - run: python scripts/smoke_workspace_recovery.py
       - run: python scripts/smoke_journey_reliability.py
       - run: python scripts/smoke_production.py
@@ -39,4 +40,5 @@ jobs:
             artifacts/workspace-upgrade/
             artifacts/workspace-recovery/
             artifacts/journey-reliability/
+            artifacts/public-demo/
           retention-days: 7

@@ -49,6 +49,42 @@ def test_job_survives_client_disconnect_and_identical_submission_is_idempotent(t
     asyncio.run(run())
 
 
+def test_jobs_across_workspaces_share_server_capacity(tmp_path, monkeypatch):
+    async def run():
+        app, store, gate, calls = setup_app(tmp_path, monkeypatch)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='http://test') as client:
+            for index in range(5):
+                workspace=InspectionStore(tmp_path/f'visitor-{index}.sqlite3')
+                app.dependency_overrides[get_store]=lambda:workspace
+                response=await client.post('/api/ai/room/jobs',json={'id':str(uuid4()),'request':{'image_url':photo()}})
+                assert response.status_code==(202 if index<4 else 429)
+            gate.set()
+            await asyncio.sleep(.01)
+        await room_jobs.stop_room_jobs()
+    asyncio.run(run())
+
+
+def test_ai_operations_share_two_slots_and_cancel_queued_coroutines(monkeypatch):
+    from backend import main
+    import inspect
+    async def run():
+        monkeypatch.setattr(main,'ai_slots',asyncio.Semaphore(2))
+        gate=asyncio.Event();active=[]
+        async def work(identity):
+            active.append(identity)
+            await gate.wait()
+            return identity
+        operations=[work(index) for index in range(3)]
+        tasks=[asyncio.create_task(main.run_ai(work)) for work in operations]
+        await asyncio.sleep(.01)
+        assert active==[0,1]
+        tasks[2].cancel()
+        await asyncio.gather(tasks[2],return_exceptions=True)
+        assert inspect.getcoroutinestate(operations[2])==inspect.CORO_CLOSED
+        gate.set();assert await asyncio.gather(*tasks[:2])==[0,1]
+    asyncio.run(run())
+
+
 def test_cancel_and_workspace_isolation(tmp_path, monkeypatch):
     async def run():
         app, store, gate, calls = setup_app(tmp_path, monkeypatch)

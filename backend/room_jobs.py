@@ -101,6 +101,8 @@ def build_room_jobs_router(get_service, run_ai):
             if previous and previous[0] != fingerprint:
                 raise HTTPException(409, 'This request ID belongs to a different room action.')
             if not previous:
+                if len(tasks) >= 4:
+                    raise HTTPException(429, 'The AI designer is busy. Wait for a request to finish and retry; no new action was queued.')
                 if isinstance(body.request, QueuedDesign):
                     parent = db.execute('SELECT kind,status FROM room_jobs WHERE id=?', (str(body.request.survey_job_id),)).fetchone()
                     if not parent or parent[0] != 'survey':

@@ -127,8 +127,12 @@ class InspectionStore:
         return [dict(zip(("id", "revision", "created_at"), row)) for row in rows]
 
 
-def get_inspection_store(*, demo=False):
+def get_inspection_store(*, demo=False, guest=None):
     directory = Path(os.getenv("WORLDOS_DATA_DIR", str(Path(__file__).resolve().parents[1] / "data")))
-    if demo:
+    if guest is not None:
+        if len(guest) != 64 or any(char not in '0123456789abcdef' for char in guest):
+            raise ValueError('Invalid demo workspace.')
+        directory = directory / 'public-demo' / guest
+    elif demo:
         directory = directory / 'judge-demo'
     return InspectionStore(directory / "worldos.sqlite3")

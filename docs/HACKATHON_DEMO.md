@@ -19,7 +19,7 @@ Provider latency varies; allow extra time. One final task plan took 23.3 seconds
 
 ## Prepare the demonstration
 
-1. Deploy the current checkout or use the local preview. The public Render service has automatic deployment off and has not been updated by this implementation. Use its existing login and provider configuration.
+1. Deploy the current checkout or use the local preview. Render automatic deployment is off, so publish the latest successful release checks manually. Public deployments open an isolated visitor session automatically on the first AI action; no owner passphrase is needed. Keep the existing provider configuration and owner password hash on the server. See [public demo access](PUBLIC_DEMO.md).
 2. Rehearse on the actual phone over HTTPS. The task flow supports a native camera photo or library upload. The separate live-camera view recognizes steady captures automatically.
 3. Use a manageable desk with a genuine reason to prepare it. Test one goal, a protected item, a correction, and a useful physical change. Check each suggestion yourself before following it.
 4. Capture the after photograph from the same angle. If the review is uncertain or wrong, show that honestly and use a clearer view or human judgment. Do not invent a result for the presentation.

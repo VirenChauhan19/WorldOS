@@ -1,0 +1,13 @@
+# Public hackathon access
+
+Public deployments enable `WORLDOS_PUBLIC_DEMO=1` by default. Judges can upload a room photo or continue to the AI workspace without entering an owner passphrase. The first authorized AI action opens a two-hour, cookie-based visitor session. The device-only homepage still opens without a server request.
+
+Each visitor session has a separate SQLite workspace under `public-demo/<server-session-fingerprint>/`. Reloading retains that workspace while the session and server storage remain available. Other visitors cannot open its room jobs, inspections, templates or missions. Owner data, backups, API documentation and provider connection tests remain restricted. **Owner sign-in** is an explicit option in the demo workspace; it still requires the owner passphrase. Existing owner sessions are never downgraded by demo bootstrap.
+
+The demo includes 12 AI request attempts and 80 writes per session. Accepted room-job reconnects, reads, cancellation and logout do not spend additional actions. Failed or invalid new requests can count toward limits. Shared daily caps are 60 AI attempts per client address and 240 across the service. One logical action can contain multiple provider calls; these are request limits, not a dollar spending guarantee. Session creation is limited to six per address per hour, 120 per day and 32 active visitors. Request counters persist in the authentication database and cannot be reset by opening another tab or logging out. Free Render storage loss also resets those counters.
+
+The server allows at most four pending room jobs and two AI operations at once. Visitors receive a retryable error if it is busy. Visitor databases inactive for 24 hours are cleaned up hourly. Owner and legacy judge stores are excluded. Render Free may lose server data sooner on a restart, redeploy or sleep. Keep important photos and exports on your device. Room projects are stored in the browser independently of the demo session.
+
+Set `WORLDOS_PUBLIC_DEMO=0` to require owner/legacy judge login again. Owner credentials and provider keys remain server-side. Native/separate-backend clients continue using their existing sign-in flow; the passphrase-free demo is for visitors on the same-origin website.
+
+Validation includes public HTTPS cookie/CSRF contracts, two-visitor and owner isolation, expiry, disabling access, restart-persistent quotas, job reconnects, logout, safe cleanup, and fresh-browser photo-to-room-design journeys at 320, 390 and 1440 pixels. Browser inference responses are synthetic; this does not establish model accuracy or real-phone performance. Run `scripts/smoke_public_demo.py` after `scripts/smoke_workspace_upgrade.py` to create the required fixture.

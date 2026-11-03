@@ -20,13 +20,14 @@ Setup edits also flush when the page becomes hidden. IndexedDB synchronous failu
 
 ## Validation
 
-- 484 frontend tests pass across 55 files.
-- 403 backend tests pass; two optional live-provider tests are skipped.
+- 489 frontend tests pass across 55 files.
+- 413 backend tests pass; two optional live-provider tests are skipped.
 - TypeScript and the production build pass.
 - Normal room/photo workflows pass at 320, 390, and 1440 pixels.
 - All eight existing recovery browser scenarios pass.
 - Seven new browser scenarios pass, including long saved names at 320 pixels and runtime-error checks.
 - The isolated real HTTP production check passes authentication, CSRF, owner/judge isolation, backup integrity, restart persistence, and logout revocation.
+- The public demo pass adds automatic no-password access, visitor isolation, persisted quotas, job capacity and cleanup checks. Real cookies, CSRF and background room jobs pass fresh-browser checks at 320, 390 and 1440 pixels with synthetic AI responses; see [public demo access](PUBLIC_DEMO.md).
 - Read-only navigation on the public URL recorded in this repository, `https://worldos-inspect.onrender.com/`, loaded Home, Prepare, camera example, Room, My Spaces, and Settings at three widths without runtime errors or horizontal overflow. API mutations were blocked during this public audit.
 
 Browser fixtures are synthetic. These checks do not establish live AI usefulness, calibrated room dimensions, physical-phone behavior, or comparative hackathon performance. The public site served the earlier build during the audit; local results do not imply deployment.
