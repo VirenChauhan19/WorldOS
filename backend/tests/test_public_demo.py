@@ -33,6 +33,7 @@ def make_app(settings, path, clock=lambda:1000):
     async def run(work): return await work
     app.include_router(build_inspect_router(lambda:documented_service(template(), []), run))
     @app.post('/api/ai/reason')
+    @app.post('/api/ai/live')
     def reason(): return {'result':'synthetic'}
     @app.post('/api/ai/room/jobs/{identity}/cancel')
     def cancel(identity:str): return {'cancelled':identity}
@@ -70,6 +71,7 @@ def test_no_password_required_but_owner_and_other_visitors_stay_private(settings
     assert first.get('/openapi.json').status_code == 403
     assert first.post('/api/ai/connection-test').status_code == 403
     assert first.get('/api/auth/status?access=owner', headers={'X-WorldOS-Role':'owner'}).json()['access']=='guest'
+    assert first.post('/api/ai/live').status_code == 200
     login = owner.post('/api/auth/login', json={'password':PASSWORD,'mode':'cookie'}, headers={'Origin':'https://testserver'})
     assert login.status_code == 200
     assert join(owner).json()['access'] == 'owner'

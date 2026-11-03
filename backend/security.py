@@ -221,7 +221,7 @@ class SessionAuth:
             role = self.access_role(request) if self.required else 'owner'
             request.state.access_role = role
             demo_routes = {'/api/auth/logout','/api/health','/api/analyze','/api/plan','/api/verify','/api/replan',
-                           '/api/ai/diagnostics','/api/ai/analyze','/api/ai/reason','/api/ai/ask','/api/ai/verify','/api/ai/room/survey','/api/ai/room/design','/api/verify/reviewed','/api/missions','/app','/inspect'}
+                           '/api/ai/diagnostics','/api/ai/live','/api/ai/analyze','/api/ai/reason','/api/ai/ask','/api/ai/verify','/api/ai/room/survey','/api/ai/room/design','/api/verify/reviewed','/api/missions','/app','/inspect'}
             demo_route = request.url.path in demo_routes or request.url.path.startswith(('/api/inspect/','/api/missions/','/api/ai/room/jobs','/app/','/inspect/'))
             if self.required and not exempt and not role:
                 headers = {"Cache-Control": "no-store", "WWW-Authenticate": "Bearer"}
